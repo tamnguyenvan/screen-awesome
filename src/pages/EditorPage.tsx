@@ -4,7 +4,6 @@ import { useEditorStore } from '../store/editorStore';
 import { Preview } from '../components/editor/Preview';
 import { SidePanel } from '../components/editor/SidePanel';
 import { Timeline } from '../components/editor/Timeline';
-import { Toolbar } from '../components/editor/Toolbar';
 import { PreviewControls } from '../components/editor/PreviewControls';
 
 export function EditorPage() {
@@ -22,9 +21,6 @@ export function EditorPage() {
 
   return (
     <main className="h-screen w-screen bg-gray-100 dark:bg-gray-900 flex flex-col overflow-hidden">
-      {/* Top Toolbar */}
-      <Toolbar />
-
       {/* Main Content */}
       <div className="flex flex-1 overflow-hidden">
         {/* Side Panel */}

@@ -26,7 +26,7 @@ interface FrameStyles {
   borderColor: string;
 }
 
-// NEW: Define region types
+// Define region types
 export interface ZoomRegion {
   id: string;
   type: 'zoom';
@@ -55,7 +55,6 @@ interface EditorState {
   isPlaying: boolean;
   frameStyles: FrameStyles;
   aspectRatio: AspectRatio;
-  // NEW: State for timeline
   zoomRegions: ZoomRegion[];
   cutRegions: CutRegion[];
   selectedRegionId: string | null;
@@ -72,7 +71,6 @@ interface EditorActions {
   updateFrameStyle: (style: Partial<Omit<FrameStyles, 'background'>>) => void;
   updateBackground: (bg: Partial<Background>) => void;
   setAspectRatio: (ratio: AspectRatio) => void;
-  // NEW: Actions for timeline
   addZoomRegion: () => void;
   addCutRegion: () => void;
   updateRegion: (id: string, updates: Partial<TimelineRegion>) => void;
@@ -110,6 +108,15 @@ const initialFrameStyles: FrameStyles = {
   borderColor: '#ffffff',
 }
 
+interface MetaDataItem {
+  timestamp: number;
+  x: number;
+  y: number;
+  type: 'click' | 'move' | 'roll';
+  button?: string;
+  pressed?: boolean;
+}
+
 // --- Store Implementation ---
 export const useEditorStore = create(
   immer<EditorState & EditorActions>((set, get) => ({
@@ -131,7 +138,8 @@ export const useEditorStore = create(
       // --- Auto-generate zoom regions from metadata ---
       try {
         const metadataContent = await window.electronAPI.readFile(metadataPath);
-        const clicks: { timestamp: number; x: number; y: number; type: 'click' }[] = JSON.parse(metadataContent);
+        let clicks: MetaDataItem[] = JSON.parse(metadataContent);
+        clicks = clicks.map(click => ({...click, timestamp: click.timestamp / 1000}));
         
         if (clicks.length === 0) return;
 
@@ -164,6 +172,8 @@ export const useEditorStore = create(
             easing: 'ease-in-out',
           };
         });
+
+        console.log('new', newZoomRegions);
 
         set(state => {
           state.zoomRegions = newZoomRegions;

@@ -320,9 +320,11 @@ function createRecorderWindow() {
     },
   })
 
-  recorderWin.webContents.on('did-finish-load', () => {
-    recorderWin?.webContents.send('main-process-message', (new Date).toLocaleString())
-  })
+  if (recorderWin?.webContents) {
+    recorderWin.webContents.on('did-finish-load', () => {
+      recorderWin?.webContents?.send('main-process-message', (new Date).toLocaleString())
+    });
+  }
 
   if (VITE_DEV_SERVER_URL) {
     recorderWin.loadURL(VITE_DEV_SERVER_URL)
