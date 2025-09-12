@@ -26,7 +26,7 @@ interface FrameStyles {
   borderColor: string;
 }
 
-// Define region types
+// Thêm targetX và targetY
 export interface ZoomRegion {
   id: string;
   type: 'zoom';
@@ -34,6 +34,8 @@ export interface ZoomRegion {
   duration: number;
   zoomLevel: number;
   easing: 'linear' | 'ease-in-out';
+  targetX: number; // Tọa độ X của click (0 to 1)
+  targetY: number; // Tọa độ Y của click (0 to 1)
 }
 
 export interface CutRegion {
@@ -45,11 +47,23 @@ export interface CutRegion {
 
 export type TimelineRegion = ZoomRegion | CutRegion;
 
+// Định nghĩa kiểu cho metadata
+interface MetaDataItem {
+  timestamp: number;
+  x: number;
+  y: number;
+  type: 'click' | 'move' | 'scroll'; // 'roll' đổi thành 'scroll' cho rõ nghĩa hơn
+  button?: string;
+  pressed?: boolean;
+}
+
 // --- State ---
 interface EditorState {
   videoPath: string | null;
   metadataPath: string | null;
   videoUrl: string | null;
+  videoDimensions: { width: number; height: number }; // Thêm kích thước video
+  metadata: MetaDataItem[]; // Thêm để lưu trữ toàn bộ metadata
   duration: number;
   currentTime: number;
   isPlaying: boolean;
@@ -58,12 +72,13 @@ interface EditorState {
   zoomRegions: ZoomRegion[];
   cutRegions: CutRegion[];
   selectedRegionId: string | null;
-  timelineZoom: number; // e.g., 1 = 100%, 2 = 200%
+  timelineZoom: number;
 }
 
 // --- Actions ---
 interface EditorActions {
   loadProject: (paths: { videoPath: string; metadataPath: string }) => Promise<void>;
+  setVideoDimensions: (dims: { width: number; height: number }) => void; // Thêm action
   setDuration: (duration: number) => void;
   setCurrentTime: (time: number) => void;
   togglePlay: () => void;
@@ -85,6 +100,8 @@ const initialState: Omit<EditorState, 'frameStyles'> = {
   videoPath: null,
   metadataPath: null,
   videoUrl: null,
+  videoDimensions: { width: 1920, height: 1080 }, // Default, sẽ được cập nhật
+  metadata: [],
   duration: 0,
   currentTime: 0,
   isPlaying: false,
@@ -108,14 +125,6 @@ const initialFrameStyles: FrameStyles = {
   borderColor: '#ffffff',
 }
 
-interface MetaDataItem {
-  timestamp: number;
-  x: number;
-  y: number;
-  type: 'click' | 'move' | 'roll';
-  button?: string;
-  pressed?: boolean;
-}
 
 // --- Store Implementation ---
 export const useEditorStore = create(
@@ -126,7 +135,6 @@ export const useEditorStore = create(
     loadProject: async ({ videoPath, metadataPath }) => {
       const videoUrl = `media://${videoPath}`;
       
-      // Reset state before loading new project
       set(state => {
         Object.assign(state, initialState);
         state.frameStyles = initialFrameStyles;
@@ -135,46 +143,52 @@ export const useEditorStore = create(
         state.videoUrl = videoUrl;
       });
 
-      // --- Auto-generate zoom regions from metadata ---
       try {
         const metadataContent = await window.electronAPI.readFile(metadataPath);
-        let clicks: MetaDataItem[] = JSON.parse(metadataContent);
-        clicks = clicks.map(click => ({...click, timestamp: click.timestamp / 1000}));
+        const metadata: MetaDataItem[] = JSON.parse(metadataContent);
+        
+        // Chuyển timestamp từ ms sang s
+        const processedMetadata = metadata.map(item => ({ ...item, timestamp: item.timestamp / 1000 }));
+        set(state => { state.metadata = processedMetadata });
+
+        const clicks = processedMetadata.filter(item => item.type === 'click' && item.pressed);
         
         if (clicks.length === 0) return;
 
-        const mergedClicks = [];
-        let lastClick = clicks[0];
-
-        for (let i = 1; i < clicks.length; i++) {
-          const currentClick = clicks[i];
-          if (currentClick.timestamp - lastClick.timestamp < 3.0) {
-            // Merge by extending the end time of the last click
-            lastClick = { ...lastClick, timestamp: currentClick.timestamp }; 
-          } else {
-            mergedClicks.push(lastClick);
-            lastClick = currentClick;
-          }
+        // Logic gộp các click gần nhau
+        const mergedClickGroups: MetaDataItem[][] = [];
+        if (clicks.length > 0) {
+            let currentGroup = [clicks[0]];
+            for (let i = 1; i < clicks.length; i++) {
+                if (clicks[i].timestamp - currentGroup[currentGroup.length - 1].timestamp < 3.0) {
+                    currentGroup.push(clicks[i]);
+                } else {
+                    mergedClickGroups.push(currentGroup);
+                    currentGroup = [clicks[i]];
+                }
+            }
+            mergedClickGroups.push(currentGroup);
         }
-        mergedClicks.push(lastClick); // Add the last group
 
-        const newZoomRegions: ZoomRegion[] = mergedClicks.map((click, index) => {
-          // Find the actual start time from original clicks to define duration
-          const originalStartTime = clicks.find(c => c.timestamp === click.timestamp)?.timestamp || click.timestamp;
-          const duration = Math.max(0.5, click.timestamp - originalStartTime); // Min duration 0.5s
+        const newZoomRegions: ZoomRegion[] = mergedClickGroups.map((group, index) => {
+          const firstClick = group[0];
+          const lastClick = group[group.length - 1];
+          
+          const startTime = firstClick.timestamp - 0.25; // Bắt đầu zoom trước khi click
+          const duration = (lastClick.timestamp - firstClick.timestamp) + 0.75; // Thời gian từ click đầu đến cuối + thêm 0.25s đầu và 0.5s cuối
 
           return {
             id: `auto-zoom-${Date.now()}-${index}`,
             type: 'zoom',
-            startTime: originalStartTime - 0.25, // Start zoom slightly before click
-            duration: duration + 0.5, // Hold zoom for a bit after
-            zoomLevel: 2,
+            startTime: Math.max(0, startTime),
+            duration: Math.max(1, duration), // Thời gian tối thiểu là 1s
+            zoomLevel: 1.8,
             easing: 'ease-in-out',
+            targetX: firstClick.x, // Lưu tọa độ tuyệt đối
+            targetY: firstClick.y,
           };
         });
-
-        console.log('new', newZoomRegions);
-
+        
         set(state => {
           state.zoomRegions = newZoomRegions;
         });
@@ -183,6 +197,8 @@ export const useEditorStore = create(
         console.error("Failed to process metadata file:", error);
       }
     },
+    
+    setVideoDimensions: (dims) => set(state => { state.videoDimensions = dims }),
 
     setDuration: (duration) => set(state => { state.duration = duration; }),
     setCurrentTime: (time) => set(state => { state.currentTime = time; }),
@@ -199,15 +215,17 @@ export const useEditorStore = create(
 
     setAspectRatio: (ratio) => set(state => { state.aspectRatio = ratio; }),
 
-    // --- New Actions ---
     addZoomRegion: () => {
+      const lastMousePos = get().metadata.find(m => m.timestamp <= get().currentTime);
       const newRegion: ZoomRegion = {
         id: `zoom-${Date.now()}`,
         type: 'zoom',
         startTime: get().currentTime,
-        duration: 3, // Default duration
+        duration: 3,
         zoomLevel: 2,
         easing: 'ease-in-out',
+        targetX: lastMousePos?.x || get().videoDimensions.width / 2,
+        targetY: lastMousePos?.y || get().videoDimensions.height / 2,
       };
       set(state => {
         state.zoomRegions.push(newRegion);
@@ -219,7 +237,7 @@ export const useEditorStore = create(
         id: `cut-${Date.now()}`,
         type: 'cut',
         startTime: get().currentTime,
-        duration: 2, // Default duration
+        duration: 2,
       };
       set(state => {
         state.cutRegions.push(newRegion);
