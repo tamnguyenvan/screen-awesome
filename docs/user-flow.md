@@ -1,0 +1,27 @@
+# ScreenAwesome - Detailed User Flows
+
+This document details the user's journey through the application, describing actions, UI responses, and underlying processes.
+
+## 1. Recording Flow
+
+| User Action | UI Response | State Changes (Zustand) | Background Tasks / System Logic |
+| :--- | :--- | :--- | :--- |
+| **1. Launch App** | The main control bar appears on the screen, ready for input. | `appState: 'idle'` | Electron main process starts, renderer window is created. |
+| **2. Select Mode** (e.g., clicks "Select Area") | Screen dims, crosshairs appear. The control bar may show instructions like "Drag to select, Press Enter to confirm". | `recordingMode: 'area'`, `selectionPhase: 'selecting'` | UI is in a selection mode. |
+| **3. Define Area** (drags mouse, presses Enter) | The selected area is highlighted with a border. Control bar reappears. | `selectedArea: {x, y, w, h}`, `selectionPhase: 'confirmed'` | The coordinates of the recording area are stored. |
+| **4. Click "Record"** | 1. Control bar fades out. <br> 2. A system tray icon appears. <br> 3. A large countdown (3...2...1) appears in the center of the recording area. | `appState: 'countdown'` | - |
+| **5. Recording Starts** | Countdown disappears. The tray icon might animate to indicate recording. Nothing else is visible on screen from the app. | `appState: 'recording'`, `startTime: Date.now()` | 1. **Main Process:** Spawns Python `pynput` script as a child process. <br> 2. **Main Process:** Starts `fluent-ffmpeg` screen capture for the `selectedArea`. <br> 3. **Main Process:** Listens to `stdout` from the Python script for mouse/key data and writes it to a temporary metadata file (`.json`). |
+| **6. Stop Recording** (clicks tray icon and "Stop") | 1. The recording stops. <br> 2. A new "Editor Studio" window opens, automatically loading the new recording. | `appState: 'editing'`, `currentProject: {videoPath, metadataPath}` | 1. **Main Process:** Sends a termination signal to the `pynput` and `fluent-ffmpeg` processes. <br> 2. **Main Process:** Finalizes and saves the video and metadata files. <br> 3. **Main Process:** Creates a new Electron browser window for the editor and tells it which project files to load. |
+
+## 2. Editing & Exporting Flow
+
+| User Action | UI Response | State Changes (Zustand) | Background Tasks / System Logic |
+| :--- | :--- | :--- | :--- |
+| **1. Editor Opens** | The Editor window is displayed. <br> - Video preview shows the first frame. <br> - Side panel shows default "Frame" settings. <br> - Timeline is populated with video and auto-generated zoom regions. | `project: { settings, videoTrack, effectTracks }`, `playheadPosition: 0` | 1. Editor's renderer process receives file paths from the main process. <br> 2. It parses the metadata file to auto-generate `zoomRegions` in the state. <br> 3. It loads the first frame of the video for display. |
+| **2. Change Frame Setting** (e.g., clicks a background color) | The background of the video preview area instantly updates to the new color. | `project.settings.background: '#RRGGBB'` | The React component re-renders based on the new state. No heavy processing needed. |
+| **3. Scrub Timeline** (drags playhead) | The video preview updates in real-time to the frame corresponding to the playhead's position, applying any active zoom/pan effects for that timestamp. | `playheadPosition: <new_timestamp>` | The app seeks to the correct frame in the video file and re-calculates/applies transformations for the preview. |
+| **4. Add a Manual Zoom** (clicks "Add Zoom" button) | 1. A new zoom region rectangle appears on the effects track at the current playhead position. <br> 2. The side panel switches to show the settings for this new zoom region (e.g., Zoom Level, Easing). | `project.effectTracks.zooms.push({ id, startTime, duration, ... })` | A new object is added to the state array. The UI re-renders to show the new region. |
+| **5. Modify a Region** (drags the edge of a zoom region) | The rectangle visually resizes on the timeline. | `project.effectTracks.zooms.find(z => z.id === ...).duration = <new_duration>` | The corresponding object in the state is updated. The change is immediately reflected in the playback logic. |
+| **6. Click "Export"** | An export settings modal/dialog appears, overlaying the editor. | `exportModalVisible: true` | - |
+| **7. Confirm Export** (configures settings and clicks "Start Export") | 1. The modal closes. <br> 2. A progress bar or indicator appears (e.g., in the title bar or a corner). The UI remains responsive. | `appState: 'exporting'`, `exportProgress: 0` | 1. **Main Process:** Spawns a new, dedicated worker thread or process for rendering to avoid freezing the UI. <br> 2. **Renderer Worker:** <br>   - Reads the project state (settings, regions, cuts). <br>   - Loops from frame 0 to the end. <br>   - For each frame: applies transformations, encodes it, and writes to the output file. <br>   - Periodically sends progress updates back to the UI. |
+| **8. Export Finishes** | A system notification appears: "Export Complete!". The progress bar is replaced by a "Done" message or disappears. An option "Show in Folder" might appear. | `appState: 'editing'`, `exportProgress: 100` | The renderer worker signals completion to the main process, which then triggers the UI update and system notification. |
