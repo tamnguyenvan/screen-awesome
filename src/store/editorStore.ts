@@ -96,13 +96,13 @@ const initialState: Omit<EditorState, 'frameStyles'> = {
 };
 
 const initialFrameStyles: FrameStyles = {
-  padding: 15,
+  padding: 5,
   background: {
     type: 'wallpaper',
     thumbnailUrl: WALLPAPERS[0].thumbnailUrl,
     imageUrl: WALLPAPERS[0].imageUrl,
   },
-  borderRadius: 24,
+  borderRadius: 16,
   shadow: 5,
   borderWidth: 0,
   borderColor: '#ffffff',
