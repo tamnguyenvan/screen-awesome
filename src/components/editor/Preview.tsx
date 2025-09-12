@@ -1,10 +1,29 @@
 // src/components/editor/Preview.tsx
-import React, { useEffect } from 'react';
+import React, { useEffect, useMemo } from 'react';
 import { useEditorStore } from '../../store/editorStore';
 
 interface PreviewProps {
   videoRef: React.RefObject<HTMLVideoElement>;
 }
+
+// Helper function to generate CSS background string from state
+const generateBackgroundStyle = (backgroundState: ReturnType<typeof useEditorStore.getState>['frameStyles']['background']) => {
+    switch(backgroundState.type) {
+        case 'color':
+            return { background: backgroundState.color || '#ffffff' };
+        case 'gradient':
+            return { background: `linear-gradient(145deg, ${backgroundState.gradientStart}, ${backgroundState.gradientEnd})` };
+        case 'image':
+        case 'wallpaper':
+            return { 
+                backgroundImage: `url(${backgroundState.imageUrl})`,
+                backgroundSize: 'cover',
+                backgroundPosition: 'center'
+            };
+        default:
+            return { background: '#000000' };
+    }
+};
 
 export function Preview({ videoRef }: PreviewProps) {
   const { frameStyles, videoUrl, isPlaying, setPlaying, setCurrentTime, setDuration } = useEditorStore();
@@ -15,6 +34,9 @@ export function Preview({ videoRef }: PreviewProps) {
 
     isPlaying ? video.play() : video.pause();
   }, [isPlaying, videoRef]);
+
+  // Memoize the background style to prevent re-calculation on every render
+  const backgroundStyle = useMemo(() => generateBackgroundStyle(frameStyles.background), [frameStyles.background]);
 
   const handleTimeUpdate = () => {
     if (videoRef.current) {
@@ -31,33 +53,33 @@ export function Preview({ videoRef }: PreviewProps) {
   const handlePlay = () => setPlaying(true);
   const handlePause = () => setPlaying(false);
 
-  // The outer div is the "canvas" that shows the background
-  // The middle div is the "frame" that has padding/border/shadow
-  // The inner video tag is the actual content
   return (
     <div
-      className="w-full h-full flex items-center justify-center"
-      style={{ background: frameStyles.background }}
+      className="w-full h-full flex items-center justify-center transition-all duration-200 ease-in-out"
+      style={backgroundStyle}
     >
       <div
         className="transition-all duration-200 ease-in-out"
         style={{
-          padding: `${frameStyles.padding}px`,
-          borderRadius: `${frameStyles.borderRadius}px`,
-          boxShadow: `0 0 ${frameStyles.shadow * 2}px rgba(0,0,0,0.${frameStyles.shadow})`,
-          border: `${frameStyles.borderWidth}px solid ${frameStyles.borderColor}`,
-          // This ensures the inner content also has rounded corners
+          padding: `${frameStyles.padding}%`,
           overflow: 'hidden',
-          // A max-width/height can be useful to maintain aspect ratio
           maxWidth: '100%',
           maxHeight: '100%',
+          backgroundColor: 'transparent',
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'center'
         }}
       >
         {videoUrl ? (
           <video
             ref={videoRef}
             src={videoUrl}
-            className="w-full h-full object-contain"
+            className="object-contain max-w-full max-h-full"
+            style={{
+              borderRadius: `${frameStyles.borderRadius - frameStyles.borderWidth}px`,
+              boxShadow: `0 0 ${frameStyles.shadow * 2}px rgba(0,0,0,0.${frameStyles.shadow})`,
+            }}
             onTimeUpdate={handleTimeUpdate}
             onLoadedMetadata={handleLoadedMetadata}
             onPlay={handlePlay}

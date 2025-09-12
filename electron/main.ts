@@ -20,17 +20,44 @@ process.env.VITE_PUBLIC = VITE_DEV_SERVER_URL ? path.join(process.env.APP_ROOT, 
 let recorderWin: BrowserWindow | null
 let editorWin: BrowserWindow | null
 let countdownWin: BrowserWindow | null = null;
+let savingWin: BrowserWindow | null = null;
 let tray: Tray | null = null
 
 let pythonTracker: ChildProcessWithoutNullStreams | null = null
 let ffmpegProcess: ChildProcessWithoutNullStreams | null = null
 let metadataStream: fsSync.WriteStream | null = null
 
+// --- Saving Window Creation ---
+function createSavingWindow() {
+  savingWin = new BrowserWindow({
+    width: 350,
+    height: 200,
+    transparent: true,
+    frame: false,
+    alwaysOnTop: true,
+    resizable: false,
+    webPreferences: {
+      nodeIntegration: true,
+      contextIsolation: false,
+    }
+  });
+
+  const savingUrl = VITE_DEV_SERVER_URL
+    ? path.join(process.env.APP_ROOT, 'public/saving/index.html')
+    : path.join(RENDERER_DIST, 'saving/index.html');
+
+  savingWin.loadFile(savingUrl);
+
+  savingWin.on('closed', () => {
+    savingWin = null;
+  });
+}
+
 // --- Editor Window Creation ---
 function createEditorWindow(videoPath: string, metadataPath: string) {
   editorWin = new BrowserWindow({
     icon: path.join(process.env.VITE_PUBLIC, 'screenawesome-appicon.png'),
-    // autoHideMenuBar: true,
+    autoHideMenuBar: true,
     width: 1280,
     height: 800,
     webPreferences: {
@@ -57,22 +84,41 @@ function createEditorWindow(videoPath: string, metadataPath: string) {
   });
 }
 
-function cleanupRecordingProcesses() {
-  if (pythonTracker) {
-    pythonTracker.kill()
-    pythonTracker = null
-  }
-  if (ffmpegProcess) {
-    ffmpegProcess.stdin.write('q')
-    ffmpegProcess = null
-  }
-  if (metadataStream) {
-    if (!metadataStream.writableEnded) {
-      metadataStream.write('\n]')
-      metadataStream.end()
+function cleanupAndSave(): Promise<void> {
+  return new Promise((resolve) => {
+    // 1. Dừng Python tracker và đóng metadata stream
+    if (pythonTracker) {
+      pythonTracker.kill();
+      pythonTracker = null;
     }
-    metadataStream = null
-  }
+    if (metadataStream) {
+      if (!metadataStream.writableEnded) {
+        metadataStream.write('\n]');
+        metadataStream.end();
+      }
+      metadataStream = null;
+    }
+
+    // 2. Xử lý FFmpeg và chờ nó kết thúc
+    if (ffmpegProcess) {
+      const ffmpeg = ffmpegProcess;
+      ffmpegProcess = null; // Gán null ngay để tránh gọi lại
+
+      // Lắng nghe sự kiện 'close' để biết khi nào ffmpeg đã hoàn tất
+      ffmpeg.on('close', (code) => {
+        console.log(`FFmpeg process exited with code ${code}`);
+        resolve(); // Hoàn thành Promise khi ffmpeg đã đóng
+      });
+
+      // Gửi lệnh 'q' để ffmpeg kết thúc một cách an toàn
+      ffmpeg.stdin.write('q');
+      ffmpeg.stdin.end();
+
+    } else {
+      // Nếu không có tiến trình ffmpeg, resolve ngay lập tức
+      resolve();
+    }
+  });
 }
 
 function createCountdownWindow() {
@@ -193,39 +239,67 @@ async function handleStartRecording() {
 }
 
 async function handleStopRecording(videoPath: string, metadataPath: string) {
-  console.log('Stopping recording and saving files...')
-  cleanupRecordingProcesses()
+  console.log('Stopping recording, preparing to save...');
 
-  // --- MODIFIED: Open editor instead of showing recorder ---
+  // 1. Phá hủy tray icon để người dùng không click lại
+  tray?.destroy();
+  tray = null;
+
+  // 2. Hiển thị cửa sổ "Saving..."
+  createSavingWindow();
+
+  // 3. Gọi hàm cleanup và quan trọng nhất là "await" nó
+  await cleanupAndSave();
+
+  console.log('Files saved successfully.');
+
+  // 4. Đóng cửa sổ "Saving..."
+  savingWin?.close();
+
+  // 5. Bây giờ file đã an toàn, mở cửa sổ editor
   if (!editorWin) {
     createEditorWindow(videoPath, metadataPath);
   } else {
-    // If editor is already open, just send the new project to it
     editorWin.webContents.send('project:open', { videoPath, metadataPath });
     editorWin.focus();
   }
-  // We can close the small recorder window now
+  // Đóng cửa sổ recorder nhỏ
   recorderWin?.close();
-
-  tray?.destroy()
-  tray = null
 }
 
 async function handleCancelRecording(videoPath: string, metadataPath: string) {
-  console.log('Cancelling recording and deleting files...')
-  cleanupRecordingProcesses()
+  console.log('Cancelling recording and deleting files...');
   
+  // Dừng các tiến trình mà không cần chờ lưu
+  if (pythonTracker) {
+    pythonTracker.kill();
+    pythonTracker = null;
+  }
+  if (ffmpegProcess) {
+    // Giết tiến trình thay vì chờ nó lưu
+    ffmpegProcess.kill('SIGKILL'); 
+    ffmpegProcess = null;
+  }
+  if (metadataStream) {
+    metadataStream.end();
+    metadataStream = null;
+  }
+  
+  // Xóa file
   try {
-    await fs.unlink(videoPath)
-    await fs.unlink(metadataPath)
-    console.log('Temporary files deleted.')
+    // Đợi một chút để hệ điều hành nhả file lock
+    setTimeout(async () => {
+      if (fsSync.existsSync(videoPath)) await fs.unlink(videoPath);
+      if (fsSync.existsSync(metadataPath)) await fs.unlink(metadataPath);
+      console.log('Temporary files deleted.');
+    }, 100);
   } catch (error) {
-    console.error('Could not delete temporary files:', error)
+    console.error('Could not delete temporary files:', error);
   }
 
-  recorderWin?.show()
-  tray?.destroy()
-  tray = null
+  recorderWin?.show();
+  tray?.destroy();
+  tray = null;
 }
 
 function createRecorderWindow() {
@@ -259,7 +333,7 @@ function createRecorderWindow() {
 
 app.on('window-all-closed', () => {
   if (pythonTracker || ffmpegProcess) {
-    cleanupRecordingProcesses();
+    cleanupAndSave();
   }
   if (process.platform !== 'darwin') {
     app.quit()
@@ -273,7 +347,7 @@ app.on('activate', () => {
 })
 
 app.whenReady().then(() => {
-  // --- NEW: Custom protocol to serve media files securely ---
+  // Custom protocol to serve media files securely ---
   protocol.registerFileProtocol('media', (request, callback) => {
     const url = request.url.replace('media://', '');
     try {

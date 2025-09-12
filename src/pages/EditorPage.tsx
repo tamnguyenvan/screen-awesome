@@ -20,12 +20,6 @@ export function EditorPage() {
 
   return (
     <main className="h-screen w-screen bg-gray-100 dark:bg-gray-900 flex flex-col overflow-hidden">
-      {/* Top Bar - Placeholder */}
-      <div className="flex-shrink-0 h-12 bg-white dark:bg-gray-800 border-b border-gray-200 dark:border-gray-700 flex items-center justify-between px-4">
-        <h1 className="text-lg font-bold text-gray-800 dark:text-gray-200">ScreenAwesome Editor</h1>
-        {/* Export Button will go here */}
-      </div>
-
       {/* Main Content */}
       <div className="flex flex-1 overflow-hidden">
         {/* Side Panel */}

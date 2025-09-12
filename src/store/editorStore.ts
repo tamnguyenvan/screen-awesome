@@ -1,10 +1,28 @@
 // src/store/editorStore.ts
+
 import { create } from 'zustand';
+import { WALLPAPERS } from '../lib/constants';
 
 // --- Types ---
+// Định nghĩa các loại background
+type BackgroundType = 'color' | 'gradient' | 'image' | 'wallpaper';
+
+// Định nghĩa cấu trúc cho background
+interface Background {
+  type: BackgroundType;
+  // For 'color'
+  color?: string;
+  // For 'gradient'
+  gradientStart?: string;
+  gradientEnd?: string;
+  // For 'image' and 'wallpaper'
+  imageUrl?: string;
+  thumbnailUrl?: string;
+}
+
 interface FrameStyles {
-  padding: number;
-  background: string;
+  padding: number; // Sẽ là % (0-30)
+  background: Background;
   borderRadius: number;
   shadow: number;
   borderWidth: number;
@@ -28,6 +46,7 @@ interface EditorActions {
   togglePlay: () => void;
   setPlaying: (isPlaying: boolean) => void;
   updateFrameStyle: (style: Partial<FrameStyles>) => void;
+  updateBackground: (bg: Partial<Background>) => void;
   reset: () => void;
 }
 
@@ -42,8 +61,12 @@ const initialState: Omit<EditorState, 'frameStyles'> = {
 };
 
 const initialFrameStyles: FrameStyles = {
-    padding: 64,
-    background: 'linear-gradient(145deg, #2b3a67, #0b0f2b)',
+    padding: 15, // Mặc định 15%
+    background: {
+        type: 'wallpaper',
+        thumbnailUrl: WALLPAPERS[0].thumbnailUrl,
+        imageUrl: WALLPAPERS[0].imageUrl,
+    },
     borderRadius: 24,
     shadow: 5,
     borderWidth: 0,
@@ -56,10 +79,9 @@ export const useEditorStore = create<EditorState & EditorActions>((set) => ({
   frameStyles: initialFrameStyles,
 
   loadProject: ({ videoPath, metadataPath }) => {
-    // Convert file path to a URL the custom protocol can handle
     const videoUrl = `media://${videoPath}`;
     set({
-      ...initialState, // Reset state for new project
+      ...initialState, 
       frameStyles: initialFrameStyles,
       videoPath,
       metadataPath,
@@ -74,6 +96,13 @@ export const useEditorStore = create<EditorState & EditorActions>((set) => ({
 
   updateFrameStyle: (style) => set((state) => ({
     frameStyles: { ...state.frameStyles, ...style },
+  })),
+
+  updateBackground: (bg) => set((state) => ({
+    frameStyles: {
+        ...state.frameStyles,
+        background: { ...state.frameStyles.background, ...bg },
+    }
   })),
 
   reset: () => set({ ...initialState, frameStyles: initialFrameStyles }),
