@@ -72,6 +72,7 @@ interface EditorState {
   zoomRegions: ZoomRegion[];
   cutRegions: CutRegion[];
   selectedRegionId: string | null;
+  activeZoomRegionId: string | null;
   timelineZoom: number;
 }
 
@@ -109,6 +110,7 @@ const initialState: Omit<EditorState, 'frameStyles'> = {
   zoomRegions: [],
   cutRegions: [],
   selectedRegionId: null,
+  activeZoomRegionId: null,
   timelineZoom: 1,
 };
 
@@ -134,7 +136,7 @@ export const useEditorStore = create(
 
     loadProject: async ({ videoPath, metadataPath }) => {
       const videoUrl = `media://${videoPath}`;
-      
+
       set(state => {
         Object.assign(state, initialState);
         state.frameStyles = initialFrameStyles;
@@ -146,34 +148,34 @@ export const useEditorStore = create(
       try {
         const metadataContent = await window.electronAPI.readFile(metadataPath);
         const metadata: MetaDataItem[] = JSON.parse(metadataContent);
-        
+
         // Chuyển timestamp từ ms sang s
         const processedMetadata = metadata.map(item => ({ ...item, timestamp: item.timestamp / 1000 }));
         set(state => { state.metadata = processedMetadata });
 
         const clicks = processedMetadata.filter(item => item.type === 'click' && item.pressed);
-        
+
         if (clicks.length === 0) return;
 
         // Logic gộp các click gần nhau
         const mergedClickGroups: MetaDataItem[][] = [];
         if (clicks.length > 0) {
-            let currentGroup = [clicks[0]];
-            for (let i = 1; i < clicks.length; i++) {
-                if (clicks[i].timestamp - currentGroup[currentGroup.length - 1].timestamp < 3.0) {
-                    currentGroup.push(clicks[i]);
-                } else {
-                    mergedClickGroups.push(currentGroup);
-                    currentGroup = [clicks[i]];
-                }
+          let currentGroup = [clicks[0]];
+          for (let i = 1; i < clicks.length; i++) {
+            if (clicks[i].timestamp - currentGroup[currentGroup.length - 1].timestamp < 3.0) {
+              currentGroup.push(clicks[i]);
+            } else {
+              mergedClickGroups.push(currentGroup);
+              currentGroup = [clicks[i]];
             }
-            mergedClickGroups.push(currentGroup);
+          }
+          mergedClickGroups.push(currentGroup);
         }
 
         const newZoomRegions: ZoomRegion[] = mergedClickGroups.map((group, index) => {
           const firstClick = group[0];
           const lastClick = group[group.length - 1];
-          
+
           const startTime = firstClick.timestamp - 0.25; // Bắt đầu zoom trước khi click
           const duration = (lastClick.timestamp - firstClick.timestamp) + 0.75; // Thời gian từ click đầu đến cuối + thêm 0.25s đầu và 0.5s cuối
 
@@ -188,7 +190,7 @@ export const useEditorStore = create(
             targetY: firstClick.y,
           };
         });
-        
+
         set(state => {
           state.zoomRegions = newZoomRegions;
         });
@@ -197,11 +199,27 @@ export const useEditorStore = create(
         console.error("Failed to process metadata file:", error);
       }
     },
-    
+
     setVideoDimensions: (dims) => set(state => { state.videoDimensions = dims }),
 
     setDuration: (duration) => set(state => { state.duration = duration; }),
-    setCurrentTime: (time) => set(state => { state.currentTime = time; }),
+    setCurrentTime: (time) => set(state => {
+      state.currentTime = time;
+
+      const activeRegion = state.zoomRegions.find(r => r.id === state.activeZoomRegionId);
+
+      // Nếu time vẫn nằm trong region đang active, không cần làm gì cả
+      if (activeRegion && time >= activeRegion.startTime && time <= activeRegion.startTime + activeRegion.duration) {
+        return;
+      }
+
+      // Nếu không, tìm region mới
+      const newActiveRegion = state.zoomRegions.find(
+        r => time >= r.startTime && time <= r.startTime + r.duration
+      );
+
+      state.activeZoomRegionId = newActiveRegion ? newActiveRegion.id : null;
+    }),
     togglePlay: () => set(state => { state.isPlaying = !state.isPlaying; }),
     setPlaying: (isPlaying) => set(state => { state.isPlaying = isPlaying; }),
 

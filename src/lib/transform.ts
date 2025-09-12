@@ -36,19 +36,21 @@ function calculatePan(scale: number, focusPointX: number, focusPointY: number, v
 
 
 export const calculateZoomTransform = () => {
-  const { 
-      currentTime, 
-      zoomRegions, 
-      metadata,
-      videoDimensions 
+  const {
+    currentTime,
+    zoomRegions,
+    metadata,
+    videoDimensions,
+    activeZoomRegionId
   } = useEditorStore.getState();
 
   const { width: videoWidth, height: videoHeight } = videoDimensions;
 
-  // Find the active zoom region for the current time
-  const activeRegion = zoomRegions.find(
-    r => currentTime >= r.startTime && currentTime <= r.startTime + r.duration
-  );
+  // --- TỐI ƯU ---
+  // Tìm region active bằng ID, nhanh hơn nhiều so với lặp toàn bộ mảng
+  const activeRegion = activeZoomRegionId
+    ? zoomRegions.find(r => r.id === activeZoomRegionId)
+    : undefined;
 
   // Default transform (no zoom)
   const defaultTransform = { scale: 1, translateX: 0, translateY: 0 };
@@ -65,10 +67,10 @@ export const calculateZoomTransform = () => {
   if (elapsed <= zoomInDuration) {
     let t = elapsed / zoomInDuration;
     t = easeInOutCubic(t);
-    
+
     // Scale interpolates from 1x to the target zoomLevel
     const currentScale = lerp(1, zoomLevel, t);
-    
+
     // The focus point also interpolates from the center of the screen to the click target
     const focusX = lerp(videoWidth / 2, targetX, t);
     const focusY = lerp(videoHeight / 2, targetY, t);
@@ -85,14 +87,14 @@ export const calculateZoomTransform = () => {
     t = easeInOutCubic(t);
 
     // Find last known mouse position before zoom-out starts to ensure a smooth transition
-    const lastMousePos = [...metadata].reverse().find(m => m.timestamp <= startTime + zoomOutStartTime) 
-        || { x: targetX, y: targetY };
-    
+    const lastMousePos = [...metadata].reverse().find(m => m.timestamp <= startTime + zoomOutStartTime)
+      || { x: targetX, y: targetY };
+
     // Scale interpolates from zoomLevel back down to 1x
     const currentScale = lerp(zoomLevel, 1, t);
-    
+
     // The focus point interpolates from the last mouse position back to the center of the screen
-    const focusX = lerp(lastMousePos.x, videoWidth / 2, t);
+    const focusX = lerp(lastMousePos.x, videoHeight / 2, t);
     const focusY = lerp(lastMousePos.y, videoHeight / 2, t);
 
     const { translateX, translateY } = calculatePan(currentScale, focusX, focusY, videoWidth, videoHeight);
@@ -101,8 +103,8 @@ export const calculateZoomTransform = () => {
 
   // --- Phase 2: Tracking ---
   // Find the most recent mouse position up to the current time
-  const currentMousePos = [...metadata].reverse().find(m => m.timestamp <= currentTime) 
-      || { x: targetX, y: targetY }; // Fallback to initial click if no move data
+  const currentMousePos = [...metadata].reverse().find(m => m.timestamp <= currentTime)
+    || { x: targetX, y: targetY }; // Fallback to initial click if no move data
 
   const { translateX, translateY } = calculatePan(zoomLevel, currentMousePos.x, currentMousePos.y, videoWidth, videoHeight);
   return { scale: zoomLevel, translateX, translateY };

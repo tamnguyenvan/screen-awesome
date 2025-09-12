@@ -16,13 +16,14 @@ interface TimelineProps {
 export function Timeline({ videoRef }: TimelineProps) {
   const store = useEditorStore();
   const timelineRef = useRef<HTMLDivElement>(null);
-  
+  const playheadRef = useRef<HTMLDivElement>(null);
+
   // State for drag and drop
   const [draggingRegion, setDraggingRegion] = useState<{ id: string; type: 'move' | 'resize-left' | 'resize-right'; initialX: number; initialStartTime: number; initialDuration: number; } | null>(null);
-  
+
   const handleTimelineClick = (e: ReactMouseEvent<HTMLDivElement>) => {
     if (draggingRegion || !timelineRef.current || store.duration === 0) return;
-    
+
     // Check if the click was on a region
     if ((e.target as HTMLElement).closest('[data-region-id]')) {
       return;
@@ -31,7 +32,7 @@ export function Timeline({ videoRef }: TimelineProps) {
     const rect = timelineRef.current.getBoundingClientRect();
     const clickX = e.clientX - rect.left;
     const totalWidth = rect.width;
-    
+
     const newTime = (clickX / totalWidth) * store.duration;
     store.setCurrentTime(newTime);
     if (videoRef.current) {
@@ -42,8 +43,8 @@ export function Timeline({ videoRef }: TimelineProps) {
 
   // --- Drag and Drop Logic ---
   const handleRegionMouseDown = (
-    e: ReactMouseEvent<HTMLDivElement>, 
-    region: TimelineRegion, 
+    e: ReactMouseEvent<HTMLDivElement>,
+    region: TimelineRegion,
     type: 'move' | 'resize-left' | 'resize-right'
   ) => {
     e.stopPropagation();
@@ -73,14 +74,14 @@ export function Timeline({ videoRef }: TimelineProps) {
         store.updateRegion(draggingRegion.id, { duration: newDuration });
       } else if (draggingRegion.type === 'resize-left') {
         const newStartTime = Math.min(
-            draggingRegion.initialStartTime + draggingRegion.initialDuration - 0.2,
-            Math.max(0, draggingRegion.initialStartTime + deltaTime)
+          draggingRegion.initialStartTime + draggingRegion.initialDuration - 0.2,
+          Math.max(0, draggingRegion.initialStartTime + deltaTime)
         );
         const newDuration = (draggingRegion.initialStartTime + draggingRegion.initialDuration) - newStartTime;
         store.updateRegion(draggingRegion.id, { startTime: newStartTime, duration: newDuration });
       }
     };
-    
+
     const handleMouseUp = () => {
       setDraggingRegion(null);
     };
@@ -93,17 +94,43 @@ export function Timeline({ videoRef }: TimelineProps) {
     };
   }, [draggingRegion, store.duration, store.updateRegion]);
 
+  useEffect(() => {
+    let animationFrameId: number;
+
+    const animatePlayhead = () => {
+      if (videoRef.current && playheadRef.current && store.duration > 0) {
+        const percentage = (videoRef.current.currentTime / store.duration) * 100;
+        playheadRef.current.style.left = `${percentage}%`;
+      }
+      animationFrameId = requestAnimationFrame(animatePlayhead);
+    };
+
+    if (store.isPlaying) {
+      animationFrameId = requestAnimationFrame(animatePlayhead);
+    } else {
+        // Cập nhật vị trí lần cuối khi dừng
+        if (playheadRef.current && store.duration > 0) {
+            const percentage = (store.currentTime / store.duration) * 100;
+            playheadRef.current.style.left = `${percentage}%`;
+        }
+    }
+
+    return () => {
+      cancelAnimationFrame(animationFrameId);
+    };
+  }, [store.isPlaying, store.duration, videoRef, store.currentTime]);
+
   // --- Calculations ---
   const totalDuration = store.duration;
   const scaledWidth = 100 * store.timelineZoom; // as a percentage
   const timeToPercent = (time: number) => (time / totalDuration) * 100;
-  
+
   const playheadPosition = totalDuration > 0 ? timeToPercent(store.currentTime) : 0;
 
   // --- Render ---
   return (
     <div className="h-full w-full flex flex-col p-2 overflow-x-auto overflow-y-hidden" onMouseDown={handleTimelineClick}>
-      <div 
+      <div
         ref={timelineRef}
         className="relative min-w-full h-full"
         style={{ width: `${scaledWidth}%` }}
@@ -111,7 +138,7 @@ export function Timeline({ videoRef }: TimelineProps) {
         {/* Ruler */}
         <div className="h-5 absolute top-0 left-0 right-0">
           {Array.from({ length: Math.floor(totalDuration * store.timelineZoom) }).map((_, i) => (
-             totalDuration > 0 && (
+            totalDuration > 0 && (
               <div key={i} className="absolute text-xs text-gray-400" style={{ left: `${timeToPercent(i / store.timelineZoom)}%` }}>
                 |
                 <span className="absolute top-2 -translate-x-1/2">{Math.round(i / store.timelineZoom)}s</span>
@@ -119,12 +146,12 @@ export function Timeline({ videoRef }: TimelineProps) {
             )
           ))}
         </div>
-        
+
         {/* Tracks Area */}
         <div className="absolute top-5 left-0 right-0">
           {/* Base Track */}
           <div className={cn("h-[50px] rounded-lg bg-gray-200 dark:bg-gray-700 flex items-center px-2")}>
-             <p className="text-sm text-gray-500">Base Video Track</p>
+            <p className="text-sm text-gray-500">Base Video Track</p>
           </div>
 
           {/* Effects Track */}
@@ -133,7 +160,7 @@ export function Timeline({ videoRef }: TimelineProps) {
               const left = timeToPercent(region.startTime);
               const width = timeToPercent(region.duration);
               const isSelected = store.selectedRegionId === region.id;
-              
+
               return (
                 <div
                   key={region.id}
@@ -151,11 +178,11 @@ export function Timeline({ videoRef }: TimelineProps) {
                     <span>{region.type === 'zoom' ? `Zoom ${region.zoomLevel}x` : 'Cut'}</span>
                   </div>
                   {/* Resize Handles */}
-                  <div 
+                  <div
                     className="absolute left-0 top-0 bottom-0 w-2 cursor-ew-resize"
                     onMouseDown={(e) => handleRegionMouseDown(e, region, 'resize-left')}
                   />
-                  <div 
+                  <div
                     className="absolute right-0 top-0 bottom-0 w-2 cursor-ew-resize"
                     onMouseDown={(e) => handleRegionMouseDown(e, region, 'resize-right')}
                   />
@@ -167,7 +194,8 @@ export function Timeline({ videoRef }: TimelineProps) {
 
         {/* Playhead */}
         {totalDuration > 0 && (
-          <div 
+          <div
+            ref={playheadRef}
             className="absolute top-0 bottom-0 z-20 pointer-events-none"
             style={{ left: `${playheadPosition}%` }}
           >
