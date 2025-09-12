@@ -1,6 +1,6 @@
 // electron/main.ts
 
-import { app, BrowserWindow, ipcMain, Tray, Menu, nativeImage, dialog } from 'electron'
+import { app, BrowserWindow, ipcMain, Tray, Menu, nativeImage, protocol } from 'electron'
 import { fileURLToPath } from 'node:url'
 import path from 'node:path'
 import { spawn, ChildProcessWithoutNullStreams } from 'node:child_process'
@@ -17,13 +17,45 @@ export const RENDERER_DIST = path.join(process.env.APP_ROOT, 'dist')
 
 process.env.VITE_PUBLIC = VITE_DEV_SERVER_URL ? path.join(process.env.APP_ROOT, 'public') : RENDERER_DIST
 
-let win: BrowserWindow | null
+let recorderWin: BrowserWindow | null
+let editorWin: BrowserWindow | null
 let countdownWin: BrowserWindow | null = null;
 let tray: Tray | null = null
 
 let pythonTracker: ChildProcessWithoutNullStreams | null = null
 let ffmpegProcess: ChildProcessWithoutNullStreams | null = null
 let metadataStream: fsSync.WriteStream | null = null
+
+// --- Editor Window Creation ---
+function createEditorWindow(videoPath: string, metadataPath: string) {
+  editorWin = new BrowserWindow({
+    icon: path.join(process.env.VITE_PUBLIC, 'screenawesome-appicon.png'),
+    // autoHideMenuBar: true,
+    width: 1280,
+    height: 800,
+    webPreferences: {
+      preload: path.join(__dirname, 'preload.mjs'),
+      // Important for custom protocol and loading local files
+      webSecurity: VITE_DEV_SERVER_URL ? false : true,
+    },
+  })
+
+  // Pass file paths via URL hash
+  const editorUrl = VITE_DEV_SERVER_URL
+    ? `${VITE_DEV_SERVER_URL}#editor`
+    : path.join(RENDERER_DIST, 'index.html#editor')
+
+  editorWin.loadURL(editorUrl)
+
+  // Send project files to the editor window once it's ready
+  editorWin.webContents.on('did-finish-load', () => {
+    editorWin?.webContents.send('project:open', { videoPath, metadataPath });
+  });
+
+  editorWin.on('closed', () => {
+    editorWin = null;
+  });
+}
 
 function cleanupRecordingProcesses() {
   if (pythonTracker) {
@@ -80,17 +112,16 @@ async function ensureDirectoryExists(dirPath: string) {
 async function handleStartRecording() {
   const recordingDir = path.join(process.env.HOME || process.env.USERPROFILE || '.', '.screenawesome');
   await ensureDirectoryExists(recordingDir);
-  const filePath = path.join(recordingDir, `ScreenAwesome-recording-${Date.now()}.mp4`);
+  const baseName = `ScreenAwesome-recording-${Date.now()}`
+  const videoPath = path.join(recordingDir, `${baseName}.mp4`);
+  const metadataPath = path.join(recordingDir, `${baseName}.json`);
 
-  win?.hide() // Ẩn cửa sổ chính ngay lập tức
+  recorderWin?.hide()
   
-  createCountdownWindow() // Tạo và hiển thị cửa sổ đếm ngược
+  createCountdownWindow()
 
-  // Đợi 3.5 giây cho countdown kết thúc
   setTimeout(() => {
-    countdownWin?.close() // Đóng cửa sổ countdown
-
-    const metadataPath = filePath.replace('.mp4', '.json')
+    countdownWin?.close()
 
     // 1. Start Python tracker
     const pythonPath = path.join(process.env.APP_ROOT, 'venv/bin/python')
@@ -125,7 +156,7 @@ async function handleStartRecording() {
       '-c:v', 'libx264',
       '-preset', 'ultrafast',
       '-pix_fmt', 'yuv420p',
-      filePath
+      videoPath
     ]
 
     ffmpegProcess = spawn('ffmpeg', args)
@@ -141,31 +172,41 @@ async function handleStartRecording() {
       {
         label: 'Stop Recording',
         click: async () => {
-          await handleStopRecording()
-          win?.webContents.send('recording-finished', { canceled: false, filePath });
+          await handleStopRecording(videoPath, metadataPath)
+          recorderWin?.webContents.send('recording-finished', { canceled: false, filePath: videoPath });
         },
       },
       {
         label: 'Cancel Recording',
         click: async () => {
-          await handleCancelRecording(filePath, metadataPath)
-          win?.webContents.send('recording-finished', { canceled: true, filePath: undefined });
+          await handleCancelRecording(videoPath, metadataPath)
+          recorderWin?.webContents.send('recording-finished', { canceled: true, filePath: undefined });
         },
       },
     ])
     tray.setToolTip('ScreenAwesome is recording...')
     tray.setContextMenu(contextMenu)
 
-  }, 3800) // Thời gian chờ = thời gian đếm ngược + một chút buffer
+  }, 3800)
 
-  return { canceled: false, filePath }
+  return { canceled: false, filePath: videoPath }
 }
 
-async function handleStopRecording() {
+async function handleStopRecording(videoPath: string, metadataPath: string) {
   console.log('Stopping recording and saving files...')
   cleanupRecordingProcesses()
 
-  win?.show()
+  // --- MODIFIED: Open editor instead of showing recorder ---
+  if (!editorWin) {
+    createEditorWindow(videoPath, metadataPath);
+  } else {
+    // If editor is already open, just send the new project to it
+    editorWin.webContents.send('project:open', { videoPath, metadataPath });
+    editorWin.focus();
+  }
+  // We can close the small recorder window now
+  recorderWin?.close();
+
   tray?.destroy()
   tray = null
 }
@@ -182,34 +223,38 @@ async function handleCancelRecording(videoPath: string, metadataPath: string) {
     console.error('Could not delete temporary files:', error)
   }
 
-  win?.show()
+  recorderWin?.show()
   tray?.destroy()
   tray = null
 }
 
-function createWindow() {
-  win = new BrowserWindow({
-    icon: path.join(process.env.VITE_PUBLIC, 'electron-vite.svg'),
+function createRecorderWindow() {
+  recorderWin = new BrowserWindow({
+    icon: path.join(process.env.VITE_PUBLIC, 'screenawesome-appicon.png'),
     width: 400,
     height: 150,
-    frame: false, // Cửa sổ không có viền
-    transparent: true, // Nền trong suốt
-    alwaysOnTop: true, // Luôn nổi trên các cửa sổ khác
+    frame: false,
+    transparent: true,
+    alwaysOnTop: true,
     resizable: false,
     webPreferences: {
       preload: path.join(__dirname, 'preload.mjs'),
     },
   })
 
-  win.webContents.on('did-finish-load', () => {
-    win?.webContents.send('main-process-message', (new Date).toLocaleString())
+  recorderWin.webContents.on('did-finish-load', () => {
+    recorderWin?.webContents.send('main-process-message', (new Date).toLocaleString())
   })
 
   if (VITE_DEV_SERVER_URL) {
-    win.loadURL(VITE_DEV_SERVER_URL)
+    recorderWin.loadURL(VITE_DEV_SERVER_URL)
   } else {
-    win.loadFile(path.join(RENDERER_DIST, 'index.html'))
+    recorderWin.loadFile(path.join(RENDERER_DIST, 'index.html'))
   }
+
+  recorderWin.on('closed', () => {
+    recorderWin = null;
+  });
 }
 
 app.on('window-all-closed', () => {
@@ -218,19 +263,29 @@ app.on('window-all-closed', () => {
   }
   if (process.platform !== 'darwin') {
     app.quit()
-    win = null
   }
 })
 
 app.on('activate', () => {
   if (BrowserWindow.getAllWindows().length === 0) {
-    createWindow()
+    createRecorderWindow()
   }
 })
 
 app.whenReady().then(() => {
+  // --- NEW: Custom protocol to serve media files securely ---
+  protocol.registerFileProtocol('media', (request, callback) => {
+    const url = request.url.replace('media://', '');
+    try {
+      return callback(decodeURIComponent(url));
+    } catch (error) {
+      console.error('Failed to register protocol', error);
+      return callback({ error: -6 }); // FILE_NOT_FOUND
+    }
+  });
+
   ipcMain.handle('recording:start', handleStartRecording)
-  ipcMain.handle('recording:stop', handleStopRecording)
+  // handleStopRecording is now called from the tray, not via IPC
   
-  createWindow()
+  createRecorderWindow()
 })
