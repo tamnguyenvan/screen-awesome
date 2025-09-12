@@ -27,6 +27,9 @@ let pythonTracker: ChildProcessWithoutNullStreams | null = null
 let ffmpegProcess: ChildProcessWithoutNullStreams | null = null
 let metadataStream: fsSync.WriteStream | null = null
 
+let pythonDataBuffer = ''
+let firstChunkWritten = true
+
 // --- Saving Window Creation ---
 function createSavingWindow() {
   savingWin = new BrowserWindow({
@@ -92,9 +95,18 @@ function cleanupAndSave(): Promise<void> {
   return new Promise((resolve) => {
     // 1. Dừng Python tracker và đóng metadata stream
     if (pythonTracker) {
-      pythonTracker.kill();
-      pythonTracker = null;
+      if (pythonDataBuffer.trim() && metadataStream) {
+        if (!firstChunkWritten) {
+          metadataStream.write(',\n')
+        }
+        metadataStream.write(pythonDataBuffer.trim())
+        firstChunkWritten = false
+        pythonDataBuffer = '' // Xóa buffer
+      }
+      pythonTracker.kill()
+      pythonTracker = null
     }
+
     if (metadataStream) {
       if (!metadataStream.writableEnded) {
         metadataStream.write('\n]');
@@ -173,24 +185,42 @@ async function handleStartRecording() {
   setTimeout(() => {
     countdownWin?.close()
 
-    // 1. Start Python tracker
+    // 1. Reset state trước khi bắt đầu ghi hình mới
+    pythonDataBuffer = ''
+    firstChunkWritten = true
+
+    // 2. Start Python tracker
     const pythonPath = path.join(process.env.APP_ROOT, 'venv/bin/python')
     const scriptPath = path.join(process.env.APP_ROOT, 'python/tracker.py')
     pythonTracker = spawn(pythonPath, [scriptPath])
     
-    // 2. Create metadata stream
+    // 3. Create metadata stream
     metadataStream = fsSync.createWriteStream(metadataPath)
     metadataStream.write('[\n')
     
-    let firstChunk = true
     pythonTracker.stdout.on('data', (data) => {
-      const chunk = data.toString('utf-8').trim()
-      if (chunk && metadataStream) {
-        if (!firstChunk) {
-          metadataStream.write(',\n')
-        }
-        metadataStream.write(chunk)
-        firstChunk = false
+      // Nối dữ liệu mới vào buffer
+      pythonDataBuffer += data.toString('utf-8')
+      
+      // Tách buffer thành các dòng
+      const lines = pythonDataBuffer.split('\n')
+      
+      // Dòng cuối cùng có thể chưa hoàn chỉnh, giữ lại nó trong buffer
+      const completeLines = lines.slice(0, -1)
+      pythonDataBuffer = lines[lines.length - 1]
+
+      if (completeLines.length > 0 && metadataStream) {
+        completeLines.forEach((line) => {
+          const trimmedLine = line.trim()
+          if (trimmedLine) { // Bỏ qua các dòng trống
+            if (!firstChunkWritten) {
+              // Thêm dấu phẩy TRƯỚC khi ghi object mới (trừ object đầu tiên)
+              metadataStream?.write(',\n')
+            }
+            metadataStream?.write(trimmedLine)
+            firstChunkWritten = false
+          }
+        })
       }
     })
 
@@ -198,7 +228,7 @@ async function handleStartRecording() {
       console.error(`Python Tracker Error: ${data}`)
     })
     
-    // 3. Start FFmpeg
+    // 4. Start FFmpeg
     const display = process.env.DISPLAY || ':0.0'
     const args = [
       '-f', 'x11grab',
@@ -214,7 +244,7 @@ async function handleStartRecording() {
       console.log(`FFmpeg: ${data}`)
     })
 
-    // 4. Create Tray Icon
+    // 5. Create Tray Icon
     const icon = nativeImage.createFromPath(path.join(process.env.VITE_PUBLIC, 'screenawesome-appicon.png'))
     tray = new Tray(icon)
 
