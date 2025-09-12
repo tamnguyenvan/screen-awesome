@@ -1,6 +1,6 @@
 // electron/main.ts
 
-import { app, BrowserWindow, ipcMain, Tray, Menu, nativeImage, protocol } from 'electron'
+import { app, BrowserWindow, ipcMain, Tray, Menu, nativeImage, protocol, IpcMainInvokeEvent } from 'electron'
 import { fileURLToPath } from 'node:url'
 import path from 'node:path'
 import { spawn, ChildProcessWithoutNullStreams } from 'node:child_process'
@@ -335,6 +335,16 @@ function createRecorderWindow() {
   });
 }
 
+async function handleReadFile(_event: IpcMainInvokeEvent, filePath: string): Promise<string> {
+  try {
+    const content = await fs.readFile(filePath, 'utf-8');
+    return content;
+  } catch (error) {
+    console.error(`Failed to read file: ${filePath}`, error);
+    throw error; // Propagate error back to renderer
+  }
+}
+
 app.on('window-all-closed', () => {
   if (pythonTracker || ffmpegProcess) {
     cleanupAndSave();
@@ -363,7 +373,7 @@ app.whenReady().then(() => {
   });
 
   ipcMain.handle('recording:start', handleStartRecording)
-  // handleStopRecording is now called from the tray, not via IPC
-  
+  ipcMain.handle('fs:readFile', handleReadFile);
+
   createRecorderWindow()
 })

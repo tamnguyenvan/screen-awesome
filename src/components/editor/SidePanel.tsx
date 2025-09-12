@@ -2,14 +2,15 @@
 import React, { useState } from 'react';
 import { useEditorStore } from '../../store/editorStore';
 import { cn } from '../../lib/utils';
-import { WALLPAPERS, WALLPAPERS_THUMBNAILS } from '../../lib/constants';
+import { WALLPAPERS } from '../../lib/constants';
+import { RegionSettingsPanel } from './RegionSettingsPanel'; // Import mới
 
 type BackgroundTab = 'color' | 'gradient' | 'image' | 'wallpaper';
 
-export function SidePanel() {
+function FrameSettingsPanel() {
   const { frameStyles, updateFrameStyle, updateBackground } = useEditorStore();
   const [activeTab, setActiveTab] = useState<BackgroundTab>(frameStyles.background.type);
-
+  // ... (toàn bộ nội dung của FrameSettingsPanel, không thay đổi)
   const handleStyleChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const { name, value, type } = e.target;
     updateFrameStyle({
@@ -32,9 +33,7 @@ export function SidePanel() {
 
   const selectTab = (tab: BackgroundTab) => {
     setActiveTab(tab);
-    // Cập nhật type trong store khi người dùng chuyển tab
-    if (tab === 'wallpaper' && !WALLPAPERS_THUMBNAILS.includes(frameStyles.background.thumbnailUrl || '')) {
-      // Chọn wallpaper đầu tiên nếu chưa có
+    if (tab === 'wallpaper' && !WALLPAPERS.map(w=>w.thumbnailUrl).includes(frameStyles.background.thumbnailUrl || '')) {
       updateBackground({ type: 'wallpaper', thumbnailUrl: WALLPAPERS[0].thumbnailUrl, imageUrl: WALLPAPERS[0].imageUrl });
     } else {
       updateBackground({ type: tab });
@@ -46,9 +45,9 @@ export function SidePanel() {
       <h2 className={cn("text-xl font-bold border-b pb-2 mb-4", "dark:text-white")}>
         Frame Customization
       </h2>
-
-      {/* Background Section with Tabs */}
-      <ControlGroup label="Background">
+        {/* ... (Toàn bộ code của các control group: Background, Padding, Frame) */}
+        {/* Copy paste toàn bộ code của các control vào đây */}
+        <ControlGroup label="Background">
         <div className={cn("flex border-b mb-4")}>
           <TabButton 
             name="Wallpaper" 
@@ -151,21 +150,17 @@ export function SidePanel() {
           </div>
         )}
       </ControlGroup>
-
-      {/* Padding to use % */}
       <ControlGroup label={`Padding: ${frameStyles.padding}%`}>
         <input
           type="range"
           name="padding"
           min="0"
-          max="30" // Giới hạn từ 0-30%
+          max="30"
           value={frameStyles.padding}
           onChange={handleStyleChange}
           className={cn("w-full")}
         />
       </ControlGroup>
-
-      {/* Frame */}
       <ControlGroup label="Frame">
         <div className={cn("space-y-4")}>
           <div>
@@ -182,7 +177,6 @@ export function SidePanel() {
               className={cn("w-full")}
             />
           </div>
-
           <div>
             <label className={cn("block text-xs mb-1")}>
               Shadow: {frameStyles.shadow}px
@@ -197,7 +191,6 @@ export function SidePanel() {
               className={cn("w-full")}
             />
           </div>
-
           <div>
             <label className={cn("block text-xs mb-1")}>
               Border Width: {frameStyles.borderWidth}px
@@ -212,7 +205,6 @@ export function SidePanel() {
               className={cn("w-full")}
             />
           </div>
-
           <div>
             <label className={cn("block text-xs mb-1")}>
               Border Color
@@ -231,17 +223,28 @@ export function SidePanel() {
           </div>
         </div>
       </ControlGroup>
-
     </div>
   );
 }
 
-// Helper components
+export function SidePanel() {
+  const { selectedRegionId, zoomRegions, cutRegions } = useEditorStore();
+  
+  const selectedRegion = 
+    zoomRegions.find(r => r.id === selectedRegionId) ||
+    cutRegions.find(r => r.id === selectedRegionId);
+
+  if (selectedRegion) {
+    return <RegionSettingsPanel region={selectedRegion} />;
+  }
+
+  return <FrameSettingsPanel />;
+}
+
+// Helper components (giữ nguyên)
 const ControlGroup = ({ label, children }: { label: string, children: React.ReactNode }) => (
   <div>
-    <label className={cn("block font-medium mb-2")}>
-      {label}
-    </label>
+    <label className={cn("block font-medium mb-2")}>{label}</label>
     {children}
   </div>
 )
@@ -251,9 +254,7 @@ const TabButton = ({ name, active, onClick }: { name: string, active: boolean, o
     onClick={onClick} 
     className={cn(
       "px-4 py-2 text-sm font-medium transition-colors",
-      active 
-        ? "border-b-2 border-blue-500 text-blue-600 dark:text-blue-400" 
-        : "text-gray-500 hover:text-gray-700 dark:hover:text-gray-300"
+      active ? "border-b-2 border-blue-500 text-blue-600 dark:text-blue-400" : "text-gray-500 hover:text-gray-700 dark:hover:text-gray-300"
     )}
   >
     {name}

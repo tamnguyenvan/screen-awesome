@@ -1,89 +1,181 @@
 // src/components/editor/Timeline.tsx
-import React from 'react';
-import { Play, Pause, Rewind } from 'lucide-react';
-import { useEditorStore, AspectRatio } from '../../store/editorStore';
-import { Button } from '../ui/button';
+import React, { useRef, useState, MouseEvent as ReactMouseEvent, useEffect } from 'react';
+import { useEditorStore, TimelineRegion } from '../../store/editorStore';
 import { cn } from '../../lib/utils';
+import { Camera, Scissors } from 'lucide-react';
 
 interface TimelineProps {
   videoRef: React.RefObject<HTMLVideoElement>;
 }
 
-function formatTime(seconds: number): string {
-    if (isNaN(seconds) || seconds < 0) {
-        return '00:00';
-    }
-    const minutes = Math.floor(seconds / 60);
-    const remainingSeconds = Math.floor(seconds % 60);
-    return `${minutes.toString().padStart(2, '0')}:${remainingSeconds.toString().padStart(2, '0')}`;
-}
+// const RULER_HEIGHT = 20;
+// const TRACK_HEIGHT = 50;
+// const TRACK_GAP = 8;
+// const PLAYHEAD_WIDTH = 2;
 
 export function Timeline({ videoRef }: TimelineProps) {
-  const { isPlaying, togglePlay, currentTime, duration, setCurrentTime, aspectRatio, setAspectRatio } = useEditorStore();
+  const store = useEditorStore();
+  const timelineRef = useRef<HTMLDivElement>(null);
   
-  const handleSeek = (e: React.ChangeEvent<HTMLInputElement>) => {
-    const time = parseFloat(e.target.value);
-    setCurrentTime(time);
-    if(videoRef.current) {
-        videoRef.current.currentTime = time;
+  // State for drag and drop
+  const [draggingRegion, setDraggingRegion] = useState<{ id: string; type: 'move' | 'resize-left' | 'resize-right'; initialX: number; initialStartTime: number; initialDuration: number; } | null>(null);
+  
+  const handleTimelineClick = (e: ReactMouseEvent<HTMLDivElement>) => {
+    if (draggingRegion || !timelineRef.current || store.duration === 0) return;
+    
+    // Check if the click was on a region
+    if ((e.target as HTMLElement).closest('[data-region-id]')) {
+      return;
     }
+
+    const rect = timelineRef.current.getBoundingClientRect();
+    const clickX = e.clientX - rect.left;
+    const totalWidth = rect.width;
+    
+    const newTime = (clickX / totalWidth) * store.duration;
+    store.setCurrentTime(newTime);
+    if (videoRef.current) {
+      videoRef.current.currentTime = newTime;
+    }
+    store.setSelectedRegionId(null);
   };
 
-  const handleRewind = () => {
-    setCurrentTime(0);
-    if(videoRef.current) {
-      videoRef.current.currentTime = 0;
-    }
-  }
+  // --- Drag and Drop Logic ---
+  const handleRegionMouseDown = (
+    e: ReactMouseEvent<HTMLDivElement>, 
+    region: TimelineRegion, 
+    type: 'move' | 'resize-left' | 'resize-right'
+  ) => {
+    e.stopPropagation();
+    store.setSelectedRegionId(region.id);
+    setDraggingRegion({
+      id: region.id,
+      type,
+      initialX: e.clientX,
+      initialStartTime: region.startTime,
+      initialDuration: region.duration,
+    });
+  };
 
+  useEffect(() => {
+    const handleMouseMove = (e: MouseEvent) => {
+      if (!draggingRegion || !timelineRef.current || store.duration === 0) return;
+
+      const deltaX = e.clientX - draggingRegion.initialX;
+      const timelineWidth = timelineRef.current.clientWidth;
+      const deltaTime = (deltaX / timelineWidth) * store.duration;
+
+      if (draggingRegion.type === 'move') {
+        const newStartTime = Math.max(0, draggingRegion.initialStartTime + deltaTime);
+        store.updateRegion(draggingRegion.id, { startTime: newStartTime });
+      } else if (draggingRegion.type === 'resize-right') {
+        const newDuration = Math.max(0.2, draggingRegion.initialDuration + deltaTime);
+        store.updateRegion(draggingRegion.id, { duration: newDuration });
+      } else if (draggingRegion.type === 'resize-left') {
+        const newStartTime = Math.min(
+            draggingRegion.initialStartTime + draggingRegion.initialDuration - 0.2,
+            Math.max(0, draggingRegion.initialStartTime + deltaTime)
+        );
+        const newDuration = (draggingRegion.initialStartTime + draggingRegion.initialDuration) - newStartTime;
+        store.updateRegion(draggingRegion.id, { startTime: newStartTime, duration: newDuration });
+      }
+    };
+    
+    const handleMouseUp = () => {
+      setDraggingRegion(null);
+    };
+
+    window.addEventListener('mousemove', handleMouseMove);
+    window.addEventListener('mouseup', handleMouseUp);
+    return () => {
+      window.removeEventListener('mousemove', handleMouseMove);
+      window.removeEventListener('mouseup', handleMouseUp);
+    };
+  }, [draggingRegion, store.duration, store.updateRegion]);
+
+  // --- Calculations ---
+  const totalDuration = store.duration;
+  const scaledWidth = 100 * store.timelineZoom; // as a percentage
+  const timeToPercent = (time: number) => (time / totalDuration) * 100;
+  
+  const playheadPosition = totalDuration > 0 ? timeToPercent(store.currentTime) : 0;
+
+  // --- Render ---
   return (
-    <div className="p-4 flex flex-col h-full">
-        {/* Track Area - Placeholder for Phase 3 */}
-        <div className="flex-1 bg-gray-200/50 dark:bg-gray-900/50 rounded-lg mb-4 flex items-center justify-center">
-            <p className="text-gray-500 text-sm">Zoom & Cut tracks will appear here in Phase 3</p>
+    <div className="h-full w-full flex flex-col p-2 overflow-x-auto overflow-y-hidden" onMouseDown={handleTimelineClick}>
+      <div 
+        ref={timelineRef}
+        className="relative min-w-full h-full"
+        style={{ width: `${scaledWidth}%` }}
+      >
+        {/* Ruler */}
+        <div className="h-5 absolute top-0 left-0 right-0">
+          {Array.from({ length: Math.floor(totalDuration * store.timelineZoom) }).map((_, i) => (
+             totalDuration > 0 && (
+              <div key={i} className="absolute text-xs text-gray-400" style={{ left: `${timeToPercent(i / store.timelineZoom)}%` }}>
+                |
+                <span className="absolute top-2 -translate-x-1/2">{Math.round(i / store.timelineZoom)}s</span>
+              </div>
+            )
+          ))}
+        </div>
+        
+        {/* Tracks Area */}
+        <div className="absolute top-5 left-0 right-0">
+          {/* Base Track */}
+          <div className={cn("h-[50px] rounded-lg bg-gray-200 dark:bg-gray-700 flex items-center px-2")}>
+             <p className="text-sm text-gray-500">Base Video Track</p>
+          </div>
+
+          {/* Effects Track */}
+          <div className={cn("h-[50px] mt-2 relative")}>
+            {[...store.zoomRegions, ...store.cutRegions].map(region => {
+              const left = timeToPercent(region.startTime);
+              const width = timeToPercent(region.duration);
+              const isSelected = store.selectedRegionId === region.id;
+              
+              return (
+                <div
+                  key={region.id}
+                  data-region-id={region.id}
+                  className={cn(
+                    "absolute h-full rounded-lg flex items-center px-3 text-white text-xs cursor-pointer",
+                    region.type === 'zoom' ? 'bg-blue-600/80' : 'bg-red-600/80',
+                    isSelected && "ring-2 ring-yellow-400 z-10"
+                  )}
+                  style={{ left: `${left}%`, width: `${width}%` }}
+                  onMouseDown={(e) => handleRegionMouseDown(e, region, 'move')}
+                >
+                  <div className="flex items-center gap-2">
+                    {region.type === 'zoom' ? <Camera size={14} /> : <Scissors size={14} />}
+                    <span>{region.type === 'zoom' ? `Zoom ${region.zoomLevel}x` : 'Cut'}</span>
+                  </div>
+                  {/* Resize Handles */}
+                  <div 
+                    className="absolute left-0 top-0 bottom-0 w-2 cursor-ew-resize"
+                    onMouseDown={(e) => handleRegionMouseDown(e, region, 'resize-left')}
+                  />
+                  <div 
+                    className="absolute right-0 top-0 bottom-0 w-2 cursor-ew-resize"
+                    onMouseDown={(e) => handleRegionMouseDown(e, region, 'resize-right')}
+                  />
+                </div>
+              );
+            })}
+          </div>
         </div>
 
-        {/* Controls Area */}
-        <div className="flex items-center gap-4">
-            <div className="flex items-center gap-2">
-                <Button variant="ghost" size="icon" onClick={handleRewind}>
-                    <Rewind className="w-5 h-5" />
-                </Button>
-                <Button variant="ghost" size="icon" onClick={togglePlay}>
-                    {isPlaying ? <Pause className="w-6 h-6" /> : <Play className="w-6 h-6" />}
-                </Button>
-            </div>
-            
-            <span className="text-xs font-mono text-gray-600 dark:text-gray-400 w-12 text-center">{formatTime(currentTime)}</span>
-            
-            <input
-                type="range"
-                min="0"
-                max={duration || 0}
-                step="0.01"
-                value={currentTime}
-                onChange={handleSeek}
-                className="w-full h-2 bg-gray-300 dark:bg-gray-600 rounded-lg appearance-none cursor-pointer"
-            />
-            
-            <span className="text-xs font-mono text-gray-600 dark:text-gray-400 w-12 text-center">{formatTime(duration)}</span>
-            
-            {/* Aspect Ratio Dropdown*/}
-            <select
-                value={aspectRatio}
-                onChange={(e) => setAspectRatio(e.target.value as AspectRatio)}
-                className={cn(
-                    "bg-gray-100 dark:bg-gray-700 border border-gray-300 dark:border-gray-600",
-                    "rounded-md text-xs px-2 py-1.5 focus:outline-none focus:ring-2 focus:ring-blue-500"
-                )}
-            >
-                <option value="16:9">16:9</option>
-                <option value="9:16">9:16</option>
-                <option value="4:3">4:3</option>
-                <option value="3:4">3:4</option>
-                <option value="1:1">1:1</option>
-            </select>
-        </div>
+        {/* Playhead */}
+        {totalDuration > 0 && (
+          <div 
+            className="absolute top-0 bottom-0 z-20 pointer-events-none"
+            style={{ left: `${playheadPosition}%` }}
+          >
+            <div className="w-[2px] h-full bg-yellow-400"></div>
+            <div className="absolute -top-1 -left-1 w-4 h-4 rounded-full bg-yellow-400 border-2 border-white dark:border-gray-800"></div>
+          </div>
+        )}
+      </div>
     </div>
   );
 }

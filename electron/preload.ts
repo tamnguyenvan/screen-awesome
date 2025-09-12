@@ -34,7 +34,9 @@ export const electronAPI = {
     return () => {
       ipcRenderer.removeListener('project:open', listener);
     }
-  }
+  },
+
+  readFile: (filePath: string): Promise<string> => ipcRenderer.invoke('fs:readFile', filePath),
 }
 
 // Expose API một cách an toàn
