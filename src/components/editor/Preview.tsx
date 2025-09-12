@@ -9,30 +9,30 @@ interface PreviewProps {
 }
 
 const generateBackgroundStyle = (backgroundState: ReturnType<typeof useEditorStore.getState>['frameStyles']['background']) => {
-    switch(backgroundState.type) {
-        case 'color':
-            return { background: backgroundState.color || '#ffffff' };
-        case 'gradient':
-            return { background: `linear-gradient(145deg, ${backgroundState.gradientStart}, ${backgroundState.gradientEnd})` };
-        case 'image':
-        case 'wallpaper':
-            return { 
-                backgroundImage: `url(${backgroundState.imageUrl})`,
-                backgroundSize: 'cover',
-                backgroundPosition: 'center'
-            };
-        default:
-            return { background: '#000000' };
-    }
+  switch (backgroundState.type) {
+    case 'color':
+      return { background: backgroundState.color || '#ffffff' };
+    case 'gradient':
+      return { background: `linear-gradient(145deg, ${backgroundState.gradientStart}, ${backgroundState.gradientEnd})` };
+    case 'image':
+    case 'wallpaper':
+      return {
+        backgroundImage: `url(${backgroundState.imageUrl})`,
+        backgroundSize: 'cover',
+        backgroundPosition: 'center'
+      };
+    default:
+      return { background: '#000000' };
+  }
 };
 
 export function Preview({ videoRef }: PreviewProps) {
-  const { 
-    frameStyles, videoUrl, isPlaying, setPlaying, 
-    setCurrentTime, setDuration, aspectRatio, setVideoDimensions, 
-    currentTime, videoDimensions // Lấy thêm videoDimensions
+  const {
+    frameStyles, videoUrl, isPlaying, setPlaying,
+    setCurrentTime, setDuration, aspectRatio, setVideoDimensions,
+    videoDimensions
   } = useEditorStore();
-  
+
   const transformContainerRef = useRef<HTMLDivElement>(null);
 
   // Vòng lặp render để cập nhật transform (không thay đổi)
@@ -40,11 +40,17 @@ export function Preview({ videoRef }: PreviewProps) {
     let animationFrameId: number;
 
     const updateTransform = () => {
-      if (!transformContainerRef.current) return;
-      const { scale, translateX, translateY } = calculateZoomTransform();
+      if (!transformContainerRef.current || !videoRef.current) return;
+
+      // Lấy thời gian trực tiếp từ video element
+      const liveCurrentTime = videoRef.current.currentTime;
+
+      // Truyền thời gian trực tiếp vào hàm tính toán
+      const { scale, translateX, translateY } = calculateZoomTransform(liveCurrentTime);
+
       transformContainerRef.current.style.transform = `scale(${scale}) translate(${translateX}%, ${translateY}%)`;
     };
-    
+
     updateTransform();
 
     const animate = () => {
@@ -59,7 +65,8 @@ export function Preview({ videoRef }: PreviewProps) {
     return () => {
       cancelAnimationFrame(animationFrameId);
     };
-  }, [isPlaying, currentTime]);
+    // THAY ĐỔI Ở ĐÂY: Xóa 'currentTime' khỏi dependency array
+  }, [isPlaying, videoRef]);
 
   useEffect(() => {
     const video = videoRef.current;
@@ -72,8 +79,8 @@ export function Preview({ videoRef }: PreviewProps) {
 
   // Tính toán aspect ratio của video gốc
   const videoAspectRatio = useMemo(() => {
-      if (videoDimensions.height === 0) return 16 / 9; // fallback
-      return videoDimensions.width / videoDimensions.height;
+    if (videoDimensions.height === 0) return 16 / 9; // fallback
+    return videoDimensions.width / videoDimensions.height;
   }, [videoDimensions]);
 
   const handleTimeUpdate = () => {
@@ -91,7 +98,7 @@ export function Preview({ videoRef }: PreviewProps) {
       });
     }
   };
-  
+
   const handlePlay = () => setPlaying(true);
   const handlePause = () => setPlaying(false);
 
@@ -116,7 +123,7 @@ export function Preview({ videoRef }: PreviewProps) {
       >
         {videoUrl ? (
           // Container này giờ sẽ có aspect ratio của video
-          <div 
+          <div
             ref={transformContainerRef}
             className="transition-transform duration-100 max-w-full max-h-full" // Bỏ w-full, h-full, thêm max-w/h
             style={{
@@ -129,7 +136,7 @@ export function Preview({ videoRef }: PreviewProps) {
             <video
               ref={videoRef}
               src={videoUrl}
-              className="w-full h-full" 
+              className="w-full h-full"
               onTimeUpdate={handleTimeUpdate}
               onLoadedMetadata={handleLoadedMetadata}
               onPlay={handlePlay}
