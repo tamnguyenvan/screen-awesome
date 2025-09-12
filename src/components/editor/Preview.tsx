@@ -6,7 +6,7 @@ interface PreviewProps {
   videoRef: React.RefObject<HTMLVideoElement>;
 }
 
-// Helper function to generate CSS background string from state
+// Helper function to generate CSS background string from state (no changes here)
 const generateBackgroundStyle = (backgroundState: ReturnType<typeof useEditorStore.getState>['frameStyles']['background']) => {
     switch(backgroundState.type) {
         case 'color':
@@ -26,7 +26,7 @@ const generateBackgroundStyle = (backgroundState: ReturnType<typeof useEditorSto
 };
 
 export function Preview({ videoRef }: PreviewProps) {
-  const { frameStyles, videoUrl, isPlaying, setPlaying, setCurrentTime, setDuration } = useEditorStore();
+  const { frameStyles, videoUrl, isPlaying, setPlaying, setCurrentTime, setDuration, aspectRatio } = useEditorStore();
 
   useEffect(() => {
     const video = videoRef.current;
@@ -35,8 +35,8 @@ export function Preview({ videoRef }: PreviewProps) {
     isPlaying ? video.play() : video.pause();
   }, [isPlaying, videoRef]);
 
-  // Memoize the background style to prevent re-calculation on every render
   const backgroundStyle = useMemo(() => generateBackgroundStyle(frameStyles.background), [frameStyles.background]);
+  const cssAspectRatio = useMemo(() => aspectRatio.replace(':', ' / '), [aspectRatio]);
 
   const handleTimeUpdate = () => {
     if (videoRef.current) {
@@ -54,24 +54,27 @@ export function Preview({ videoRef }: PreviewProps) {
   const handlePause = () => setPlaying(false);
 
   return (
+    // Canvas: This is the outermost container.
     <div
-      className="w-full h-full flex items-center justify-center transition-all duration-200 ease-in-out"
-      style={backgroundStyle}
+      className="transition-all duration-200 ease-in-out flex items-center justify-center relative"
+      style={{
+        ...backgroundStyle,
+        aspectRatio: cssAspectRatio,
+        height: '100%',
+        maxWidth: '100%',
+        maxHeight: '100%',
+      }}
     >
+      {/* Padding Container: This div sits inside the canvas and provides the padding */}
       <div
-        className="transition-all duration-200 ease-in-out"
+        className="w-full h-full flex items-center justify-center"
         style={{
           padding: `${frameStyles.padding}%`,
           overflow: 'hidden',
-          maxWidth: '100%',
-          maxHeight: '100%',
-          backgroundColor: 'transparent',
-          display: 'flex',
-          alignItems: 'center',
-          justifyContent: 'center'
         }}
       >
         {videoUrl ? (
+          // The video itself will scale to fit inside the padding container
           <video
             ref={videoRef}
             src={videoUrl}

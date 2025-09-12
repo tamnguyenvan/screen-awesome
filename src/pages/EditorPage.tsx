@@ -30,7 +30,7 @@ export function EditorPage() {
         {/* Center Area (Preview + Timeline) */}
         <div className="flex-1 flex flex-col">
           {/* Preview Area */}
-          <div className="flex-1 flex items-center justify-center p-8 bg-gray-200/50 dark:bg-gray-950/50 overflow-hidden">
+          <div className="flex-1 flex items-center justify-center p-4 bg-gray-200/50 dark:bg-gray-950/50 overflow-hidden">
              <Preview videoRef={videoRef} />
           </div>
           

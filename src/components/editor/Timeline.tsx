@@ -1,8 +1,9 @@
 // src/components/editor/Timeline.tsx
 import React from 'react';
 import { Play, Pause, Rewind } from 'lucide-react';
-import { useEditorStore } from '../../store/editorStore';
+import { useEditorStore, AspectRatio } from '../../store/editorStore';
 import { Button } from '../ui/button';
+import { cn } from '../../lib/utils';
 
 interface TimelineProps {
   videoRef: React.RefObject<HTMLVideoElement>;
@@ -18,7 +19,7 @@ function formatTime(seconds: number): string {
 }
 
 export function Timeline({ videoRef }: TimelineProps) {
-  const { isPlaying, togglePlay, currentTime, duration, setCurrentTime } = useEditorStore();
+  const { isPlaying, togglePlay, currentTime, duration, setCurrentTime, aspectRatio, setAspectRatio } = useEditorStore();
   
   const handleSeek = (e: React.ChangeEvent<HTMLInputElement>) => {
     const time = parseFloat(e.target.value);
@@ -66,6 +67,22 @@ export function Timeline({ videoRef }: TimelineProps) {
             />
             
             <span className="text-xs font-mono text-gray-600 dark:text-gray-400 w-12 text-center">{formatTime(duration)}</span>
+            
+            {/* Aspect Ratio Dropdown*/}
+            <select
+                value={aspectRatio}
+                onChange={(e) => setAspectRatio(e.target.value as AspectRatio)}
+                className={cn(
+                    "bg-gray-100 dark:bg-gray-700 border border-gray-300 dark:border-gray-600",
+                    "rounded-md text-xs px-2 py-1.5 focus:outline-none focus:ring-2 focus:ring-blue-500"
+                )}
+            >
+                <option value="16:9">16:9</option>
+                <option value="9:16">9:16</option>
+                <option value="4:3">4:3</option>
+                <option value="3:4">3:4</option>
+                <option value="1:1">1:1</option>
+            </select>
         </div>
     </div>
   );

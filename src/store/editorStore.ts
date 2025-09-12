@@ -7,6 +7,9 @@ import { WALLPAPERS } from '../lib/constants';
 // Định nghĩa các loại background
 type BackgroundType = 'color' | 'gradient' | 'image' | 'wallpaper';
 
+// Thêm type cho Aspect Ratio
+export type AspectRatio = '16:9' | '9:16' | '4:3' | '3:4' | '1:1';
+
 // Định nghĩa cấu trúc cho background
 interface Background {
   type: BackgroundType;
@@ -37,6 +40,7 @@ interface EditorState {
   currentTime: number;
   isPlaying: boolean;
   frameStyles: FrameStyles;
+  aspectRatio: AspectRatio;
 }
 
 interface EditorActions {
@@ -47,6 +51,7 @@ interface EditorActions {
   setPlaying: (isPlaying: boolean) => void;
   updateFrameStyle: (style: Partial<FrameStyles>) => void;
   updateBackground: (bg: Partial<Background>) => void;
+  setAspectRatio: (ratio: AspectRatio) => void;
   reset: () => void;
 }
 
@@ -58,6 +63,7 @@ const initialState: Omit<EditorState, 'frameStyles'> = {
   duration: 0,
   currentTime: 0,
   isPlaying: false,
+  aspectRatio: '16:9', // Giá trị mặc định
 };
 
 const initialFrameStyles: FrameStyles = {
@@ -104,6 +110,8 @@ export const useEditorStore = create<EditorState & EditorActions>((set) => ({
         background: { ...state.frameStyles.background, ...bg },
     }
   })),
+  
+  setAspectRatio: (ratio) => set({ aspectRatio: ratio }),
 
   reset: () => set({ ...initialState, frameStyles: initialFrameStyles }),
 }));
