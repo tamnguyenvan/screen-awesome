@@ -73,6 +73,7 @@ interface EditorState {
   cutRegions: CutRegion[];
   selectedRegionId: string | null;
   activeZoomRegionId: string | null;
+  isCurrentlyCut: boolean;
   timelineZoom: number;
 }
 
@@ -111,6 +112,7 @@ const initialState: Omit<EditorState, 'frameStyles'> = {
   cutRegions: [],
   selectedRegionId: null,
   activeZoomRegionId: null,
+  isCurrentlyCut: false,
   timelineZoom: 1,
 };
 
@@ -183,10 +185,10 @@ export const useEditorStore = create(
             id: `auto-zoom-${Date.now()}-${index}`,
             type: 'zoom',
             startTime: Math.max(0, startTime),
-            duration: Math.max(1, duration), // Thời gian tối thiểu là 1s
-            zoomLevel: 1.8,
+            duration: Math.max(3, duration),
+            zoomLevel: 2.0,
             easing: 'ease-in-out',
-            targetX: firstClick.x, // Lưu tọa độ tuyệt đối
+            targetX: firstClick.x,
             targetY: firstClick.y,
           };
         });
@@ -206,19 +208,25 @@ export const useEditorStore = create(
     setCurrentTime: (time) => set(state => {
       state.currentTime = time;
 
+      // --- Logic cho Zoom Region ---
       const activeRegion = state.zoomRegions.find(r => r.id === state.activeZoomRegionId);
 
       // Nếu time vẫn nằm trong region đang active, không cần làm gì cả
       if (activeRegion && time >= activeRegion.startTime && time <= activeRegion.startTime + activeRegion.duration) {
-        return;
+        // Vẫn đang ở trong region cũ, nhưng cần check logic cut
+      } else {
+         // Nếu không, tìm region mới
+        const newActiveRegion = state.zoomRegions.find(
+          r => time >= r.startTime && time <= r.startTime + r.duration
+        );
+        state.activeZoomRegionId = newActiveRegion ? newActiveRegion.id : null;
       }
 
-      // Nếu không, tìm region mới
-      const newActiveRegion = state.zoomRegions.find(
+      // --- Logic cho Cut Region ---
+      const activeCutRegion = state.cutRegions.find(
         r => time >= r.startTime && time <= r.startTime + r.duration
       );
-
-      state.activeZoomRegionId = newActiveRegion ? newActiveRegion.id : null;
+      state.isCurrentlyCut = !!activeCutRegion; // Set boolean flag
     }),
     togglePlay: () => set(state => { state.isPlaying = !state.isPlaying; }),
     setPlaying: (isPlaying) => set(state => { state.isPlaying = isPlaying; }),

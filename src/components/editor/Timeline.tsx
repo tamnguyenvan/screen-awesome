@@ -1,6 +1,6 @@
 // src/components/editor/Timeline.tsx
 import React, { useRef, useState, MouseEvent as ReactMouseEvent, useEffect } from 'react';
-import { useEditorStore, TimelineRegion } from '../../store/editorStore';
+import { useEditorStore, TimelineRegion, ZoomRegion } from '../../store/editorStore';
 import { cn } from '../../lib/utils';
 import { Camera, Scissors } from 'lucide-react';
 
@@ -8,10 +8,75 @@ interface TimelineProps {
   videoRef: React.RefObject<HTMLVideoElement>;
 }
 
-// const RULER_HEIGHT = 20;
-// const TRACK_HEIGHT = 50;
-// const TRACK_GAP = 8;
-// const PLAYHEAD_WIDTH = 2;
+type RegionMouseEvent = (e: ReactMouseEvent<HTMLDivElement>, type: 'move' | 'resize-left' | 'resize-right') => void;
+
+interface RegionBlockProps {
+  region: TimelineRegion;
+  left: number;
+  width: number;
+  isSelected: boolean;
+  onMouseDown: RegionMouseEvent;
+}
+
+function ZoomRegionBlock({ region, left, width, isSelected, onMouseDown }: RegionBlockProps) {
+  const zoomRegion = region as ZoomRegion; // Type assertion
+  return (
+    <div
+      data-region-id={region.id}
+      className={cn(
+        "absolute h-full rounded-lg flex items-center px-3 text-white text-xs cursor-pointer",
+        "bg-blue-600/80", // Màu xanh cho zoom
+        isSelected && "ring-2 ring-yellow-400 z-10"
+      )}
+      style={{ left: `${left}%`, width: `${width}%` }}
+      onMouseDown={(e) => onMouseDown(e, 'move')}
+    >
+      <div className="flex items-center gap-2">
+        <Camera size={14} />
+        <span>Zoom {zoomRegion.zoomLevel}x</span>
+      </div>
+      {/* Resize Handles */}
+      <div
+        className="absolute left-0 top-0 bottom-0 w-2 cursor-ew-resize"
+        onMouseDown={(e) => onMouseDown(e, 'resize-left')}
+      />
+      <div
+        className="absolute right-0 top-0 bottom-0 w-2 cursor-ew-resize"
+        onMouseDown={(e) => onMouseDown(e, 'resize-right')}
+      />
+    </div>
+  );
+}
+
+function CutRegionBlock({ region, left, width, isSelected, onMouseDown }: RegionBlockProps) {
+  return (
+    <div
+      data-region-id={region.id}
+      className={cn(
+        "absolute h-full rounded-lg flex items-center px-3 text-white text-xs cursor-pointer",
+        "bg-red-600/80", // Màu đỏ cho cut
+        isSelected && "ring-2 ring-yellow-400 z-10"
+      )}
+      style={{ left: `${left}%`, width: `${width}%` }}
+      onMouseDown={(e) => onMouseDown(e, 'move')}
+    >
+      <div className="flex items-center gap-2">
+        <Scissors size={14} />
+        <span>Cut</span>
+      </div>
+      {/* Resize Handles */}
+      <div
+        className="absolute left-0 top-0 bottom-0 w-2 cursor-ew-resize"
+        onMouseDown={(e) => onMouseDown(e, 'resize-left')}
+      />
+      <div
+        className="absolute right-0 top-0 bottom-0 w-2 cursor-ew-resize"
+        onMouseDown={(e) => onMouseDown(e, 'resize-right')}
+      />
+    </div>
+  );
+}
+
 
 export function Timeline({ videoRef }: TimelineProps) {
   const store = useEditorStore();
@@ -92,6 +157,7 @@ export function Timeline({ videoRef }: TimelineProps) {
       window.removeEventListener('mousemove', handleMouseMove);
       window.removeEventListener('mouseup', handleMouseUp);
     };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [draggingRegion, store.duration, store.updateRegion]);
 
   useEffect(() => {
@@ -108,11 +174,11 @@ export function Timeline({ videoRef }: TimelineProps) {
     if (store.isPlaying) {
       animationFrameId = requestAnimationFrame(animatePlayhead);
     } else {
-        // Cập nhật vị trí lần cuối khi dừng
-        if (playheadRef.current && store.duration > 0) {
-            const percentage = (store.currentTime / store.duration) * 100;
-            playheadRef.current.style.left = `${percentage}%`;
-        }
+      // Cập nhật vị trí lần cuối khi dừng
+      if (playheadRef.current && store.duration > 0) {
+        const percentage = (store.currentTime / store.duration) * 100;
+        playheadRef.current.style.left = `${percentage}%`;
+      }
     }
 
     return () => {
@@ -161,33 +227,20 @@ export function Timeline({ videoRef }: TimelineProps) {
               const width = timeToPercent(region.duration);
               const isSelected = store.selectedRegionId === region.id;
 
-              return (
-                <div
-                  key={region.id}
-                  data-region-id={region.id}
-                  className={cn(
-                    "absolute h-full rounded-lg flex items-center px-3 text-white text-xs cursor-pointer",
-                    region.type === 'zoom' ? 'bg-blue-600/80' : 'bg-red-600/80',
-                    isSelected && "ring-2 ring-yellow-400 z-10"
-                  )}
-                  style={{ left: `${left}%`, width: `${width}%` }}
-                  onMouseDown={(e) => handleRegionMouseDown(e, region, 'move')}
-                >
-                  <div className="flex items-center gap-2">
-                    {region.type === 'zoom' ? <Camera size={14} /> : <Scissors size={14} />}
-                    <span>{region.type === 'zoom' ? `Zoom ${region.zoomLevel}x` : 'Cut'}</span>
-                  </div>
-                  {/* Resize Handles */}
-                  <div
-                    className="absolute left-0 top-0 bottom-0 w-2 cursor-ew-resize"
-                    onMouseDown={(e) => handleRegionMouseDown(e, region, 'resize-left')}
-                  />
-                  <div
-                    className="absolute right-0 top-0 bottom-0 w-2 cursor-ew-resize"
-                    onMouseDown={(e) => handleRegionMouseDown(e, region, 'resize-right')}
-                  />
-                </div>
-              );
+              const props = {
+                region,
+                left,
+                width,
+                isSelected,
+                onMouseDown: (e: ReactMouseEvent<HTMLDivElement>, type: 'move' | 'resize-left' | 'resize-right') =>
+                  handleRegionMouseDown(e, region, type)
+              };
+
+              if (region.type === 'zoom') {
+                return <ZoomRegionBlock key={region.id} {...props} />;
+              } else {
+                return <CutRegionBlock key={region.id} {...props} />;
+              }
             })}
           </div>
         </div>

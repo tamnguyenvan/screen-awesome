@@ -30,7 +30,7 @@ export function Preview({ videoRef }: PreviewProps) {
   const {
     frameStyles, videoUrl, isPlaying, setPlaying,
     setCurrentTime, setDuration, aspectRatio, setVideoDimensions,
-    videoDimensions
+    videoDimensions, isCurrentlyCut // <-- THÊM MỚI (Vấn đề 4)
   } = useEditorStore();
 
   const transformContainerRef = useRef<HTMLDivElement>(null);
@@ -74,6 +74,33 @@ export function Preview({ videoRef }: PreviewProps) {
     isPlaying ? video.play() : video.pause();
   }, [isPlaying, videoRef]);
 
+
+  // --- Logic xử lý Cut Region (Vấn đề 4) ---
+  useEffect(() => {
+    const video = videoRef.current;
+    if (!video) return;
+    
+    // Nếu đang phát và cờ 'isCurrentlyCut' được bật (từ store)
+    if (isPlaying && isCurrentlyCut) {
+      // Lấy state mới nhất từ store (vì chúng ta cần mảng cutRegions)
+      const { cutRegions } = useEditorStore.getState();
+      
+      // Tìm xem cut region nào đang kích hoạt
+      const activeCutRegion = cutRegions.find(
+         r => video.currentTime >= r.startTime && video.currentTime < (r.startTime + r.duration)
+      );
+
+      if (activeCutRegion) {
+         console.log(`Skipping cut region, jumping to ${activeCutRegion.startTime + activeCutRegion.duration}`);
+         // Nhảy video đến cuối đoạn cut
+         video.currentTime = activeCutRegion.startTime + activeCutRegion.duration;
+         // Cập nhật lại store để nó tính toán lại (có thể sẽ tắt cờ isCurrentlyCut)
+         setCurrentTime(video.currentTime); 
+      }
+    }
+  }, [isCurrentlyCut, isPlaying, videoRef, setCurrentTime]); // Chạy mỗi khi cờ isCurrentlyCut hoặc isPlaying thay đổi
+
+
   const backgroundStyle = useMemo(() => generateBackgroundStyle(frameStyles.background), [frameStyles.background]);
   const cssAspectRatio = useMemo(() => aspectRatio.replace(':', ' / '), [aspectRatio]);
 
@@ -85,6 +112,8 @@ export function Preview({ videoRef }: PreviewProps) {
 
   const handleTimeUpdate = () => {
     if (videoRef.current) {
+      // Hành động này sẽ gọi setter của store, 
+      // và setter này sẽ tự động cập nhật cả 'isCurrentlyCut'
       setCurrentTime(videoRef.current.currentTime);
     }
   };
