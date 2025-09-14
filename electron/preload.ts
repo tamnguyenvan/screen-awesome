@@ -12,6 +12,24 @@ type ProjectPayload = {
   metadataPath: string;
 }
 
+type ExportPayload = {
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  projectState: any;
+  exportSettings: any;
+  outputPath: string;
+}
+// Payload nhận về từ tiến trình
+type ProgressPayload = {
+  progress: number; // 0-100
+  stage: string;
+}
+// Payload khi hoàn thành
+type CompletePayload = {
+  success: boolean;
+  outputPath?: string;
+  error?: string;
+}
+
 // Định nghĩa API sẽ được expose ra window object
 export const electronAPI = {
   startRecording: (): Promise<RecordingResult> => ipcRenderer.invoke('recording:start'),
@@ -37,6 +55,24 @@ export const electronAPI = {
   },
 
   readFile: (filePath: string): Promise<string> => ipcRenderer.invoke('fs:readFile', filePath),
+
+  startExport: (payload: ExportPayload): Promise<void> => ipcRenderer.invoke('export:start', payload),
+
+  onExportProgress: (callback: (payload: ProgressPayload) => void) => {
+    const listener = (_event: IpcRendererEvent, payload: ProgressPayload) => callback(payload);
+    ipcRenderer.on('export:progress', listener);
+    return () => ipcRenderer.removeListener('export:progress', listener);
+  },
+
+  onExportComplete: (callback: (payload: CompletePayload) => void) => {
+    const listener = (_event: IpcRendererEvent, payload: CompletePayload) => callback(payload);
+    ipcRenderer.on('export:complete', listener);
+    return () => ipcRenderer.removeListener('export:complete', listener);
+  },
+
+  showSaveDialog: (options: Electron.SaveDialogOptions): Promise<Electron.SaveDialogReturnValue> => {
+    return ipcRenderer.invoke('dialog:showSaveDialog', options);
+  }
 }
 
 // Expose API một cách an toàn

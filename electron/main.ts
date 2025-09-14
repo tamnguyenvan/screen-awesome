@@ -1,6 +1,9 @@
 // electron/main.ts
 
-import { app, BrowserWindow, ipcMain, Tray, Menu, nativeImage, protocol, IpcMainInvokeEvent } from 'electron'
+import {
+  app, BrowserWindow, ipcMain, Tray, Menu,
+  nativeImage, protocol, IpcMainInvokeEvent, dialog
+} from 'electron'
 import { fileURLToPath } from 'node:url'
 import path from 'node:path'
 import { spawn, ChildProcessWithoutNullStreams } from 'node:child_process'
@@ -14,6 +17,18 @@ process.env.APP_ROOT = path.join(__dirname, '..')
 export const VITE_DEV_SERVER_URL = process.env['VITE_DEV_SERVER_URL']
 export const MAIN_DIST = path.join(process.env.APP_ROOT, 'dist-electron')
 export const RENDERER_DIST = path.join(process.env.APP_ROOT, 'dist')
+const RESOLUTIONS = {
+  '720p': { width: 1280, height: 720 },
+  '1080p': { width: 1920, height: 1080 },
+  '2k': { width: 2560, height: 1440 },
+};
+
+// Helper để lấy giá trị CRF từ tên quality
+const QUALITY_CRF = {
+  low: 28,
+  medium: 23,
+  high: 18,
+};
 
 process.env.VITE_PUBLIC = VITE_DEV_SERVER_URL ? path.join(process.env.APP_ROOT, 'public') : RENDERER_DIST
 
@@ -150,11 +165,11 @@ function createCountdownWindow() {
       contextIsolation: false,
     }
   })
-  
-  const countdownUrl = VITE_DEV_SERVER_URL 
-    ? path.join(process.env.APP_ROOT, 'public/countdown/index.html') 
+
+  const countdownUrl = VITE_DEV_SERVER_URL
+    ? path.join(process.env.APP_ROOT, 'public/countdown/index.html')
     : path.join(RENDERER_DIST, 'countdown/index.html')
-  
+
   countdownWin.loadFile(countdownUrl)
 
   countdownWin.on('closed', () => {
@@ -179,7 +194,7 @@ async function handleStartRecording() {
   const metadataPath = path.join(recordingDir, `${baseName}.json`);
 
   recorderWin?.hide()
-  
+
   createCountdownWindow()
 
   setTimeout(() => {
@@ -193,18 +208,18 @@ async function handleStartRecording() {
     const pythonPath = path.join(process.env.APP_ROOT, 'venv/bin/python')
     const scriptPath = path.join(process.env.APP_ROOT, 'python/tracker.py')
     pythonTracker = spawn(pythonPath, [scriptPath])
-    
+
     // 3. Create metadata stream
     metadataStream = fsSync.createWriteStream(metadataPath)
     metadataStream.write('[\n')
-    
+
     pythonTracker.stdout.on('data', (data) => {
       // Nối dữ liệu mới vào buffer
       pythonDataBuffer += data.toString('utf-8')
-      
+
       // Tách buffer thành các dòng
       const lines = pythonDataBuffer.split('\n')
-      
+
       // Dòng cuối cùng có thể chưa hoàn chỉnh, giữ lại nó trong buffer
       const completeLines = lines.slice(0, -1)
       pythonDataBuffer = lines[lines.length - 1]
@@ -227,7 +242,7 @@ async function handleStartRecording() {
     pythonTracker.stderr.on('data', (data) => {
       console.error(`Python Tracker Error: ${data}`)
     })
-    
+
     // 4. Start FFmpeg
     const display = process.env.DISPLAY || ':0.0'
     const args = [
@@ -303,7 +318,7 @@ async function handleStopRecording(videoPath: string, metadataPath: string) {
 
 async function handleCancelRecording(videoPath: string, metadataPath: string) {
   console.log('Cancelling recording and deleting files...');
-  
+
   // Dừng các tiến trình mà không cần chờ lưu
   if (pythonTracker) {
     pythonTracker.kill();
@@ -311,14 +326,14 @@ async function handleCancelRecording(videoPath: string, metadataPath: string) {
   }
   if (ffmpegProcess) {
     // Giết tiến trình thay vì chờ nó lưu
-    ffmpegProcess.kill('SIGKILL'); 
+    ffmpegProcess.kill('SIGKILL');
     ffmpegProcess = null;
   }
   if (metadataStream) {
     metadataStream.end();
     metadataStream = null;
   }
-  
+
   // Xóa file
   try {
     // Đợi một chút để hệ điều hành nhả file lock
@@ -392,6 +407,119 @@ app.on('activate', () => {
   }
 })
 
+/**
+ * Chuyển đổi trạng thái từ editor thành các đối số dòng lệnh cho ffmpeg.
+ * Đây là phần logic phức tạp nhất của quá trình export.
+ */
+function buildFfmpegArgs(projectState: any, exportSettings: any, outputPath: string): string[] {
+  const { videoPath, frameStyles, cutRegions, videoDimensions } = projectState;
+
+  // Lấy các cài đặt từ người dùng
+  const { resolution, quality, fps, format } = exportSettings;
+  const { width: outputWidth, height: outputHeight } = RESOLUTIONS[resolution];
+  const crf = QUALITY_CRF[quality];
+
+  const args: string[] = ['-y', '-i', videoPath];
+  let filterComplex = '';
+
+  // --- 1. Xử lý Cut Regions (không đổi) ---
+  let videoStream = '[0:v]';
+  if (cutRegions.length > 0) {
+    const selectFilter = cutRegions
+      .map((r: any) => `between(t,${r.startTime},${r.startTime + r.duration})`)
+      .join('+');
+    filterComplex += `[0:v]select='not(${selectFilter})',setpts=N/FRAME_RATE/TB[v_cut];`;
+    videoStream = '[v_cut]';
+  }
+
+  // Bỏ qua zoom động phức tạp cho V1
+
+  // --- 2. Xử lý Frame (Padding, Background, Scale) ---
+  const videoAspectRatio = videoDimensions.width / videoDimensions.height;
+  const outputTargetAspectRatio = outputWidth / outputHeight;
+
+  let scaledWidth, scaledHeight;
+  // Tính toán kích thước video bên trong frame, có tính đến padding
+  if (videoAspectRatio > outputTargetAspectRatio) {
+    scaledWidth = outputWidth * (1 - (frameStyles.padding / 50));
+    scaledHeight = scaledWidth / videoAspectRatio;
+  } else {
+    scaledHeight = outputHeight * (1 - (frameStyles.padding / 50));
+    scaledWidth = scaledHeight * videoAspectRatio;
+  }
+  scaledWidth = Math.floor(scaledWidth / 2) * 2; // Đảm bảo chẵn
+  scaledHeight = Math.floor(scaledHeight / 2) * 2; // Đảm bảo chẵn
+
+  // Tạo background
+  const bgColor = frameStyles.background.color || '#000000';
+  filterComplex += `color=c=${bgColor}:s=${outputWidth}x${outputHeight}:d=${projectState.duration}[bg];`;
+
+  // Scale và đặt video lên background
+  filterComplex += `${videoStream}scale=${scaledWidth}:${scaledHeight}[fg];`;
+  filterComplex += `[bg][fg]overlay=(W-w)/2:(H-h)/2,format=yuv420p`;
+
+  // --- 3. Logic riêng cho GIF ---
+  if (format === 'gif') {
+    // GIF cần tạo palette màu để chất lượng tốt hơn
+    filterComplex += `[v_out];[v_out]split[s0][s1];[s0]palettegen[p];[s1][p]paletteuse`;
+    args.push('-filter_complex', filterComplex);
+    args.push('-r', fps.toString()); // Đặt FPS cho GIF
+  } else {
+    // Logic cho MP4
+    args.push('-filter_complex', filterComplex);
+    args.push('-c:v', 'libx264', '-preset', 'medium', '-crf', crf.toString());
+    args.push('-r', fps.toString()); // Đặt FPS
+  }
+
+  args.push(outputPath);
+
+  console.log('FFmpeg command:', ['ffmpeg', ...args].join(' '));
+  return args;
+}
+
+async function handleExportStart(_event: IpcMainInvokeEvent, { projectState, exportSettings, outputPath }: { projectState: any, exportSettings: any, outputPath: string }) {
+  const window = BrowserWindow.fromWebContents(_event.sender);
+  if (!window) return;
+
+  // Truyền cả exportSettings vào hàm build
+  const args = buildFfmpegArgs(projectState, exportSettings, outputPath);
+  const ffmpeg = spawn('ffmpeg', args);
+  const totalDuration = projectState.duration;
+
+  ffmpeg.stderr.on('data', (data) => {
+    const line = data.toString();
+    console.log(`FFmpeg: ${line}`);
+
+    // Parse progress from ffmpeg output
+    const timeMatch = line.match(/time=(\d{2}):(\d{2}):(\d{2})\.(\d{2})/);
+    if (timeMatch) {
+      const hours = parseInt(timeMatch[1], 10);
+      const minutes = parseInt(timeMatch[2], 10);
+      const seconds = parseInt(timeMatch[3], 10);
+      const currentTime = hours * 3600 + minutes * 60 + seconds;
+
+      const progress = Math.min(100, Math.floor((currentTime / totalDuration) * 100));
+
+      window.webContents.send('export:progress', { progress, stage: 'Rendering...' });
+    }
+  });
+
+  ffmpeg.on('close', (code) => {
+    if (code === 0) {
+      console.log('Export finished successfully.');
+      window.webContents.send('export:complete', { success: true, outputPath });
+    } else {
+      console.error(`Export failed with code ${code}`);
+      window.webContents.send('export:complete', { success: false, error: `FFmpeg exited with code ${code}` });
+    }
+  });
+
+  ffmpeg.on('error', (err) => {
+    console.error('Failed to start FFmpeg process.', err);
+    window.webContents.send('export:complete', { success: false, error: err.message });
+  });
+}
+
 app.whenReady().then(() => {
   // Custom protocol to serve media files securely ---
   protocol.registerFileProtocol('media', (request, callback) => {
@@ -406,6 +534,10 @@ app.whenReady().then(() => {
 
   ipcMain.handle('recording:start', handleStartRecording)
   ipcMain.handle('fs:readFile', handleReadFile);
+  ipcMain.handle('export:start', handleExportStart);
+  ipcMain.handle('dialog:showSaveDialog', (_event, options) => {
+    return dialog.showSaveDialog(options);
+  });
 
   createRecorderWindow()
 })
