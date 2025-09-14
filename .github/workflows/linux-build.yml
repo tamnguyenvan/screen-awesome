@@ -1,53 +1,82 @@
-name: 'Build for Linux'
+name: Build ScreenAwesome
 
 on:
   push:
-    tags:
-      - 'v*'
-
-permissions:
-  contents: write
+    branches: [ "main" ]
+  pull_request:
+    branches: [ "main" ]
+  # Cho phép chạy workflow này thủ công từ tab Actions
+  workflow_dispatch:
 
 jobs:
-  build-linux:
+  build:
+    name: Build for Linux
+    # Sử dụng môi trường Ubuntu mới nhất để build
     runs-on: ubuntu-latest
 
     steps:
-      - name: '1. Checkout Repository'
+      # 1. Checkout code từ repository
+      - name: Checkout repository
         uses: actions/checkout@v4
 
-      - name: '2. Setup Node.js environment'
+      # 2. Cài đặt Node.js
+      - name: Set up Node.js
         uses: actions/setup-node@v4
         with:
-          node-version: '20.x'
-          cache: 'npm'
+          node-version: '20'
+          cache: 'npm' # Bật caching cho npm
 
-      - name: '3. Setup Python environment'
+      # 3. Cài đặt Python
+      - name: Set up Python
         uses: actions/setup-python@v5
         with:
           python-version: '3.11'
+          cache: 'pip' # Bật caching cho pip
 
-      - name: '4. Install System Dependencies'
+      # 4. Cài đặt các thư viện Python
+      - name: Install Python dependencies
         run: |
-          sudo apt-get update
-          sudo apt-get install -y ffmpeg libx11-dev libxext-dev libpng-dev libxkbfile-dev
+          python -m pip install --upgrade pip
+          pip install pynput pyinstaller
 
-      - name: '5. Install Python Dependencies'
+      # 5. Cài đặt các dependencies của Node.js
+      - name: Install npm dependencies
+        run: npm ci
+
+      # 6. Tải và thiết lập FFmpeg
+      # BƯỚC MỚI VÀ QUAN TRỌNG NHẤT
+      - name: Download and set up FFmpeg
         run: |
-          pip install --no-cache-dir pynput pyinstaller
+          echo "Setting up FFmpeg for Linux..."
+          # Tạo thư mục đích nếu nó chưa tồn tại
+          mkdir -p binaries/linux
+          # Tải về một bản build FFmpeg tĩnh (static)
+          curl -L -o ffmpeg.tar.xz https://johnvansickle.com/ffmpeg/builds/ffmpeg-git-amd64-static.tar.xz
+          # Giải nén, chỉ lấy file ffmpeg và bỏ qua thư mục cha
+          tar -xf ffmpeg.tar.xz --strip-components=1 -C . ffmpeg-git-*-amd64-static/ffmpeg
+          # Di chuyển file ffmpeg vào đúng vị trí
+          mv ffmpeg binaries/linux/
+          # Cấp quyền thực thi cho file binary (RẤT QUAN TRỌNG)
+          chmod +x binaries/linux/ffmpeg
+          # Dọn dẹp file đã tải về
+          rm ffmpeg.tar.xz
+          echo "FFmpeg setup complete."
 
-      - name: '6. Install NPM Dependencies'
-        run: npm install
+      # 7. (Tùy chọn) Kiểm tra lại xem các file binary đã đúng vị trí chưa
+      - name: Verify binaries are present
+        run: |
+          echo "--- Verifying binaries directory structure after download ---"
+          ls -R binaries
+          echo "--- Verifying python script ---"
+          ls -R python
 
-      - name: '7. Build the Application'
+      # 8. Chạy lệnh build chính
+      - name: Build application
         run: npm run build
 
-      - name: '8. Upload AppImage to Release'
-        uses: actions/upload-release-asset@v1
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      # 9. Tải lên artifact đã build
+      - name: Upload Artifact
+        uses: actions/upload-artifact@v4
         with:
-          upload_url: ${{ github.event.release.upload_url }}
-          asset_path: ./dist/ScreenAwesome-${{ github.ref_name }}.AppImage
-          asset_name: ScreenAwesome-${{ github.ref_name }}-linux-x86_64.AppImage
-          asset_content_type: application/vnd.appimage
+          name: ScreenAwesome-Linux-AppImage
+          path: dist/*.AppImage
