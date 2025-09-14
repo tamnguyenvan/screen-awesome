@@ -20,7 +20,7 @@ export function EditorPage() {
   }, [loadProject]);
 
   return (
-    <main className="h-screen w-screen bg-background flex flex-col overflow-hidden">
+    <main className="h-screen w-screen bg-background flex flex-col overflow-hidden select-none">
       {/* Main Content */}
       <div className="flex flex-1 overflow-hidden">
         {/* Side Panel */}
@@ -30,15 +30,17 @@ export function EditorPage() {
 
         {/* Center Area (Preview + Timeline) */}
         <div className="flex-1 flex flex-col overflow-hidden">
-          {/* Preview Area */}
-          <div className="flex-1 flex flex-col items-center justify-center p-4 bg-muted/50 overflow-hidden relative">
-             <Preview videoRef={videoRef} />
-             <div className="absolute bottom-4 left-4 right-4 z-10">
-                <PreviewControls videoRef={videoRef} />
-             </div>
+          
+          <div className="flex-1 flex flex-col p-4 bg-muted/50 overflow-hidden">
+            <div className="flex-1 flex items-center justify-center overflow-hidden">
+              <Preview videoRef={videoRef} />
+            </div>
+            <div className="flex-shrink-0 pt-4">
+              <PreviewControls videoRef={videoRef} />
+            </div>
           </div>
           
-          {/* Timeline Area */}
+          {/* Timeline Area (không đổi) */}
           <div className="h-48 flex-shrink-0 bg-card border-t overflow-x-auto">
             <Timeline videoRef={videoRef} />
           </div>
