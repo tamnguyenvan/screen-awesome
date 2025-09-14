@@ -43,6 +43,23 @@ jobs:
       - name: '5. Install npm dependencies'
         run: npm ci
 
+      # 5.1. Cài đặt X11 và chuyển từ Wayland sang X11
+      - name: '5.1 Setup X11 environment'
+        run: |
+          echo 'Setting up X11 environment...'
+          sudo apt-get update
+          sudo apt-get install -y xvfb x11-apps libxss1 libgconf-2-4 libnss3-dev libxtst6
+          echo 'DISPLAY=:99' >> $GITHUB_ENV
+
+      # 5.2. Khởi động Xvfb
+      - name: '5.2 Start Xvfb'
+        run: |
+          echo 'Starting Xvfb...'
+          Xvfb :99 -screen 0 1280x800x24 > /dev/null 2>&1 &
+          sleep 3
+          export DISPLAY=:99
+          echo 'Xvfb started successfully'
+
       # 6. Tải và thiết lập FFmpeg
       - name: '6. Download and set up FFmpeg'
         run: |
@@ -62,10 +79,12 @@ jobs:
         # github.ref_name sẽ là 'v1.0.8', lệnh `substring` sẽ loại bỏ chữ 'v'
         run: npm version ${{ github.ref_name }} --no-git-tag-version
 
-      # 8. Build ứng dụng mà KHÔNG PUBLISH
+      # 8. Build ứng dụng mà KHÔNG PUBLISH với Xvfb
       # SỬA LỖI CHÍNH: Thêm cờ '--publish never' để ngăn electron-builder tự động tạo release
-      - name: '8. Build the Application'
-        run: npm run build -- --publish never
+      - name: '8. Build the Application with Xvfb'
+        run: |
+          export DISPLAY=:99
+          xvfb-run --auto-servernum npm run build -- --publish never
 
       # 9. Tạo Release và Upload Artifact
       # Cải tiến: Sử dụng action `softprops/action-gh-release` để làm cả 2 việc trong 1 bước
