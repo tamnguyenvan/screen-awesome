@@ -27,9 +27,9 @@ function ZoomRegionBlock({ region, left, width, isSelected, onMouseDown }: Regio
     <div
       data-region-id={region.id}
       className={cn(
-        "absolute h-full rounded-lg flex items-center px-3 text-white text-xs cursor-pointer",
-        "bg-blue-600/80",
-        isSelected && "ring-2 ring-yellow-400 z-10"
+        "absolute h-full rounded-lg flex items-center px-3 text-primary-foreground text-xs cursor-pointer",
+        "bg-primary/80",
+        isSelected && "ring-2 ring-ring z-10"
       )}
       style={{ left: `${left}px`, width: `${width}px` }}
       onMouseDown={(e) => onMouseDown(e, 'move')}
@@ -55,9 +55,9 @@ function CutRegionBlock({ region, left, width, isSelected, onMouseDown }: Region
     <div
       data-region-id={region.id}
       className={cn(
-        "absolute h-full rounded-lg flex items-center px-3 text-white text-xs cursor-pointer",
-        "bg-red-600/80",
-        isSelected && "ring-2 ring-yellow-400 z-10"
+        "absolute h-full rounded-lg flex items-center px-3 text-destructive-foreground text-xs cursor-pointer",
+        "bg-destructive/80",
+        isSelected && "ring-2 ring-ring z-10"
       )}
       style={{ left: `${left}px`, width: `${width}px` }}
       onMouseDown={(e) => onMouseDown(e, 'move')}
@@ -81,7 +81,7 @@ function CutRegionBlock({ region, left, width, isSelected, onMouseDown }: Region
 
 export function Timeline({ videoRef }: TimelineProps) {
   const store = useEditorStore();
-  const containerRef = useRef<HTMLDivElement>(null); 
+  const containerRef = useRef<HTMLDivElement>(null);
   const timelineRef = useRef<HTMLDivElement>(null);
   const playheadRef = useRef<HTMLDivElement>(null);
 
@@ -133,7 +133,7 @@ export function Timeline({ videoRef }: TimelineProps) {
       const mouseX = e.clientX - rect.left;
       if (isDraggingPlayhead) {
         let newTime = pxToTime(mouseX);
-        newTime = Math.max(0, Math.min(newTime, store.duration)); 
+        newTime = Math.max(0, Math.min(newTime, store.duration));
         store.setCurrentTime(newTime);
         if (videoRef.current) videoRef.current.currentTime = newTime;
         return;
@@ -218,8 +218,8 @@ export function Timeline({ videoRef }: TimelineProps) {
           {Array.from({ length: Math.floor(store.duration) + 1 }).map((_, sec) => {
             if (store.duration > 0 && pixelsPerSecond > 20 || (sec % 5 === 0 && pixelsPerSecond > 5) || (sec % 10 === 0)) {
               return (
-                <div key={sec} className="absolute text-xs text-gray-400" style={{ left: `${timeToPx(sec)}px` }}>
-                  <div className="h-2 w-px bg-gray-400"></div>
+                <div key={sec} className="absolute text-xs text-muted-foreground" style={{ left: `${timeToPx(sec)}px` }}>
+                  <div className="h-2 w-px bg-border"></div>
                   <span className="absolute -translate-x-1/2">{sec}s</span>
                 </div>
               )
@@ -229,16 +229,17 @@ export function Timeline({ videoRef }: TimelineProps) {
         </div>
 
         {/* Tracks Area */}
-        <div className="absolute top-5 left-0 right-0" style={{width: `${store.duration * pixelsPerSecond}px`}}>
-          <div className={cn("h-[50px] rounded-lg bg-gray-200 dark:bg-gray-700 flex items-center px-2")}>
-            <p className="text-sm text-gray-500">Base Video Track</p>
+        <div className="absolute top-5 left-0 right-0" style={{ width: `${store.duration * pixelsPerSecond}px` }}>
+          <div className={cn("h-[50px] rounded-lg bg-muted flex items-center px-2")}>
+            <p className="text-sm text-muted-foreground">Base Video Track</p>
           </div>
           <div className={cn("h-[50px] mt-2 relative")}>
             {[...store.zoomRegions, ...store.cutRegions].map(region => {
               const left = timeToPx(region.startTime);
               const width = timeToPx(region.duration);
               const isSelected = store.selectedRegionId === region.id;
-              const props = { region, left, width, isSelected,
+              const props = {
+                region, left, width, isSelected,
                 onMouseDown: (e: ReactMouseEvent<HTMLDivElement>, type: 'move' | 'resize-left' | 'resize-right') => handleRegionMouseDown(e, region, type)
               };
               return region.type === 'zoom' ? <ZoomRegionBlock key={region.id} {...props} /> : <CutRegionBlock key={region.id} {...props} />;
@@ -252,11 +253,11 @@ export function Timeline({ videoRef }: TimelineProps) {
             ref={playheadRef}
             className="absolute top-0 bottom-0 z-20 pointer-events-none"
           >
-            <div className="w-[2px] h-full bg-yellow-400"></div>
+            <div className="w-[2px] h-full bg-ring"></div>
             <div
               data-playhead-handle
               className={cn(
-                "absolute top-0 w-4 h-4 rounded-full bg-yellow-400 border-2 border-white dark:border-gray-800 pointer-events-auto",
+                "absolute top-0 w-4 h-4 rounded-full bg-ring border-2 border-card pointer-events-auto",
                 isDraggingPlayhead ? "cursor-grabbing" : "cursor-grab"
               )}
               style={{ transform: 'translateX(-50%)' }}

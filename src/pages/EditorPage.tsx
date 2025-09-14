@@ -20,18 +20,18 @@ export function EditorPage() {
   }, [loadProject]);
 
   return (
-    <main className="h-screen w-screen bg-gray-100 dark:bg-gray-900 flex flex-col overflow-hidden">
+    <main className="h-screen w-screen bg-background flex flex-col overflow-hidden">
       {/* Main Content */}
-      <div className="flex flex-1 overflow-hidden"> {/* Added overflow-hidden */}
+      <div className="flex flex-1 overflow-hidden">
         {/* Side Panel */}
-        <div className="w-80 flex-shrink-0 bg-white dark:bg-gray-800 border-r border-gray-200 dark:border-gray-700 overflow-y-auto">
+        <div className="w-80 flex-shrink-0 bg-card border-r overflow-y-auto">
           <SidePanel />
         </div>
 
         {/* Center Area (Preview + Timeline) */}
-        <div className="flex-1 flex flex-col overflow-hidden"> {/* Added overflow-hidden */}
+        <div className="flex-1 flex flex-col overflow-hidden">
           {/* Preview Area */}
-          <div className="flex-1 flex flex-col items-center justify-center p-4 bg-gray-200/50 dark:bg-gray-950/50 overflow-hidden relative">
+          <div className="flex-1 flex flex-col items-center justify-center p-4 bg-muted/50 overflow-hidden relative">
              <Preview videoRef={videoRef} />
              <div className="absolute bottom-4 left-4 right-4 z-10">
                 <PreviewControls videoRef={videoRef} />
@@ -39,8 +39,7 @@ export function EditorPage() {
           </div>
           
           {/* Timeline Area */}
-          <div className="h-48 flex-shrink-0 bg-white dark:bg-gray-800 border-t border-gray-200 dark:border-gray-700 overflow-x-auto">
-            {/* This div will now scroll horizontally if its child (Timeline) is too wide */}
+          <div className="h-48 flex-shrink-0 bg-card border-t overflow-x-auto">
             <Timeline videoRef={videoRef} />
           </div>
         </div>

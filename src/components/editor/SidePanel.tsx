@@ -3,14 +3,14 @@ import React, { useState } from 'react';
 import { useEditorStore } from '../../store/editorStore';
 import { cn } from '../../lib/utils';
 import { WALLPAPERS } from '../../lib/constants';
-import { RegionSettingsPanel } from './RegionSettingsPanel'; // Import mới
+import { RegionSettingsPanel } from './RegionSettingsPanel';
 
 type BackgroundTab = 'color' | 'gradient' | 'image' | 'wallpaper';
 
 function FrameSettingsPanel() {
   const { frameStyles, updateFrameStyle, updateBackground } = useEditorStore();
   const [activeTab, setActiveTab] = useState<BackgroundTab>(frameStyles.background.type);
-  // ... (toàn bộ nội dung của FrameSettingsPanel, không thay đổi)
+  
   const handleStyleChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const { name, value, type } = e.target;
     updateFrameStyle({
@@ -41,34 +41,17 @@ function FrameSettingsPanel() {
   };
 
   return (
-    <div className="p-4 space-y-6 text-sm text-gray-700 dark:text-gray-300">
-      <h2 className={cn("text-xl font-bold border-b pb-2 mb-4", "dark:text-white")}>
+    <div className="p-4 space-y-6 text-sm text-foreground">
+      <h2 className={cn("text-xl text-foreground font-bold border-b pb-2 mb-4")}>
         Frame Customization
       </h2>
-        {/* ... (Toàn bộ code của các control group: Background, Padding, Frame) */}
-        {/* Copy paste toàn bộ code của các control vào đây */}
-        <ControlGroup label="Background">
+      
+      <ControlGroup label="Background">
         <div className={cn("flex border-b mb-4")}>
-          <TabButton 
-            name="Wallpaper" 
-            active={activeTab === 'wallpaper'} 
-            onClick={() => selectTab('wallpaper')} 
-          />
-          <TabButton 
-            name="Gradient" 
-            active={activeTab === 'gradient'} 
-            onClick={() => selectTab('gradient')} 
-          />
-          <TabButton 
-            name="Color" 
-            active={activeTab === 'color'} 
-            onClick={() => selectTab('color')} 
-          />
-          <TabButton 
-            name="Image" 
-            active={activeTab === 'image'} 
-            onClick={() => selectTab('image')} 
-          />
+          <TabButton name="Wallpaper" active={activeTab === 'wallpaper'} onClick={() => selectTab('wallpaper')} />
+          <TabButton name="Gradient" active={activeTab === 'gradient'} onClick={() => selectTab('gradient')} />
+          <TabButton name="Color" active={activeTab === 'color'} onClick={() => selectTab('color')} />
+          <TabButton name="Image" active={activeTab === 'image'} onClick={() => selectTab('image')} />
         </div>
         {activeTab === 'color' && (
           <input 
@@ -76,38 +59,26 @@ function FrameSettingsPanel() {
             name="color" 
             value={frameStyles.background.color || '#ffffff'} 
             onChange={handleBackgroundChange} 
-            className={cn(
-              "w-full h-10 p-1 border rounded",
-              "bg-gray-100 dark:bg-gray-700",
-              "dark:border-gray-600"
-            )} 
+            className="w-full h-10 p-1 border rounded bg-input"
           />
         )}
         {activeTab === 'gradient' && (
-          <div className={cn("space-y-2")}>
-            <label className={cn("text-xs")}>Start</label>
+          <div className="space-y-2">
+            <label className="text-xs text-muted-foreground">Start</label>
             <input 
               type="color" 
               name="gradientStart" 
               value={frameStyles.background.gradientStart || '#2b3a67'} 
               onChange={handleBackgroundChange} 
-              className={cn(
-                "w-full h-10 p-1 border rounded",
-                "bg-gray-100 dark:bg-gray-700",
-                "dark:border-gray-600"
-              )} 
+              className="w-full h-10 p-1 border rounded bg-input"
             />
-            <label className={cn("text-xs")}>End</label>
+            <label className="text-xs text-muted-foreground">End</label>
             <input 
               type="color" 
               name="gradientEnd" 
               value={frameStyles.background.gradientEnd || '#0b0f2b'} 
               onChange={handleBackgroundChange} 
-              className={cn(
-                "w-full h-10 p-1 border rounded",
-                "bg-gray-100 dark:bg-gray-700",
-                "dark:border-gray-600"
-              )} 
+              className="w-full h-10 p-1 border rounded bg-input"
             />
           </div>
         )}
@@ -117,18 +88,16 @@ function FrameSettingsPanel() {
             accept="image/*" 
             onChange={handleImageUpload} 
             className={cn(
-              "w-full text-xs",
+              "w-full text-xs text-muted-foreground",
               "file:mr-4 file:py-2 file:px-4 file:rounded-md",
               "file:border-0 file:text-sm file:font-semibold",
-              "file:bg-blue-50 file:text-blue-700",
-              "hover:file:bg-blue-100",
-              "dark:file:bg-blue-900/50 dark:file:text-blue-300",
-              "dark:hover:file:bg-blue-900"
+              "file:bg-primary file:text-primary-foreground",
+              "hover:file:bg-primary/90"
             )} 
           />
         )}
         {activeTab === 'wallpaper' && (
-          <div className={cn("grid grid-cols-2 gap-2")}>
+          <div className="grid grid-cols-2 gap-2">
             {WALLPAPERS.map(url => (
               <button 
                 key={url.thumbnailUrl} 
@@ -136,20 +105,21 @@ function FrameSettingsPanel() {
                 className={cn(
                   "h-16 rounded-md bg-cover bg-center border-2",
                   frameStyles.background.thumbnailUrl === url.thumbnailUrl 
-                    ? "border-blue-500" 
+                    ? "border-primary" 
                     : "border-transparent"
                 )}
               >
                 <img 
                   src={url.thumbnailUrl} 
                   alt={url.thumbnailUrl} 
-                  className={cn("w-full h-full object-cover rounded")} 
+                  className="w-full h-full object-cover rounded" 
                 />
               </button>
             ))}
           </div>
         )}
       </ControlGroup>
+      
       <ControlGroup label={`Padding: ${frameStyles.padding}%`}>
         <input
           type="range"
@@ -158,67 +128,50 @@ function FrameSettingsPanel() {
           max="30"
           value={frameStyles.padding}
           onChange={handleStyleChange}
-          className={cn("w-full")}
+          className="w-full"
         />
       </ControlGroup>
+
       <ControlGroup label="Frame">
-        <div className={cn("space-y-4")}>
+        <div className="space-y-4">
           <div>
-            <label className={cn("block text-xs mb-1")}>
+            <label className="block text-xs mb-1 text-muted-foreground">
               Border Radius: {frameStyles.borderRadius}px
             </label>
             <input
-              type="range"
-              name="borderRadius"
-              min="0"
-              max="50"
-              value={frameStyles.borderRadius}
-              onChange={handleStyleChange}
-              className={cn("w-full")}
+              type="range" name="borderRadius" min="0" max="50"
+              value={frameStyles.borderRadius} onChange={handleStyleChange}
+              className="w-full"
             />
           </div>
           <div>
-            <label className={cn("block text-xs mb-1")}>
+            <label className="block text-xs mb-1 text-muted-foreground">
               Shadow: {frameStyles.shadow}px
             </label>
             <input
-              type="range"
-              name="shadow"
-              min="0"
-              max="50"
-              value={frameStyles.shadow}
-              onChange={handleStyleChange}
-              className={cn("w-full")}
+              type="range" name="shadow" min="0" max="50"
+              value={frameStyles.shadow} onChange={handleStyleChange}
+              className="w-full"
             />
           </div>
           <div>
-            <label className={cn("block text-xs mb-1")}>
+            <label className="block text-xs mb-1 text-muted-foreground">
               Border Width: {frameStyles.borderWidth}px
             </label>
             <input
-              type="range"
-              name="borderWidth"
-              min="0"
-              max="20"
-              value={frameStyles.borderWidth}
-              onChange={handleStyleChange}
-              className={cn("w-full")}
+              type="range" name="borderWidth" min="0" max="20"
+              value={frameStyles.borderWidth} onChange={handleStyleChange}
+              className="w-full"
             />
           </div>
           <div>
-            <label className={cn("block text-xs mb-1")}>
+            <label className="block text-xs mb-1 text-muted-foreground">
               Border Color
             </label>
             <input
-              type="color"
-              name="borderColor"
-              value={frameStyles.borderColor}
+              type="color" name="borderColor" value={frameStyles.borderColor}
               onChange={handleStyleChange}
-              className={cn(
-                "w-10 h-10 p-1 border rounded",
-                "bg-gray-100 dark:bg-gray-700",
-                "dark:border-gray-600"
-              )}
+              className="w-10 h-10 p-1 border rounded bg-input"
             />
           </div>
         </div>
@@ -241,10 +194,10 @@ export function SidePanel() {
   return <FrameSettingsPanel />;
 }
 
-// Helper components (giữ nguyên)
+// Helper components
 const ControlGroup = ({ label, children }: { label: string, children: React.ReactNode }) => (
   <div>
-    <label className={cn("block font-medium mb-2")}>{label}</label>
+    <label className="block font-medium mb-2 text-foreground">{label}</label>
     {children}
   </div>
 )
@@ -254,7 +207,9 @@ const TabButton = ({ name, active, onClick }: { name: string, active: boolean, o
     onClick={onClick} 
     className={cn(
       "px-4 py-2 text-sm font-medium transition-colors",
-      active ? "border-b-2 border-blue-500 text-blue-600 dark:text-blue-400" : "text-gray-500 hover:text-gray-700 dark:hover:text-gray-300"
+      active 
+        ? "border-b-2 border-primary text-primary" 
+        : "text-muted-foreground hover:text-foreground"
     )}
   >
     {name}

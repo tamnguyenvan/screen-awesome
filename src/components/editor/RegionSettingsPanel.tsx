@@ -24,9 +24,9 @@ export function RegionSettingsPanel({ region }: RegionSettingsPanelProps) {
   }
 
   return (
-    <div className="p-4 space-y-6 text-sm text-gray-700 dark:text-gray-300">
+    <div className="p-4 space-y-6 text-sm text-foreground">
       <div className="flex items-center justify-between">
-        <h2 className={cn("text-xl font-bold border-b pb-2", "dark:text-white capitalize")}>
+        <h2 className={cn("text-xl font-bold border-b pb-2 text-foreground capitalize")}>
           {region.type} Region
         </h2>
         <Button variant="destructive" size="icon" onClick={handleDelete}>
@@ -36,30 +36,32 @@ export function RegionSettingsPanel({ region }: RegionSettingsPanelProps) {
 
       <div className="space-y-4">
         <div>
-          <label className="block text-xs mb-1">Start Time (s)</label>
+          <label className="block text-xs mb-1 text-muted-foreground">Start Time (s)</label>
           <input
             type="number"
             name="startTime"
             value={region.startTime.toFixed(2)}
             onChange={handleValueChange}
-            className="w-full p-2 bg-gray-100 dark:bg-gray-700 border rounded-md"
+            className="w-full p-2 bg-input border rounded-md focus:outline-none focus:ring-2 focus:ring-ring"
+            step="0.01"
           />
         </div>
         <div>
-          <label className="block text-xs mb-1">Duration (s)</label>
+          <label className="block text-xs mb-1 text-muted-foreground">Duration (s)</label>
           <input
             type="number"
             name="duration"
             value={region.duration.toFixed(2)}
             onChange={handleValueChange}
-            className="w-full p-2 bg-gray-100 dark:bg-gray-700 border rounded-md"
+            className="w-full p-2 bg-input border rounded-md focus:outline-none focus:ring-2 focus:ring-ring"
+            step="0.01"
           />
         </div>
 
         {region.type === 'zoom' && (
           <>
             <div>
-              <label className="block text-xs mb-1">Zoom Level: {region.zoomLevel}x</label>
+              <label className="block text-xs mb-1 text-muted-foreground">Zoom Level: {region.zoomLevel}x</label>
               <input
                 type="range"
                 name="zoomLevel"
@@ -72,8 +74,13 @@ export function RegionSettingsPanel({ region }: RegionSettingsPanelProps) {
               />
             </div>
             <div>
-              <label className="block text-xs mb-1">Easing</label>
-              <select name="easing" value={region.easing} onChange={handleValueChange} className="w-full p-2 bg-gray-100 dark:bg-gray-700 border rounded-md">
+              <label className="block text-xs mb-1 text-muted-foreground">Easing</label>
+              <select 
+                name="easing" 
+                value={region.easing} 
+                onChange={handleValueChange} 
+                className="w-full p-2 bg-input border rounded-md focus:outline-none focus:ring-2 focus:ring-ring"
+              >
                 <option value="linear">Linear</option>
                 <option value="ease-in-out">Ease In/Out</option>
               </select>

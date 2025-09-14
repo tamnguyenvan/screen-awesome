@@ -1,7 +1,21 @@
+// src/main.tsx
 import React from 'react'
 import ReactDOM from 'react-dom/client'
 import App from './App.tsx'
 import './index.css'
+
+// --- THEME DETECTION LOGIC ---
+const applyTheme = () => {
+  const isDarkMode = window.matchMedia && window.matchMedia('(prefers-color-scheme: dark)').matches;
+  document.documentElement.setAttribute('data-theme', isDarkMode ? 'dark' : 'light');
+};
+
+// Apply theme on initial load
+applyTheme();
+
+// Listen for changes in system theme
+window.matchMedia('(prefers-color-scheme: dark)').addEventListener('change', applyTheme);
+// --- END THEME LOGIC ---
 
 ReactDOM.createRoot(document.getElementById('root')!).render(
   <React.StrictMode>

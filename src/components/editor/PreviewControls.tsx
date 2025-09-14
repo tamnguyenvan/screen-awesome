@@ -34,8 +34,8 @@ export function PreviewControls({ videoRef }: PreviewControlsProps) {
 
   return (
     <div className={cn(
-      "h-12 flex-shrink-0 bg-white/50 dark:bg-gray-900/50 backdrop-blur-sm",
-      "flex items-center justify-between px-4 border-t border-gray-200/50 dark:border-gray-700/50"
+      "h-12 flex-shrink-0 bg-card/50 backdrop-blur-sm",
+      "flex items-center justify-between px-4 border rounded-md"
     )}>
       <div className="flex items-center gap-2">
         <Button variant="outline" size="sm" onClick={addZoomRegion}>
@@ -47,7 +47,7 @@ export function PreviewControls({ videoRef }: PreviewControlsProps) {
           Add Cut
         </Button>
          <div className="flex items-center gap-2 w-48 ml-4">
-            <ZoomIn className="w-4 h-4 text-gray-500" />
+            <ZoomIn className="w-4 h-4 text-muted-foreground" />
             <input
               type="range"
               min="0.5" // Allow zooming out
@@ -55,7 +55,7 @@ export function PreviewControls({ videoRef }: PreviewControlsProps) {
               step="0.25"
               value={timelineZoom}
               onChange={(e) => setTimelineZoom(parseFloat(e.target.value))}
-              className={cn("w-full h-2 bg-gray-300 dark:bg-gray-600 rounded-lg appearance-none cursor-pointer")}
+              className={cn("w-full h-2 bg-muted rounded-lg appearance-none cursor-pointer")}
             />
         </div>
       </div>
@@ -67,7 +67,7 @@ export function PreviewControls({ videoRef }: PreviewControlsProps) {
         <Button variant="ghost" size="icon" onClick={togglePlay}>
           {isPlaying ? <Pause className="w-6 h-6" /> : <Play className="w-6 h-6" />}
         </Button>
-        <span className="text-xs font-mono text-gray-600 dark:text-gray-400 w-24 text-center">
+        <span className="text-xs font-mono text-muted-foreground w-24 text-center">
           {formatTime(currentTime)} / {formatTime(duration)}
         </span>
       </div>
@@ -78,8 +78,7 @@ export function PreviewControls({ videoRef }: PreviewControlsProps) {
         value={aspectRatio}
         onChange={(e) => setAspectRatio(e.target.value as AspectRatio)}
         className={cn(
-          "bg-gray-100 dark:bg-gray-700 border border-gray-300 dark:border-gray-600",
-          "rounded-md text-xs px-2 py-1.5 focus:outline-none focus:ring-2 focus:ring-blue-500"
+          "bg-muted border rounded-md text-xs px-2 py-1.5 focus:outline-none focus:ring-2 focus:ring-ring"
         )}
       >
         <option value="16:9">16:9</option>
