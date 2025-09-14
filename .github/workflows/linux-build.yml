@@ -1,18 +1,20 @@
-name: Build ScreenAwesome
+name: Build for Linux
 
 on:
   push:
-    branches: [ "main" ]
-  pull_request:
-    branches: [ "main" ]
-  # Cho phép chạy workflow này thủ công từ tab Actions
-  workflow_dispatch:
+    tags:
+      - 'v*'
+
+permissions:
+  contents: write
 
 jobs:
   build:
     name: Build for Linux
     # Sử dụng môi trường Ubuntu mới nhất để build
     runs-on: ubuntu-latest
+    env:
+      GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
     steps:
       # 1. Checkout code từ repository
@@ -31,13 +33,12 @@ jobs:
         uses: actions/setup-python@v5
         with:
           python-version: '3.11'
-          cache: 'pip' # Bật caching cho pip
 
       # 4. Cài đặt các thư viện Python
       - name: Install Python dependencies
         run: |
           python -m pip install --upgrade pip
-          pip install pynput pyinstaller
+          pip install --no-cache-dir pynput pyinstaller
 
       # 5. Cài đặt các dependencies của Node.js
       - name: Install npm dependencies
@@ -48,17 +49,13 @@ jobs:
       - name: Download and set up FFmpeg
         run: |
           echo "Setting up FFmpeg for Linux..."
-          # Tạo thư mục đích nếu nó chưa tồn tại
           mkdir -p binaries/linux
-          # Tải về một bản build FFmpeg tĩnh (static)
           curl -L -o ffmpeg.tar.xz https://johnvansickle.com/ffmpeg/builds/ffmpeg-git-amd64-static.tar.xz
-          # Giải nén, chỉ lấy file ffmpeg và bỏ qua thư mục cha
-          tar -xf ffmpeg.tar.xz --strip-components=1 -C . ffmpeg-git-*-amd64-static/ffmpeg
-          # Di chuyển file ffmpeg vào đúng vị trí
-          mv ffmpeg binaries/linux/
-          # Cấp quyền thực thi cho file binary (RẤT QUAN TRỌNG)
+          mkdir -p temp_ffmpeg
+          tar -xf ffmpeg.tar.xz -C temp_ffmpeg --strip-components=1
+          find temp_ffmpeg -name 'ffmpeg' -type f -exec mv {} binaries/linux/ \;
+          rm -rf temp_ffmpeg
           chmod +x binaries/linux/ffmpeg
-          # Dọn dẹp file đã tải về
           rm ffmpeg.tar.xz
           echo "FFmpeg setup complete."
 
@@ -74,9 +71,26 @@ jobs:
       - name: Build application
         run: npm run build
 
-      # 9. Tải lên artifact đã build
-      - name: Upload Artifact
-        uses: actions/upload-artifact@v4
+      # 9. Tạo GitHub Release và tải lên AppImage
+      - name: Create Release
+        id: create_release
+        uses: actions/create-release@v1
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         with:
-          name: ScreenAwesome-Linux-AppImage
-          path: dist/*.AppImage
+          tag_name: ${{ github.ref }}
+          release_name: Release ${{ github.ref_name }}
+          draft: false
+          prerelease: false
+
+      # 10. Tải lên AppImage lên Release
+      - name: Upload Release Asset
+        id: upload-release-asset
+        uses: actions/upload-release-asset@v1
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        with:
+          upload_url: ${{ steps.create_release.outputs.upload_url }}
+          asset_path: ./dist/ScreenAwesome-*.AppImage
+          asset_name: ScreenAwesome-${{ github.ref_name }}-linux-x86_64.AppImage
+          asset_content_type: application/octet-stream
