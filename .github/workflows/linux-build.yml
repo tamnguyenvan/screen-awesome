@@ -1,82 +1,79 @@
-name: Build ScreenAwesome
+name: Build for Linux
 
 on:
   push:
-    branches: [ "main" ]
-  pull_request:
-    branches: [ "main" ]
-  # Cho phép chạy workflow này thủ công từ tab Actions
-  workflow_dispatch:
+    tags:
+      - 'v*'
+
+permissions:
+  contents: write # Cần quyền này để tạo release và upload file
 
 jobs:
-  build:
-    name: Build for Linux
-    # Sử dụng môi trường Ubuntu mới nhất để build
+  build-linux:
+    name: Build Linux AppImage
     runs-on: ubuntu-latest
+    env:
+      GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
     steps:
       # 1. Checkout code từ repository
-      - name: Checkout repository
+      - name: '1. Checkout Repository'
         uses: actions/checkout@v4
 
       # 2. Cài đặt Node.js
-      - name: Set up Node.js
+      - name: '2. Set up Node.js'
         uses: actions/setup-node@v4
         with:
           node-version: '20'
-          cache: 'npm' # Bật caching cho npm
+          cache: 'npm'
 
       # 3. Cài đặt Python
-      - name: Set up Python
+      - name: '3. Set up Python'
         uses: actions/setup-python@v5
         with:
           python-version: '3.11'
-          cache: 'pip' # Bật caching cho pip
 
       # 4. Cài đặt các thư viện Python
-      - name: Install Python dependencies
+      - name: '4. Install Python dependencies'
         run: |
           python -m pip install --upgrade pip
           pip install pynput pyinstaller
 
       # 5. Cài đặt các dependencies của Node.js
-      - name: Install npm dependencies
+      - name: '5. Install npm dependencies'
         run: npm ci
 
       # 6. Tải và thiết lập FFmpeg
-      # BƯỚC MỚI VÀ QUAN TRỌNG NHẤT
-      - name: Download and set up FFmpeg
+      - name: '6. Download and set up FFmpeg'
         run: |
           echo "Setting up FFmpeg for Linux..."
-          # Tạo thư mục đích nếu nó chưa tồn tại
           mkdir -p binaries/linux
-          # Tải về một bản build FFmpeg tĩnh (static)
           curl -L -o ffmpeg.tar.xz https://johnvansickle.com/ffmpeg/builds/ffmpeg-git-amd64-static.tar.xz
-          # Giải nén, chỉ lấy file ffmpeg và bỏ qua thư mục cha
-          tar -xf ffmpeg.tar.xz --strip-components=1 -C . ffmpeg-git-*-amd64-static/ffmpeg
-          # Di chuyển file ffmpeg vào đúng vị trí
-          mv ffmpeg binaries/linux/
-          # Cấp quyền thực thi cho file binary (RẤT QUAN TRỌNG)
+          # Giải nén trực tiếp file ffmpeg vào thư mục đích, đơn giản và hiệu quả hơn
+          tar -xf ffmpeg.tar.xz --strip-components=1 -C binaries/linux/ $(tar -tf ffmpeg.tar.xz | head -n 1)ffmpeg
           chmod +x binaries/linux/ffmpeg
-          # Dọn dẹp file đã tải về
           rm ffmpeg.tar.xz
-          echo "FFmpeg setup complete."
+          echo "FFmpeg setup complete. Verifying:"
+          ls -l binaries/linux
 
-      # 7. (Tùy chọn) Kiểm tra lại xem các file binary đã đúng vị trí chưa
-      - name: Verify binaries are present
-        run: |
-          echo "--- Verifying binaries directory structure after download ---"
-          ls -R binaries
-          echo "--- Verifying python script ---"
-          ls -R python
+      # 7. Cập nhật phiên bản ứng dụng từ Git Tag
+      # Cải tiến: Đảm bảo file build có đúng phiên bản (ví dụ: 1.0.8) thay vì 0.0.0
+      - name: '7. Sync App Version with Git Tag'
+        # github.ref_name sẽ là 'v1.0.8', lệnh `substring` sẽ loại bỏ chữ 'v'
+        run: npm version ${{ github.ref_name }} --no-git-tag-version
 
-      # 8. Chạy lệnh build chính
-      - name: Build application
-        run: npm run build
+      # 8. Build ứng dụng mà KHÔNG PUBLISH
+      # SỬA LỖI CHÍNH: Thêm cờ '--publish never' để ngăn electron-builder tự động tạo release
+      - name: '8. Build the Application'
+        run: npm run build -- --publish never
 
-      # 9. Tải lên artifact đã build
-      - name: Upload Artifact
-        uses: actions/upload-artifact@v4
+      # 9. Tạo Release và Upload Artifact
+      # Cải tiến: Sử dụng action `softprops/action-gh-release` để làm cả 2 việc trong 1 bước
+      - name: '9. Create Release and Upload AppImage'
+        uses: softprops/action-gh-release@v2
         with:
-          name: ScreenAwesome-Linux-AppImage
-          path: dist/*.AppImage
+          # Tự động tạo ghi chú phát hành từ các commit gần nhất
+          generate_release_notes: true
+          # Đường dẫn tới các file cần upload, hỗ trợ ký tự đại diện *
+          files: |
+            dist/*.AppImage
