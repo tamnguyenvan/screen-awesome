@@ -445,6 +445,7 @@ function createRecorderWindow() {
     alwaysOnTop: true,
     resizable: false,
     webPreferences: {
+      nodeIntegration: true,
       preload: path.join(__dirname, 'preload.mjs'),
     },
   })
