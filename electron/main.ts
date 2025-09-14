@@ -1,5 +1,27 @@
 // electron/main.ts
 
+import log from 'electron-log/main';
+
+log.transports.file.format = '[{y}-{m}-{d} {h}:{i}:{s}.{ms}] [{level}] {text}';
+// Automatically clean up old log files.
+log.transports.file.maxSize = 5 * 1024 * 1024; // 5 MB
+// Turn off console logging in production environment to keep the console clean.
+if (process.env.NODE_ENV !== 'development') {
+  log.transports.console.level = false;
+}
+
+process.on('uncaughtException', (error) => {
+  log.error('Unhandled Exception:', error);
+  // In production environment, you might want to notify the user and safely quit the app.
+  // app.quit();
+});
+
+// Handle unhandled Promise rejections
+// Explanation: Similar to above, but for errors occurring in async functions without .catch().
+process.on('unhandledRejection', (reason, promise) => {
+  log.error('Unhandled Rejection at:', promise, 'reason:', reason);
+});
+
 import {
   app, BrowserWindow, ipcMain, Tray, Menu,
   nativeImage, protocol, IpcMainInvokeEvent, dialog
@@ -133,7 +155,7 @@ function cleanupAndSave(): Promise<void> {
 
       // Listen for 'close' event to know when ffmpeg has finished
       ffmpeg.on('close', (code) => {
-        console.log(`FFmpeg process exited with code ${code}`);
+        log.info(`FFmpeg process exited with code ${code}`);
         resolve(); // Complete Promise when ffmpeg has closed
       });
 
@@ -252,7 +274,7 @@ async function handleStartRecording() {
 
     ffmpegProcess = spawn('ffmpeg', args)
     ffmpegProcess.stderr.on('data', (data) => {
-      console.log(`FFmpeg: ${data}`)
+      log.info(`FFmpeg: ${data}`)
     })
 
     // 5. Create Tray Icon
@@ -284,7 +306,7 @@ async function handleStartRecording() {
 }
 
 async function handleStopRecording(videoPath: string, metadataPath: string) {
-  console.log('Stopping recording, preparing to save...');
+  log.info('Stopping recording, preparing to save...');
 
   // 1. Destroy tray icon so user cannot click it
   tray?.destroy();
@@ -296,7 +318,7 @@ async function handleStopRecording(videoPath: string, metadataPath: string) {
   // 3. Call cleanup and most importantly await it
   await cleanupAndSave();
 
-  console.log('Files saved successfully.');
+  log.info('Files saved successfully.');
 
   // 4. Close saving window
   savingWin?.close();
@@ -313,7 +335,7 @@ async function handleStopRecording(videoPath: string, metadataPath: string) {
 }
 
 async function handleCancelRecording(videoPath: string, metadataPath: string) {
-  console.log('Cancelling recording and deleting files...');
+  log.info('Cancelling recording and deleting files...');
 
   // Stop processes without waiting for saving
   if (pythonTracker) {
@@ -336,10 +358,10 @@ async function handleCancelRecording(videoPath: string, metadataPath: string) {
     setTimeout(async () => {
       if (fsSync.existsSync(videoPath)) await fs.unlink(videoPath);
       if (fsSync.existsSync(metadataPath)) await fs.unlink(metadataPath);
-      console.log('Temporary files deleted.');
+      log.info('Temporary files deleted.');
     }, 100);
   } catch (error) {
-    console.error('Could not delete temporary files:', error);
+    log.error('Could not delete temporary files:', error);
   }
 
   recorderWin?.show();
@@ -409,7 +431,7 @@ async function handleExportStart(
  // eslint-disable-next-line @typescript-eslint/no-explicit-any
  { projectState, exportSettings, outputPath }: { projectState: any, exportSettings: any, outputPath: string }
 ) {
-  console.log('[Main] Received "export:start" event. Starting export process...');
+  log.info('[Main] Received "export:start" event. Starting export process...');
   
   // Get reference to the main editor window to send progress updates
   const window = BrowserWindow.fromWebContents(_event.sender);
@@ -440,7 +462,7 @@ async function handleExportStart(
     ? `${VITE_DEV_SERVER_URL}#renderer`
     : path.join(RENDERER_DIST, 'index.html#renderer')
   renderWorker.loadURL(renderUrl);
-  console.log(`[Main] Loading render worker URL: ${renderUrl}`);
+  log.info(`[Main] Loading render worker URL: ${renderUrl}`);
 
 
   // 4. Prepare arguments for FFmpeg
@@ -474,13 +496,13 @@ async function handleExportStart(
   ffmpegArgs.push(outputPath); // Output file path
 
   // 5. Spawn FFmpeg process
-  console.log('[Main] Spawning FFmpeg with args:', ffmpegArgs.join(' '));
+  log.info('[Main] Spawning FFmpeg with args:', ffmpegArgs.join(' '));
   const ffmpeg = spawn('ffmpeg', ffmpegArgs);
   let ffmpegClosed = false;
 
   // Listen to FFmpeg error logs for debugging
   ffmpeg.stderr.on('data', (data) => {
-    console.log(`[FFmpeg stderr]: ${data.toString()}`);
+    log.info(`[FFmpeg stderr]: ${data.toString()}`);
   });
   
   // 6. Listen to events from Worker through IPC
@@ -496,7 +518,7 @@ async function handleExportStart(
 
   // Listener receives signal when worker has rendered all frames
   const finishListener = () => {
-    console.log('[Main] Received "export:render-finished". Closing FFmpeg stdin.');
+    log.info('[Main] Received "export:render-finished". Closing FFmpeg stdin.');
     if (!ffmpegClosed) {
       ffmpeg.stdin.end(); // Close stdin to signal FFmpeg to finish
     }
@@ -508,16 +530,16 @@ async function handleExportStart(
   // 7. Handle when FFmpeg process ends
   ffmpeg.on('close', (code) => {
     ffmpegClosed = true;
-    console.log(`[Main] FFmpeg process exited with code ${code}.`);
+    log.info(`[Main] FFmpeg process exited with code ${code}.`);
     renderWorker?.close(); // Close worker window
     renderWorker = null;
     
     // Send final result back to editor
     if (code === 0) {
-      console.log(`[Main] Export successful. Sending 'export:complete' to editor.`);
+      log.info(`[Main] Export successful. Sending 'export:complete' to editor.`);
       window.webContents.send('export:complete', { success: true, outputPath });
     } else {
-      console.error(`[Main] Export failed. Sending 'export:complete' to editor with error.`);
+      log.error(`[Main] Export failed. Sending 'export:complete' to editor with error.`);
       window.webContents.send('export:complete', { success: false, error: `FFmpeg exited with code ${code}` });
     }
 
@@ -528,7 +550,7 @@ async function handleExportStart(
 
   // 8. Fix: Move data sending logic here, waiting for 'ready' signal from worker
   ipcMain.once('render:ready', () => {
-    console.log('[Main] Received "render:ready" from worker. Sending project state...');
+    log.info('[Main] Received "render:ready" from worker. Sending project state...');
     renderWorker?.webContents.send('render:start', {
       projectState,
       exportSettings
