@@ -4,7 +4,6 @@ import { Play, Pause, Rewind, Scissors, Plus, ZoomIn } from 'lucide-react';
 import { useEditorStore, AspectRatio } from '../../store/editorStore';
 import { Button } from '../ui/button';
 import { cn } from '../../lib/utils';
-import { TooltipProvider } from '@radix-ui/react-tooltip';
 
 interface PreviewControlsProps {
   videoRef: React.RefObject<HTMLVideoElement>;
@@ -47,25 +46,18 @@ export function PreviewControls({ videoRef }: PreviewControlsProps) {
           <Scissors className="w-4 h-4 mr-2" />
           Add Cut
         </Button>
-        <TooltipProvider delayDuration={100}>
-          <div className={cn(
-            "h-12 flex-shrink-0 dark:bg-gray-800 border-b border-gray-200 dark:border-gray-700",
-            "flex items-center justify-end px-4"
-          )}>
-            <div className="flex items-center gap-2 w-48">
-              <ZoomIn className="w-4 h-4 text-gray-500" />
-              <input
-                type="range"
-                min="1"
-                max="4"
-                step="0.5"
-                value={timelineZoom}
-                onChange={(e) => setTimelineZoom(parseFloat(e.target.value))}
-                className={cn("w-full h-2 bg-gray-300 dark:bg-gray-600 rounded-lg appearance-none cursor-pointer")}
-              />
-            </div>
-          </div>
-        </TooltipProvider>
+         <div className="flex items-center gap-2 w-48 ml-4">
+            <ZoomIn className="w-4 h-4 text-gray-500" />
+            <input
+              type="range"
+              min="0.5" // Allow zooming out
+              max="5"
+              step="0.25"
+              value={timelineZoom}
+              onChange={(e) => setTimelineZoom(parseFloat(e.target.value))}
+              className={cn("w-full h-2 bg-gray-300 dark:bg-gray-600 rounded-lg appearance-none cursor-pointer")}
+            />
+        </div>
       </div>
 
       <div className="flex items-center gap-2">
@@ -75,11 +67,10 @@ export function PreviewControls({ videoRef }: PreviewControlsProps) {
         <Button variant="ghost" size="icon" onClick={togglePlay}>
           {isPlaying ? <Pause className="w-6 h-6" /> : <Play className="w-6 h-6" />}
         </Button>
+        <span className="text-xs font-mono text-gray-600 dark:text-gray-400 w-24 text-center">
+          {formatTime(currentTime)} / {formatTime(duration)}
+        </span>
       </div>
-
-      <span className="text-xs font-mono text-gray-600 dark:text-gray-400 w-12 text-center">
-        {formatTime(currentTime)} / {formatTime(duration)}
-      </span>
 
       <div className="flex-grow"></div> {/* Spacer */}
 
