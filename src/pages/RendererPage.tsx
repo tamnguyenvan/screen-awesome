@@ -84,12 +84,17 @@ export function RendererPage() {
   const videoRef = useRef<HTMLVideoElement>(null);
 
   useEffect(() => {
+    console.log('[RendererPage] Component mounted. Setting up listeners.');
+
     const cleanup = window.electronAPI.onRenderStart(async ({ projectState, exportSettings }: RenderStartPayload) => {
-      console.log('Renderer worker received export job:', { projectState, exportSettings });
+      console.log('[RendererPage] Received "render:start" event with job data:', { projectState, exportSettings });
       
       const canvas = canvasRef.current;
       const video = videoRef.current;
-      if (!canvas || !video) return;
+      if (!canvas || !video) {
+        console.error('[RendererPage] Canvas or Video ref is not available.');
+        return;
+      }
 
       const { resolution, fps } = exportSettings;
       const { width: outputWidth, height: outputHeight } = RESOLUTIONS[resolution];
@@ -97,7 +102,10 @@ export function RendererPage() {
       canvas.height = outputHeight;
 
       const ctx = canvas.getContext('2d', { alpha: false });
-      if (!ctx) return;
+      if (!ctx) {
+         console.error('[RendererPage] Failed to get 2D context from canvas.');
+         return;
+      }
       
       // Load state vào Zustand store của worker này
       useEditorStore.setState(projectState);
@@ -108,19 +116,36 @@ export function RendererPage() {
       
       // Wrapper Promise-based cho việc seek video
       const seek = (time: number): Promise<void> => {
-        return new Promise((resolve) => {
-          // Gán listener một lần duy nhất
-          video.onseeked = () => {
-            video.onseeked = null; // Dọn dẹp ngay sau khi hoàn thành
-            resolve();
-          };
-          video.currentTime = time;
+        // SỬA LỖI: Nếu video đã ở đúng vị trí (hoặc rất gần),
+        // resolve ngay lập tức để tránh bị kẹt vì sự kiện 'seeked' không được bắn ra.
+        if (Math.abs(video.currentTime - time) < 0.01) {
+            // THÊM LOG
+            // console.log(`[RendererPage] Seek shortcut: Already at time ${time.toFixed(3)}s.`);
+            return Promise.resolve();
+        }
+
+        return new Promise((resolve, reject) => {
+            const onSeeked = () => {
+                video.removeEventListener('seeked', onSeeked);
+                video.removeEventListener('error', onError);
+                resolve();
+            };
+            const onError = (e: Event) => {
+                video.removeEventListener('seeked', onSeeked);
+                video.removeEventListener('error', onError);
+                console.error('[RendererPage] Video seek error:', e);
+                reject(new Error('Failed to seek video'));
+            };
+
+            video.addEventListener('seeked', onSeeked);
+            video.addEventListener('error', onError);
+            video.currentTime = time;
         });
       };
       
       // --- VÒNG LẶP RENDER MỚI, CÓ KIỂM SOÁT ---
       const totalFrames = Math.floor(projectState.duration * fps);
-      console.log(`Starting render for ${totalFrames} frames at ${fps} FPS.`);
+      console.log(`[RendererPage] Starting render for ${totalFrames} frames at ${fps} FPS.`);
       
       for (let frameIndex = 0; frameIndex < totalFrames; frameIndex++) {
         const currentTime = frameIndex / fps;
@@ -131,20 +156,21 @@ export function RendererPage() {
         );
         
         if (activeCutRegion) {
-          // Nhảy đến cuối của cut region
           const endOfCut = activeCutRegion.startTime + activeCutRegion.duration;
-          // Cập nhật lại frameIndex để vòng lặp tiếp tục từ sau đoạn cut
-          frameIndex = Math.floor(endOfCut * fps) - 1; // -1 vì vòng lặp sẽ ++
-          console.log(`Skipping cut region. Jumping to frame ${frameIndex + 1}`);
-          continue; // Bỏ qua frame hiện tại và đi đến lần lặp tiếp theo
+          const newFrameIndex = Math.floor(endOfCut * fps) - 1;
+          console.log(`[RendererPage] Skipping cut region. Jumping from frame ${frameIndex} to ${newFrameIndex + 1}`);
+          frameIndex = newFrameIndex;
+          continue; 
         }
+
+        // THÊM LOG: Báo hiệu bắt đầu xử lý frame
+        console.log(`[RendererPage] Processing frame ${frameIndex + 1}/${totalFrames} at time ${currentTime.toFixed(3)}s...`);
         
         // 1. Seek video đến đúng vị trí
         await seek(currentTime);
         
         // Cập nhật state của store để `calculateZoomTransform` hoạt động đúng
         useEditorStore.getState().setCurrentTime(currentTime);
-
         const state = useEditorStore.getState();
 
         // 2. Render lên Canvas
@@ -170,13 +196,11 @@ export function RendererPage() {
         const videoX = (outputWidth - videoDisplayWidth) / 2;
         const videoY = (outputHeight - videoDisplayHeight) / 2;
         
-        // Áp dụng hiệu ứng
         ctx.shadowColor = `rgba(0,0,0,${state.frameStyles.shadow / 100})`;
         ctx.shadowBlur = state.frameStyles.shadow;
         ctx.strokeStyle = state.frameStyles.borderColor;
         ctx.lineWidth = state.frameStyles.borderWidth;
         
-        // Vẽ hình chữ nhật bo góc để clip video
         ctx.beginPath();
         ctx.roundRect(videoX, videoY, videoDisplayWidth, videoDisplayHeight, state.frameStyles.borderRadius);
         ctx.closePath();
@@ -184,7 +208,6 @@ export function RendererPage() {
         if (state.frameStyles.borderWidth > 0) ctx.stroke();
         ctx.clip();
         
-        // Tính toán và áp dụng Pan/Zoom
         const { scale, translateX, translateY } = calculateZoomTransform(currentTime);
         
         const scaledVideoRenderWidth = videoDisplayWidth * scale;
@@ -201,24 +224,29 @@ export function RendererPage() {
         // 3. Trích xuất frame và gửi về main process
         const imageData = ctx.getImageData(0, 0, outputWidth, outputHeight);
         const frameBuffer = Buffer.from(imageData.data.buffer);
-        const progress = ((frameIndex + 1) / totalFrames) * 100;
+        const progress = Math.round(((frameIndex + 1) / totalFrames) * 100);
         
-        window.electronAPI.sendFrameToMain({ frame: frameBuffer, progress: Math.round(progress) });
+        window.electronAPI.sendFrameToMain({ frame: frameBuffer, progress });
+
+        // THÊM LOG: Báo hiệu đã xử lý xong frame
+        // console.log(`[RendererPage] Frame ${frameIndex + 1} sent to main process.`);
       }
       
-      // 4. Hoàn tất
-      console.log('All frames rendered. Finishing render.');
+      console.log('[RendererPage] All frames rendered. Sending "finishRender" signal.');
       window.electronAPI.finishRender();
     });
 
+    console.log('[RendererPage] Sending "render:ready" signal to main process.');
+    window.electronAPI.rendererReady();
+
     return () => {
+      console.log('[RendererPage] Component unmounted. Cleaning up listener.');
       if (typeof cleanup === 'function') {
         cleanup();
       }
     };
   }, []);
 
-  // Worker không hiển thị gì cả
   return (
     <div style={{ display: 'none' }}>
       <h1>Renderer Worker</h1>

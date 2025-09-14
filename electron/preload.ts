@@ -90,6 +90,11 @@ export const electronAPI = {
     return () => ipcRenderer.removeListener('render:start', listener);
   },
 
+  // THÊM MỚI: Worker báo cho main là nó đã sẵn sàng
+  rendererReady: () => {
+    ipcRenderer.send('render:ready');
+  },
+
   sendFrameToMain: (payload: { frame: Buffer, progress: number }) => {
     // Sử dụng 'on' và 'send' thay vì 'invoke' để streaming
     ipcRenderer.send('export:frame-data', payload);

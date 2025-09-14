@@ -416,6 +416,9 @@ async function handleExportStart(
  // eslint-disable-next-line @typescript-eslint/no-explicit-any
  { projectState, exportSettings, outputPath }: { projectState: any, exportSettings: any, outputPath: string }
 ) {
+  // THÊM LOG
+  console.log('[Main] Received "export:start" event. Starting export process...');
+  
   // Lấy tham chiếu đến cửa sổ editor chính để gửi thông báo tiến độ
   const window = BrowserWindow.fromWebContents(_event.sender);
   if (!window) return;
@@ -429,13 +432,13 @@ async function handleExportStart(
 
   // 2. Tạo một cửa sổ ẩn để làm worker
   renderWorker = new BrowserWindow({
-    show: false, // Quan trọng: không hiển thị cửa sổ này cho người dùng
+    show: false,
     width: 1280,
     height: 720,
     webPreferences: {
       preload: path.join(__dirname, 'preload.mjs'),
       // Quan trọng: cho phép render mà không cần hiển thị trên màn hình
-      offscreen: true, 
+      offscreen: true,
     },
   });
 
@@ -445,6 +448,9 @@ async function handleExportStart(
     ? `${VITE_DEV_SERVER_URL}#renderer`
     : path.join(RENDERER_DIST, 'index.html#renderer')
   renderWorker.loadURL(renderUrl);
+  // THÊM LOG
+  console.log(`[Main] Loading render worker URL: ${renderUrl}`);
+
 
   // 4. Chuẩn bị các đối số cho FFmpeg
   const { resolution, fps, format } = exportSettings;
@@ -454,7 +460,7 @@ async function handleExportStart(
     '-y', // Ghi đè file đầu ra nếu đã tồn tại
     '-f', 'rawvideo', // Định dạng đầu vào là video thô
     '-vcodec', 'rawvideo',
-    '-pix_fmt', 'bgra', // Định dạng pixel mà Canvas/Electron tạo ra
+    '-pix_fmt', 'rgba', // Định dạng pixel mà Canvas/Electron tạo ra
     '-s', `${outputWidth}x${outputHeight}`, // Kích thước của mỗi frame
     '-r', fps.toString(), // Tốc độ khung hình (fps)
     '-i', '-', // Quan trọng: Đọc dữ liệu đầu vào từ stdin (standard input)
@@ -477,13 +483,14 @@ async function handleExportStart(
   ffmpegArgs.push(outputPath); // Đường dẫn file đầu ra
 
   // 5. Khởi chạy tiến trình FFmpeg
-  console.log('Spawning FFmpeg with args:', ffmpegArgs.join(' '));
+  // THÊM LOG
+  console.log('[Main] Spawning FFmpeg with args:', ffmpegArgs.join(' '));
   const ffmpeg = spawn('ffmpeg', ffmpegArgs);
   let ffmpegClosed = false;
 
   // In log lỗi từ FFmpeg để debug
   ffmpeg.stderr.on('data', (data) => {
-    console.log(`FFmpeg (stderr): ${data.toString()}`);
+    console.log(`[FFmpeg stderr]: ${data.toString()}`);
   });
   
   // 6. Lắng nghe sự kiện từ Worker thông qua IPC
@@ -499,8 +506,9 @@ async function handleExportStart(
 
   // Listener nhận tín hiệu khi worker đã render xong tất cả các frame
   const finishListener = () => {
+    // THÊM LOG
+    console.log('[Main] Received "export:render-finished". Closing FFmpeg stdin.');
     if (!ffmpegClosed) {
-      console.log('Render finished. Closing FFmpeg stdin.');
       ffmpeg.stdin.end(); // Đóng stdin để FFmpeg hoàn tất file video
     }
   };
@@ -511,14 +519,19 @@ async function handleExportStart(
   // 7. Xử lý khi tiến trình FFmpeg kết thúc
   ffmpeg.on('close', (code) => {
     ffmpegClosed = true;
-    console.log(`FFmpeg process exited with code ${code}`);
+    // THÊM LOG
+    console.log(`[Main] FFmpeg process exited with code ${code}.`);
     renderWorker?.close(); // Đóng cửa sổ worker
     renderWorker = null;
     
     // Gửi kết quả cuối cùng về cho editor
     if (code === 0) {
+      // THÊM LOG
+      console.log(`[Main] Export successful. Sending 'export:complete' to editor.`);
       window.webContents.send('export:complete', { success: true, outputPath });
     } else {
+      // THÊM LOG
+      console.error(`[Main] Export failed. Sending 'export:complete' to editor with error.`);
       window.webContents.send('export:complete', { success: false, error: `FFmpeg exited with code ${code}` });
     }
 
@@ -527,8 +540,10 @@ async function handleExportStart(
     ipcMain.removeListener('export:render-finished', finishListener);
   });
 
-  // 8. Bắt đầu quá trình render trong worker sau khi nó đã tải xong trang
-  renderWorker.webContents.on('did-finish-load', () => {
+  // 8. SỬA LỖI: Chuyển logic gửi dữ liệu vào đây, chờ tín hiệu 'ready' từ worker
+  ipcMain.once('render:ready', () => {
+    // THÊM LOG
+    console.log('[Main] Received "render:ready" from worker. Sending project state...');
     // Gửi toàn bộ trạng thái project và cài đặt export cho worker
     renderWorker?.webContents.send('render:start', {
       projectState,
