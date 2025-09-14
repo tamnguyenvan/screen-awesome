@@ -215,6 +215,23 @@ async function handleStartRecording() {
 
   createCountdownWindow()
 
+  let pythonExecutable: string;
+  let scriptArgs: string[] = [];
+
+  if (app.isPackaged) {
+    // Production Environment: Run the executable file compiled by PyInstaller.
+    // process.resourcesPath points to the directory containing application resources.
+    const executableName = process.platform === 'win32' ? 'tracker.exe' : 'tracker';
+    pythonExecutable = path.join(process.resourcesPath, 'python', 'dist', 'tracker', executableName);
+    log.info(`[Production] Using PyInstaller executable at: ${pythonExecutable}`);
+  } else {
+    // Development Environment: Run the script directly using Python from venv.
+    pythonExecutable = path.join(process.env.APP_ROOT, 'venv/bin/python');
+    const scriptPath = path.join(process.env.APP_ROOT, 'python/tracker.py');
+    scriptArgs = [scriptPath];
+    log.info(`[Development] Using Python script: ${pythonExecutable} ${scriptArgs.join(' ')}`);
+  }
+
   setTimeout(() => {
     countdownWin?.close()
 
@@ -223,9 +240,13 @@ async function handleStartRecording() {
     firstChunkWritten = true
 
     // 2. Start Python tracker
-    const pythonPath = path.join(process.env.APP_ROOT, 'venv/bin/python')
-    const scriptPath = path.join(process.env.APP_ROOT, 'python/tracker.py')
-    pythonTracker = spawn(pythonPath, [scriptPath])
+    try {
+      pythonTracker = spawn(pythonExecutable, scriptArgs);
+    } catch (error) {
+      log.error('Failed to spawn Python process:', error);
+      // Có thể thêm logic thông báo lỗi cho người dùng ở đây
+      return;
+    }
 
     // 3. Create metadata stream
     metadataStream = fsSync.createWriteStream(metadataPath)
@@ -428,11 +449,11 @@ app.on('activate', () => {
 
 async function handleExportStart(
   _event: IpcMainInvokeEvent,
- // eslint-disable-next-line @typescript-eslint/no-explicit-any
- { projectState, exportSettings, outputPath }: { projectState: any, exportSettings: any, outputPath: string }
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  { projectState, exportSettings, outputPath }: { projectState: any, exportSettings: any, outputPath: string }
 ) {
   log.info('[Main] Received "export:start" event. Starting export process...');
-  
+
   // Get reference to the main editor window to send progress updates
   const window = BrowserWindow.fromWebContents(_event.sender);
   if (!window) return;
@@ -504,7 +525,7 @@ async function handleExportStart(
   ffmpeg.stderr.on('data', (data) => {
     log.info(`[FFmpeg stderr]: ${data.toString()}`);
   });
-  
+
   // 6. Listen to events from Worker through IPC
   // Listener receives frame data (Buffer) from worker
   const frameListener = (_event: IpcMainInvokeEvent, { frame, progress }: { frame: Buffer, progress: number }) => {
@@ -533,7 +554,7 @@ async function handleExportStart(
     log.info(`[Main] FFmpeg process exited with code ${code}.`);
     renderWorker?.close(); // Close worker window
     renderWorker = null;
-    
+
     // Send final result back to editor
     if (code === 0) {
       log.info(`[Main] Export successful. Sending 'export:complete' to editor.`);
