@@ -7,12 +7,12 @@ To create a streamlined, powerful screen recording and editing application for L
 ## Core Features (Phase 1)
 
 1.  **High-Quality Screen Recording**
-    *   Capture the entire screen, a specific application window, or a custom-defined area.
+    *   Capture the entire screen, a specific application window, or a custom-defined area. *(Note: Current implementation focuses on full-screen capture on Linux, with other modes planned).*
     *   Support for high-resolution recording (up to 2K and beyond).
-    *   Record system audio and microphone input.
+    *   Record system audio and microphone input. *(Note: Audio recording is a planned feature not yet implemented).*
 
 2.  **Cinematic Mouse Tracking & Auto-Zoom**
-    *   The cornerstone feature: automatically detects mouse clicks and user interactions.
+    *   The cornerstone feature: automatically detects mouse clicks from recorded metadata.
     *   Creates smooth, cinematic pan-and-zoom animations to highlight the area of action, keeping the viewer engaged.
     *   Provides customizable easing functions for a polished, professional feel.
 

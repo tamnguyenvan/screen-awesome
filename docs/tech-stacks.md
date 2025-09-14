@@ -5,25 +5,27 @@ This document outlines the primary technologies chosen for the development of Sc
 ## Core Framework
 
 *   **[Electron](https://www.electronjs.org/):** The foundation of our desktop application. It allows us to build a cross-platform app (Linux, Windows, macOS) using web technologies.
-*   **[Vite](https://vitejs.dev/):** A next-generation frontend tooling that provides an extremely fast development server and optimized build process. We will use it with a template for Electron and TypeScript.
+*   **[Vite](https://vitejs.dev/):** A next-generation frontend tooling that provides an extremely fast development server and optimized build process, configured for an Electron and TypeScript workflow.
 
 ## Language & UI
 
 *   **[TypeScript](https://www.typescriptlang.org/):** Superset of JavaScript that adds static types. This is crucial for building a large, maintainable application by catching errors early and improving developer experience.
-*   **[React](https://reactjs.org/) / [SolidJS](https://www.solidjs.com/):** (Decision to be finalized) A declarative UI library for building the user interface. React is the industry standard, while SolidJS offers superior performance.
-*   **[TailwindCSS](https://tailwindcss.com/):** A utility-first CSS framework for rapidly building custom user interfaces without leaving the HTML/JSX. It's perfect for creating the clean, modern look of the editor.
+*   **[React](https://reactjs.org/):** A declarative UI library for building the user interface for both the recorder controls and the main editor studio.
+*   **[TailwindCSS](https://tailwindcss.com/):** A utility-first CSS framework for rapidly building the custom user interface of the editor.
 
 ## State Management
 
-*   **[Zustand](https://github.com/pmndrs/zustand):** A small, fast, and scalable state-management solution. Its minimal boilerplate and simple hook-based API are ideal for managing the complex state of the editor (timeline position, selected clips, editor settings, etc.).
+*   **[Zustand](https://github.com/pmndrs/zustand):** A small, fast, and scalable state-management solution. Its hook-based API is used to manage the complex state of the editor (timeline position, frame styles, zoom/cut regions, etc.).
 
 ## Backend & System Interaction
 
 *   **[Node.js](https://nodejs.org/):** The runtime for Electron's main process. Used for all system-level operations like file access, process management, and video processing orchestration.
-*   **[fluent-ffmpeg](https://github.com/fluent-ffmpeg/node-fluent-ffmpeg):** A Node.js wrapper for the powerful FFmpeg tool. It will handle all video processing tasks: screen recording, applying zoom/pan effects, compositing the final video with its background, and exporting to various formats.
+*   **[FFmpeg](https://ffmpeg.org/) (via `child_process`):** The core video processing engine. It is spawned directly from Node.js for two key tasks:
+    1.  **Recording:** Capturing the screen content using platform-specific inputs (e.g., `x11grab` on Linux).
+    2.  **Exporting:** Encoding the final video by receiving a stream of raw pixel data from the render worker via `stdin`.
 *   **[Python](https://www.python.org/) with `pynput`:**
-    *   **Reasoning:** Robust and well-maintained libraries for low-level mouse and keyboard event listening in Node.js are scarce. `pynput` is a proven, reliable solution for this task across platforms.
-    *   **Implementation:** A small Python script will run as a child process during the recording phase. It will monitor mouse movements and clicks, writing the event data (position, timestamp, event type) to `stdout`. The Electron main process will listen to this stream and store the data alongside the video recording.
+    *   **Reasoning:** `pynput` provides a reliable, cross-platform solution for low-level mouse and keyboard event listening, which can be challenging to achieve robustly in Node.js alone.
+    *   **Implementation:** A small Python script runs as a child process during recording. It monitors mouse movements and clicks, writing event data (position, timestamp, type) as JSON to `stdout`. The Electron main process captures this stream and saves it to a metadata file.
 
 ## Build & Packaging
 
