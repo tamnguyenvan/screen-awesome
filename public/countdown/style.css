@@ -1,23 +1,50 @@
+/* public/countdown/style.css */
+
 body {
   margin: 0;
-  background: transparent;
+  overflow: hidden;
   display: flex;
   justify-content: center;
   align-items: center;
   height: 100vh;
+  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif, "Apple Color Emoji", "Segoe UI Emoji";
 }
 
-.countdown-number {
-  font-size: 12rem;
-  font-weight: 900;
-  color: #ffffff;
-  text-shadow: 0 0 20px rgba(0,0,0,0.7);
-  animation: fadeInOut 1s ease forwards;
+#countdown-container {
+  width: 200px;
+  height: 200px;
+  border-radius: 50%; /* Perfect circle */
+  
+  /* Frosted glass effect */
+  background-color: rgba(23, 25, 35, 0.7); /* Dark, semi-transparent background */
+  backdrop-filter: blur(16px);
+  -webkit-backdrop-filter: blur(16px); /* For Electron/Chromium */
+
+  /* Subtle border and shadow for depth */
+  border: 1px solid rgba(255, 255, 255, 0.15);
+  box-shadow: 0 10px 25px rgba(0, 0, 0, 0.3);
+
+  /* Center the number */
+  display: flex;
+  justify-content: center;
+  align-items: center;
+
+  /* Text style */
+  color: white;
+  font-size: 5rem;
+  font-weight: 700;
+  
+  /* Entrance animation */
+  animation: scaleIn 0.3s ease-out forwards;
 }
 
-@keyframes fadeInOut {
-  0% { opacity: 0; transform: scale(0.6); }
-  30% { opacity: 1; transform: scale(1.2); }
-  70% { opacity: 1; transform: scale(1); }
-  100% { opacity: 0; transform: scale(0.8); }
+@keyframes scaleIn {
+  from {
+    transform: scale(0.8);
+    opacity: 0;
+  }
+  to {
+    transform: scale(1);
+    opacity: 1;
+  }
 }

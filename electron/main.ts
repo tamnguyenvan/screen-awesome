@@ -438,8 +438,8 @@ async function handleCancelRecording(videoPath: string, metadataPath: string) {
 function createRecorderWindow() {
   recorderWin = new BrowserWindow({
     icon: path.join(process.env.VITE_PUBLIC, 'screenawesome-appicon.png'),
-    width: 400,
-    height: 150,
+    width: 800,
+    height: 80,
     frame: false,
     transparent: true,
     alwaysOnTop: true,

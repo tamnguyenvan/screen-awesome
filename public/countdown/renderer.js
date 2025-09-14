@@ -1,18 +1,16 @@
 let count = 3;
-const countdownEl = document.getElementById("countdown");
-
-function updateCountdown() {
-  countdownEl.textContent = count;
-
-  // restart animation each time the number changes
-  countdownEl.style.animation = "none";
-  countdownEl.offsetHeight; // force reflow
-  countdownEl.style.animation = null;
-
-  if (count > 0) {
+const countdownNumber = document.getElementById('countdown-number');
+if (countdownNumber) {
+  countdownNumber.textContent = count;
+  const interval = setInterval(() => {
     count--;
-    setTimeout(updateCountdown, 1000);
-  }
+    if (count > 0) {
+      countdownNumber.textContent = count;
+    } else if (count === 0) {
+      countdownNumber.textContent = 'Go!';
+    } else {
+      clearInterval(interval);
+      // The window is closed automatically after the countdown.
+    }
+  }, 1000);
 }
-
-updateCountdown();
