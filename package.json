@@ -1,5 +1,7 @@
 {
   "name": "screen-awesome",
+  "description": "Screen recording and editing app",
+  "author": "Tam Nguyen",
   "private": true,
   "version": "0.0.0",
   "type": "module",
@@ -49,15 +51,18 @@
     "files": [
       "dist/",
       "dist-electron/",
-      "python/dist/"
+      "python/dist/",
+      "binaries/"
     ],
     "asarUnpack": [
-      "python/dist/**"
+      "python/dist/**",
+      "binaries/**"
     ],
     "linux": {
       "target": [
         "AppImage"
       ],
+      "icon": "public/screenawesome-appicon.png",
       "category": "Utility"
     },
     "win": {

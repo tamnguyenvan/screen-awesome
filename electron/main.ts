@@ -26,7 +26,7 @@ import {
   app, BrowserWindow, ipcMain, Tray, Menu,
   nativeImage, protocol, IpcMainInvokeEvent, dialog
 } from 'electron'
-import { fileURLToPath } from 'node:url'
+import { fileURLToPath, format as formatUrl } from 'node:url'
 import path from 'node:path'
 import { spawn, ChildProcessWithoutNullStreams } from 'node:child_process'
 import fs from 'node:fs/promises'
@@ -63,6 +63,35 @@ let metadataStream: fsSync.WriteStream | null = null
 let pythonDataBuffer = ''
 let firstChunkWritten = true
 
+function getFFmpegPath(): string {
+  // path to ffmpeg in production
+  if (app.isPackaged) {
+    const platform = process.platform;
+    let executableName = 'ffmpeg';
+    if (platform === 'win32') {
+      executableName += '.exe';
+    }
+
+    // path to ffmpeg in production
+    const ffmpegPath = path.join(process.resourcesPath, 'app.asar.unpacked', 'binaries', platform, executableName);
+    log.info(`[Production] Using bundled FFmpeg at: ${ffmpegPath}`);
+    return ffmpegPath;
+  }
+
+  // path to ffmpeg in development
+  else {
+    const platform = process.platform === 'win32' ? 'win' : 'linux';
+    const executableName = platform === 'win' ? 'ffmpeg.exe' : 'ffmpeg';
+
+    // path to ffmpeg in development
+    const ffmpegPath = path.join(process.env.APP_ROOT, 'binaries', platform, executableName);
+    log.info(`[Development] Using local FFmpeg at: ${ffmpegPath}`);
+    return ffmpegPath;
+  }
+}
+
+const FFMPEG_PATH = getFFmpegPath();
+
 // --- Saving Window Creation ---
 function createSavingWindow() {
   savingWin = new BrowserWindow({
@@ -98,23 +127,37 @@ function createEditorWindow(videoPath: string, metadataPath: string) {
     height: 800,
     webPreferences: {
       preload: path.join(__dirname, 'preload.mjs'),
-      // Important for custom protocol and loading local files
       webSecurity: VITE_DEV_SERVER_URL ? false : true,
     },
   })
 
-  // Pass file paths via URL hash
-  const editorUrl = VITE_DEV_SERVER_URL
-    ? `${VITE_DEV_SERVER_URL}#editor`
-    : path.join(RENDERER_DIST, 'index.html#editor')
+  let editorUrl: string;
+  if (VITE_DEV_SERVER_URL) {
+    // Development: Use the dev server URL
+    editorUrl = `${VITE_DEV_SERVER_URL}#editor`;
+  } else {
+    // Production: Create a valid file:// URL
+    editorUrl = formatUrl({
+      pathname: path.join(RENDERER_DIST, 'index.html'),
+      protocol: 'file:',
+      slashes: true,
+      hash: 'editor'
+    });
+  }
 
-  editorWin.loadURL(editorUrl)
+  log.info(`[Main] Loading editor URL: ${editorUrl}`);
+  editorWin.loadURL(editorUrl);
 
   // Send project files to the editor window once it's ready
   editorWin.webContents.on('did-finish-load', () => {
+    log.info(`[Main] Editor window finished loading. Sending project data...`);
     editorWin?.webContents.send('project:open', { videoPath, metadataPath });
   });
 
+  // Mở DevTools để debug cả trong production nếu cần
+  // if (process.env.NODE_ENV !== 'production' || true) { // Tạm thời bật để debug
+  //   editorWin.webContents.openDevTools();
+  // }
   if (process.env.NODE_ENV === 'development') {
     editorWin.webContents.openDevTools();
   }
@@ -222,7 +265,7 @@ async function handleStartRecording() {
     // Production Environment: Run the executable file compiled by PyInstaller.
     // process.resourcesPath points to the directory containing application resources.
     const executableName = process.platform === 'win32' ? 'tracker.exe' : 'tracker';
-    pythonExecutable = path.join(process.resourcesPath, 'python', 'dist', 'tracker', executableName);
+    pythonExecutable = path.join(process.resourcesPath, 'app.asar.unpacked', 'python', 'dist', 'tracker', executableName);
     log.info(`[Production] Using PyInstaller executable at: ${pythonExecutable}`);
   } else {
     // Development Environment: Run the script directly using Python from venv.
@@ -293,7 +336,9 @@ async function handleStartRecording() {
       videoPath
     ]
 
-    ffmpegProcess = spawn('ffmpeg', args)
+    log.info(`FFmpeg path: ${FFMPEG_PATH}`)
+    log.info(`Starting FFmpeg with args: ${args.join(' ')}`)
+    ffmpegProcess = spawn(FFMPEG_PATH, args)
     ffmpegProcess.stderr.on('data', (data) => {
       log.info(`FFmpeg: ${data}`)
     })
