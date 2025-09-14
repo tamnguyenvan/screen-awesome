@@ -64,13 +64,13 @@ export function EditorPage() {
       return;
     }
     
-    // --- SỬA LỖI CLONE Ở ĐÂY ---
     // Lấy toàn bộ state từ store
     const fullState = useEditorStore.getState();
 
     // Tạo một đối tượng mới chỉ chứa dữ liệu, không chứa hàm (actions)
     const plainState = {
       videoPath: fullState.videoPath,
+      metadata: fullState.metadata,
       videoDimensions: fullState.videoDimensions,
       duration: fullState.duration,
       frameStyles: fullState.frameStyles,

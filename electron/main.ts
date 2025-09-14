@@ -17,24 +17,27 @@ process.env.APP_ROOT = path.join(__dirname, '..')
 export const VITE_DEV_SERVER_URL = process.env['VITE_DEV_SERVER_URL']
 export const MAIN_DIST = path.join(process.env.APP_ROOT, 'dist-electron')
 export const RENDERER_DIST = path.join(process.env.APP_ROOT, 'dist')
-const RESOLUTIONS = {
+type ResolutionKey = '720p' | '1080p' | '2k';
+
+const RESOLUTIONS: Record<ResolutionKey, { width: number; height: number }> = {
   '720p': { width: 1280, height: 720 },
   '1080p': { width: 1920, height: 1080 },
   '2k': { width: 2560, height: 1440 },
 };
 
 // Helper để lấy giá trị CRF từ tên quality
-const QUALITY_CRF = {
-  low: 28,
-  medium: 23,
-  high: 18,
-};
+// const QUALITY_CRF = {
+//   low: 28,
+//   medium: 23,
+//   high: 18,
+// };
 
 process.env.VITE_PUBLIC = VITE_DEV_SERVER_URL ? path.join(process.env.APP_ROOT, 'public') : RENDERER_DIST
 
 let recorderWin: BrowserWindow | null
 let editorWin: BrowserWindow | null
 let countdownWin: BrowserWindow | null = null;
+let renderWorker: BrowserWindow | null = null;
 let savingWin: BrowserWindow | null = null;
 let tray: Tray | null = null
 
@@ -393,6 +396,7 @@ async function handleReadFile(_event: IpcMainInvokeEvent, filePath: string): Pro
 }
 
 app.on('window-all-closed', () => {
+  renderWorker?.close();
   if (pythonTracker || ffmpegProcess) {
     cleanupAndSave();
   }
@@ -407,116 +411,129 @@ app.on('activate', () => {
   }
 })
 
-/**
- * Chuyển đổi trạng thái từ editor thành các đối số dòng lệnh cho ffmpeg.
- * Đây là phần logic phức tạp nhất của quá trình export.
- */
-function buildFfmpegArgs(projectState: any, exportSettings: any, outputPath: string): string[] {
-  const { videoPath, frameStyles, cutRegions, videoDimensions } = projectState;
-
-  // Lấy các cài đặt từ người dùng
-  const { resolution, quality, fps, format } = exportSettings;
-  const { width: outputWidth, height: outputHeight } = RESOLUTIONS[resolution];
-  const crf = QUALITY_CRF[quality];
-
-  const args: string[] = ['-y', '-i', videoPath];
-  let filterComplex = '';
-
-  // --- 1. Xử lý Cut Regions (không đổi) ---
-  let videoStream = '[0:v]';
-  if (cutRegions.length > 0) {
-    const selectFilter = cutRegions
-      .map((r: any) => `between(t,${r.startTime},${r.startTime + r.duration})`)
-      .join('+');
-    filterComplex += `[0:v]select='not(${selectFilter})',setpts=N/FRAME_RATE/TB[v_cut];`;
-    videoStream = '[v_cut]';
-  }
-
-  // Bỏ qua zoom động phức tạp cho V1
-
-  // --- 2. Xử lý Frame (Padding, Background, Scale) ---
-  const videoAspectRatio = videoDimensions.width / videoDimensions.height;
-  const outputTargetAspectRatio = outputWidth / outputHeight;
-
-  let scaledWidth, scaledHeight;
-  // Tính toán kích thước video bên trong frame, có tính đến padding
-  if (videoAspectRatio > outputTargetAspectRatio) {
-    scaledWidth = outputWidth * (1 - (frameStyles.padding / 50));
-    scaledHeight = scaledWidth / videoAspectRatio;
-  } else {
-    scaledHeight = outputHeight * (1 - (frameStyles.padding / 50));
-    scaledWidth = scaledHeight * videoAspectRatio;
-  }
-  scaledWidth = Math.floor(scaledWidth / 2) * 2; // Đảm bảo chẵn
-  scaledHeight = Math.floor(scaledHeight / 2) * 2; // Đảm bảo chẵn
-
-  // Tạo background
-  const bgColor = frameStyles.background.color || '#000000';
-  filterComplex += `color=c=${bgColor}:s=${outputWidth}x${outputHeight}:d=${projectState.duration}[bg];`;
-
-  // Scale và đặt video lên background
-  filterComplex += `${videoStream}scale=${scaledWidth}:${scaledHeight}[fg];`;
-  filterComplex += `[bg][fg]overlay=(W-w)/2:(H-h)/2,format=yuv420p`;
-
-  // --- 3. Logic riêng cho GIF ---
-  if (format === 'gif') {
-    // GIF cần tạo palette màu để chất lượng tốt hơn
-    filterComplex += `[v_out];[v_out]split[s0][s1];[s0]palettegen[p];[s1][p]paletteuse`;
-    args.push('-filter_complex', filterComplex);
-    args.push('-r', fps.toString()); // Đặt FPS cho GIF
-  } else {
-    // Logic cho MP4
-    args.push('-filter_complex', filterComplex);
-    args.push('-c:v', 'libx264', '-preset', 'medium', '-crf', crf.toString());
-    args.push('-r', fps.toString()); // Đặt FPS
-  }
-
-  args.push(outputPath);
-
-  console.log('FFmpeg command:', ['ffmpeg', ...args].join(' '));
-  return args;
-}
-
-async function handleExportStart(_event: IpcMainInvokeEvent, { projectState, exportSettings, outputPath }: { projectState: any, exportSettings: any, outputPath: string }) {
+async function handleExportStart(
+  _event: IpcMainInvokeEvent,
+ // eslint-disable-next-line @typescript-eslint/no-explicit-any
+ { projectState, exportSettings, outputPath }: { projectState: any, exportSettings: any, outputPath: string }
+) {
+  // Lấy tham chiếu đến cửa sổ editor chính để gửi thông báo tiến độ
   const window = BrowserWindow.fromWebContents(_event.sender);
   if (!window) return;
 
-  // Truyền cả exportSettings vào hàm build
-  const args = buildFfmpegArgs(projectState, exportSettings, outputPath);
-  const ffmpeg = spawn('ffmpeg', args);
-  const totalDuration = projectState.duration;
+  // --- Bắt đầu chiến lược mới: Sử dụng Render Worker ---
 
-  ffmpeg.stderr.on('data', (data) => {
-    const line = data.toString();
-    console.log(`FFmpeg: ${line}`);
+  // 1. Dọn dẹp worker cũ nếu có (phòng trường hợp export bị lỗi trước đó)
+  if (renderWorker) {
+    renderWorker.close();
+  }
 
-    // Parse progress from ffmpeg output
-    const timeMatch = line.match(/time=(\d{2}):(\d{2}):(\d{2})\.(\d{2})/);
-    if (timeMatch) {
-      const hours = parseInt(timeMatch[1], 10);
-      const minutes = parseInt(timeMatch[2], 10);
-      const seconds = parseInt(timeMatch[3], 10);
-      const currentTime = hours * 3600 + minutes * 60 + seconds;
-
-      const progress = Math.min(100, Math.floor((currentTime / totalDuration) * 100));
-
-      window.webContents.send('export:progress', { progress, stage: 'Rendering...' });
-    }
+  // 2. Tạo một cửa sổ ẩn để làm worker
+  renderWorker = new BrowserWindow({
+    show: false, // Quan trọng: không hiển thị cửa sổ này cho người dùng
+    width: 1280,
+    height: 720,
+    webPreferences: {
+      preload: path.join(__dirname, 'preload.mjs'),
+      // Quan trọng: cho phép render mà không cần hiển thị trên màn hình
+      offscreen: true, 
+    },
   });
 
+  // 3. Load trang giao diện nhưng với một hash đặc biệt ('#renderer')
+  // để App.tsx biết cần phải render component RendererPage
+  const renderUrl = VITE_DEV_SERVER_URL
+    ? `${VITE_DEV_SERVER_URL}#renderer`
+    : path.join(RENDERER_DIST, 'index.html#renderer')
+  renderWorker.loadURL(renderUrl);
+
+  // 4. Chuẩn bị các đối số cho FFmpeg
+  const { resolution, fps, format } = exportSettings;
+  const { width: outputWidth, height: outputHeight } = RESOLUTIONS[resolution as ResolutionKey];
+
+  const ffmpegArgs = [
+    '-y', // Ghi đè file đầu ra nếu đã tồn tại
+    '-f', 'rawvideo', // Định dạng đầu vào là video thô
+    '-vcodec', 'rawvideo',
+    '-pix_fmt', 'bgra', // Định dạng pixel mà Canvas/Electron tạo ra
+    '-s', `${outputWidth}x${outputHeight}`, // Kích thước của mỗi frame
+    '-r', fps.toString(), // Tốc độ khung hình (fps)
+    '-i', '-', // Quan trọng: Đọc dữ liệu đầu vào từ stdin (standard input)
+  ];
+
+  // Thêm các tùy chọn encoding cho định dạng đầu ra
+  if (format === 'mp4') {
+    ffmpegArgs.push(
+      '-c:v', 'libx264',
+      '-preset', 'medium',
+      '-pix_fmt', 'yuv420p' // Định dạng pixel chuẩn cho video web
+    );
+  } else { // GIF
+    // Sử dụng bộ lọc của ffmpeg để tạo palette màu, giúp GIF có chất lượng tốt hơn
+    ffmpegArgs.push(
+      '-vf', 'split[s0][s1];[s0]palettegen[p];[s1][p]paletteuse'
+    );
+  }
+
+  ffmpegArgs.push(outputPath); // Đường dẫn file đầu ra
+
+  // 5. Khởi chạy tiến trình FFmpeg
+  console.log('Spawning FFmpeg with args:', ffmpegArgs.join(' '));
+  const ffmpeg = spawn('ffmpeg', ffmpegArgs);
+  let ffmpegClosed = false;
+
+  // In log lỗi từ FFmpeg để debug
+  ffmpeg.stderr.on('data', (data) => {
+    console.log(`FFmpeg (stderr): ${data.toString()}`);
+  });
+  
+  // 6. Lắng nghe sự kiện từ Worker thông qua IPC
+  // Listener nhận dữ liệu frame (dạng Buffer) từ worker
+  const frameListener = (_event: IpcMainInvokeEvent, { frame, progress }: { frame: Buffer, progress: number }) => {
+    // Ghi buffer của frame vào stdin của FFmpeg để nó xử lý
+    if (!ffmpegClosed && ffmpeg.stdin.writable) {
+      ffmpeg.stdin.write(frame);
+    }
+    // Gửi tiến độ về cho cửa sổ editor chính để cập nhật UI
+    window.webContents.send('export:progress', { progress, stage: 'Rendering...' });
+  };
+
+  // Listener nhận tín hiệu khi worker đã render xong tất cả các frame
+  const finishListener = () => {
+    if (!ffmpegClosed) {
+      console.log('Render finished. Closing FFmpeg stdin.');
+      ffmpeg.stdin.end(); // Đóng stdin để FFmpeg hoàn tất file video
+    }
+  };
+
+  ipcMain.on('export:frame-data', frameListener);
+  ipcMain.on('export:render-finished', finishListener);
+
+  // 7. Xử lý khi tiến trình FFmpeg kết thúc
   ffmpeg.on('close', (code) => {
+    ffmpegClosed = true;
+    console.log(`FFmpeg process exited with code ${code}`);
+    renderWorker?.close(); // Đóng cửa sổ worker
+    renderWorker = null;
+    
+    // Gửi kết quả cuối cùng về cho editor
     if (code === 0) {
-      console.log('Export finished successfully.');
       window.webContents.send('export:complete', { success: true, outputPath });
     } else {
-      console.error(`Export failed with code ${code}`);
       window.webContents.send('export:complete', { success: false, error: `FFmpeg exited with code ${code}` });
     }
+
+    // Quan trọng: Hủy đăng ký các listener để tránh memory leak cho lần export sau
+    ipcMain.removeListener('export:frame-data', frameListener);
+    ipcMain.removeListener('export:render-finished', finishListener);
   });
 
-  ffmpeg.on('error', (err) => {
-    console.error('Failed to start FFmpeg process.', err);
-    window.webContents.send('export:complete', { success: false, error: err.message });
+  // 8. Bắt đầu quá trình render trong worker sau khi nó đã tải xong trang
+  renderWorker.webContents.on('did-finish-load', () => {
+    // Gửi toàn bộ trạng thái project và cài đặt export cho worker
+    renderWorker?.webContents.send('render:start', {
+      projectState,
+      exportSettings
+    });
   });
 }
 

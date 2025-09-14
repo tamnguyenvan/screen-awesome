@@ -2,6 +2,7 @@
 import { useState, useEffect } from 'react';
 import { EditorPage } from './pages/EditorPage';
 import { RecorderPage } from './pages/RecorderPage';
+import { RendererPage } from './pages/RendererPage';
 
 function App() {
   const [route, setRoute] = useState(window.location.hash);
@@ -17,6 +18,10 @@ function App() {
     };
   }, []);
   
+  if (route.startsWith('#renderer')) { // Route mới cho worker
+    return <RendererPage />;
+  }
+
   if (route.startsWith('#editor')) {
     return <EditorPage />;
   }

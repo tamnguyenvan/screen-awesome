@@ -3,7 +3,6 @@ import React, { useState } from 'react';
 import { Button } from '../ui/button';
 import { cn } from '../../lib/utils';
 
-// --- THÊM MỚI: Định nghĩa type cho các cài đặt ---
 export type ExportSettings = {
   format: 'mp4' | 'gif';
   resolution: '720p' | '1080p' | '2k';
