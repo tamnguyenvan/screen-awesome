@@ -5,7 +5,8 @@ import App from './App.tsx'
 import './index.css'
 
 const applyTheme = () => {
-  const isDarkMode = window.matchMedia && window.matchMedia('(prefers-color-scheme: dark)').matches;
+  // const isDarkMode = window.matchMedia && window.matchMedia('(prefers-color-scheme: dark)').matches;
+  const isDarkMode = true
   document.documentElement.setAttribute('data-theme', isDarkMode ? 'dark' : 'light');
 };
 

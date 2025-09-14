@@ -9,7 +9,6 @@ import { ExportButton } from '../components/editor/ExportButton';
 import { ExportModal, ExportSettings } from '../components/editor/ExportModal';
 import { ExportProgressOverlay } from '../components/editor/ExportProgressOverlay';
 
-
 export function EditorPage() {
   const loadProject = useEditorStore((state) => state.loadProject);
   const videoRef = useRef<HTMLVideoElement>(null);
@@ -33,7 +32,7 @@ export function EditorPage() {
 
     const cleanCompleteListener = window.electronAPI.onExportComplete(({ success, outputPath, error }) => {
       setIsExporting(false);
-      setExportProgress(100); // or 0
+      setExportProgress(100);
       if (success) {
         alert(`Export successful! Saved to:\n${outputPath}`);
       } else {
@@ -64,17 +63,15 @@ export function EditorPage() {
       return;
     }
     
-    // Get full state from store
     const fullState = useEditorStore.getState();
 
-    // Create a new object containing only data, not functions (actions)
     const plainState = {
       videoPath: fullState.videoPath,
       metadata: fullState.metadata,
       videoDimensions: fullState.videoDimensions,
       duration: fullState.duration,
       frameStyles: fullState.frameStyles,
-      aspectRatio: fullState.aspectRatio, // Aspect ratio of preview canvas
+      aspectRatio: fullState.aspectRatio,
       zoomRegions: fullState.zoomRegions,
       cutRegions: fullState.cutRegions,
     };
@@ -83,7 +80,6 @@ export function EditorPage() {
     setExportProgress(0);
 
     try {
-      // Send the clean state and export settings
       await window.electronAPI.startExport({
         projectState: plainState,
         exportSettings: settings,
@@ -98,8 +94,14 @@ export function EditorPage() {
 
   return (
     <main className="h-screen w-screen bg-background flex flex-col overflow-hidden select-none">
-      <header className="h-14 flex-shrink-0 border-b bg-card flex items-center justify-between px-4">
-        <h1 className="text-lg font-bold">ScreenAwesome Editor</h1>
+      {/* Header */}
+      <header className="h-16 flex-shrink-0 border-b border-border bg-card/50 backdrop-blur-sm flex items-center justify-between px-6">
+        <div className="flex items-center gap-3">
+          <div className="w-8 h-8 rounded-lg bg-primary/20 flex items-center justify-center">
+            <div className="w-4 h-4 rounded-sm bg-primary"></div>
+          </div>
+          <h1 className="text-xl font-semibold text-foreground tracking-tight">ScreenAwesome</h1>
+        </div>
         <ExportButton
           isExporting={isExporting}
           onClick={() => setExportModalOpen(true)}
@@ -109,28 +111,29 @@ export function EditorPage() {
       {/* Main Content */}
       <div className="flex flex-1 overflow-hidden">
         {/* Side Panel */}
-        <div className="w-80 flex-shrink-0 bg-card border-r overflow-y-auto">
+        <div className="w-80 flex-shrink-0 bg-sidebar border-r border-sidebar-border overflow-hidden">
           <SidePanel />
         </div>
 
-        {/* Center Area (Preview + Timeline) */}
-        <div className="flex-1 flex flex-col overflow-hidden">
-
-          <div className="flex-1 flex flex-col p-4 bg-muted/50 overflow-hidden">
-            <div className="flex-1 flex items-center justify-center overflow-hidden">
+        {/* Center Area */}
+        <div className="flex-1 flex flex-col overflow-hidden bg-background">
+          {/* Preview Area */}
+          <div className="flex-1 flex flex-col p-6 gap-6 overflow-hidden">
+            <div className="flex-1 flex items-center justify-center overflow-hidden rounded-xl bg-muted/20 border border-border/50">
               <Preview videoRef={videoRef} />
             </div>
-            <div className="flex-shrink-0 pt-4">
+            <div className="flex-shrink-0">
               <PreviewControls videoRef={videoRef} />
             </div>
           </div>
 
           {/* Timeline Area */}
-          <div className="h-48 flex-shrink-0 bg-card border-t overflow-x-auto">
+          <div className="h-52 flex-shrink-0 bg-card/30 border-t border-border backdrop-blur-sm overflow-hidden">
             <Timeline videoRef={videoRef} />
           </div>
         </div>
       </div>
+
       <ExportModal
         isOpen={isExportModalOpen}
         onClose={() => setExportModalOpen(false)}

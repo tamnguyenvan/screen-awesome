@@ -3,6 +3,7 @@
 import React, { useEffect, useMemo, useRef } from 'react';
 import { useEditorStore } from '../../store/editorStore';
 import { calculateZoomTransform } from '../../lib/transform';
+import { Film } from 'lucide-react';
 
 interface PreviewProps {
   videoRef: React.RefObject<HTMLVideoElement>;
@@ -13,7 +14,7 @@ const generateBackgroundStyle = (backgroundState: ReturnType<typeof useEditorSto
     case 'color':
       return { background: backgroundState.color || '#ffffff' };
     case 'gradient':
-      return { background: `linear-gradient(145deg, ${backgroundState.gradientStart}, ${backgroundState.gradientEnd})` };
+      return { background: `linear-gradient(135deg, ${backgroundState.gradientStart}, ${backgroundState.gradientEnd})` };
     case 'image':
     case 'wallpaper':
       return {
@@ -22,7 +23,7 @@ const generateBackgroundStyle = (backgroundState: ReturnType<typeof useEditorSto
         backgroundPosition: 'center'
       };
     default:
-      return { background: '#000000' };
+      return { background: 'oklch(0.2077 0.0398 265.7549)' };
   }
 };
 
@@ -35,17 +36,13 @@ export function Preview({ videoRef }: PreviewProps) {
 
   const transformContainerRef = useRef<HTMLDivElement>(null);
 
-  // For loop to update transform
   useEffect(() => {
     let animationFrameId: number;
 
     const updateTransform = () => {
       if (!transformContainerRef.current || !videoRef.current) return;
 
-      // Get current time from video element
       const liveCurrentTime = videoRef.current.currentTime;
-
-      // Pass current time to calculateZoomTransform
       const { scale, translateX, translateY } = calculateZoomTransform(liveCurrentTime);
 
       transformContainerRef.current.style.transform = `scale(${scale}) translate(${translateX}%, ${translateY}%)`;
@@ -73,46 +70,35 @@ export function Preview({ videoRef }: PreviewProps) {
     isPlaying ? video.play() : video.pause();
   }, [isPlaying, videoRef]);
 
-
-  // --- Logic Handle Cut Region ---
   useEffect(() => {
     const video = videoRef.current;
     if (!video) return;
     
-    // If playing and 'isCurrentlyCut' is on (from store)
     if (isPlaying && isCurrentlyCut) {
-      // Get latest state from store (we need cutRegions array)
       const { cutRegions } = useEditorStore.getState();
       
-      // Find which cut region is active
       const activeCutRegion = cutRegions.find(
          r => video.currentTime >= r.startTime && video.currentTime < (r.startTime + r.duration)
       );
 
       if (activeCutRegion) {
          console.log(`Skipping cut region, jumping to ${activeCutRegion.startTime + activeCutRegion.duration}`);
-         // Jump video to end of cut region
          video.currentTime = activeCutRegion.startTime + activeCutRegion.duration;
-         // Update store to recalculate (may turn off isCurrentlyCut)
          setCurrentTime(video.currentTime); 
       }
     }
-  }, [isCurrentlyCut, isPlaying, videoRef, setCurrentTime]); // Run when isCurrentlyCut or isPlaying changes
-
+  }, [isCurrentlyCut, isPlaying, videoRef, setCurrentTime]);
 
   const backgroundStyle = useMemo(() => generateBackgroundStyle(frameStyles.background), [frameStyles.background]);
   const cssAspectRatio = useMemo(() => aspectRatio.replace(':', ' / '), [aspectRatio]);
 
-  // Calculate video aspect ratio
   const videoAspectRatio = useMemo(() => {
-    if (videoDimensions.height === 0) return 16 / 9; // fallback
+    if (videoDimensions.height === 0) return 16 / 9;
     return videoDimensions.width / videoDimensions.height;
   }, [videoDimensions]);
 
   const handleTimeUpdate = () => {
     if (videoRef.current) {
-      // This will call the setter of store,
-      // and the setter will automatically update 'isCurrentlyCut'
       setCurrentTime(videoRef.current.currentTime);
     }
   };
@@ -131,9 +117,8 @@ export function Preview({ videoRef }: PreviewProps) {
   const handlePause = () => setPlaying(false);
 
   return (
-    // Canvas
     <div
-      className="transition-all duration-200 ease-in-out flex items-center justify-center relative"
+      className="transition-all duration-300 ease-out flex items-center justify-center relative rounded-xl overflow-hidden shadow-lg"
       style={{
         ...backgroundStyle,
         aspectRatio: cssAspectRatio,
@@ -142,29 +127,32 @@ export function Preview({ videoRef }: PreviewProps) {
         maxHeight: '100%',
       }}
     >
-      {/* Padding Container */}
       <div
-        className="w-full h-full flex items-center justify-center"
+        className="w-full h-full flex items-center justify-center relative"
         style={{
           padding: `${frameStyles.padding}%`,
         }}
       >
         {videoUrl ? (
-          // Container will have aspect ratio of video
           <div
             ref={transformContainerRef}
-            className="transition-transform duration-100 max-w-full max-h-full"
+            className="transition-transform duration-75 max-w-full max-h-full relative"
             style={{
               aspectRatio: videoAspectRatio,
               borderRadius: `${frameStyles.borderRadius}px`,
-              boxShadow: `0 0 ${frameStyles.shadow * 2}px rgba(0,0,0,0.${frameStyles.shadow})`,
+              boxShadow: frameStyles.shadow > 0 
+                ? `0 ${frameStyles.shadow}px ${frameStyles.shadow * 2}px rgba(0,0,0,0.${Math.min(frameStyles.shadow * 2, 50)})`
+                : 'none',
+              border: frameStyles.borderWidth > 0 
+                ? `${frameStyles.borderWidth}px solid ${frameStyles.borderColor}`
+                : 'none',
               overflow: 'hidden',
             }}
           >
             <video
               ref={videoRef}
               src={videoUrl}
-              className="w-full h-full"
+              className="w-full h-full object-cover"
               onTimeUpdate={handleTimeUpdate}
               onLoadedMetadata={handleLoadedMetadata}
               onPlay={handlePlay}
@@ -173,8 +161,14 @@ export function Preview({ videoRef }: PreviewProps) {
             />
           </div>
         ) : (
-          <div className="w-full h-full bg-gray-500/20 flex items-center justify-center text-gray-500">
-            <p>Load a project to begin</p>
+          <div className="w-full h-full bg-muted/10 border-2 border-dashed border-border/50 rounded-xl flex flex-col items-center justify-center text-muted-foreground gap-4 transition-all duration-200 hover:border-border/80">
+            <div className="w-16 h-16 rounded-full bg-primary/10 flex items-center justify-center">
+              <Film className="w-8 h-8 text-primary/70"/>
+            </div>
+            <div className="text-center">
+              <p className="text-lg font-medium mb-1">No project loaded</p>
+              <p className="text-sm text-muted-foreground/70">Load a project to begin editing</p>
+            </div>
           </div>
         )}
       </div>

@@ -1,7 +1,8 @@
 // src/components/editor/ExportModal.tsx
 import React, { useState } from 'react';
 import { Button } from '../ui/button';
-import { cn } from '../../lib/utils';
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '../ui/select';
+import { Upload } from 'lucide-react';
 
 export type ExportSettings = {
   format: 'mp4' | 'gif';
@@ -35,40 +36,68 @@ export function ExportModal({ isOpen, onClose, onStartExport }: ExportModalProps
   };
 
   return (
-    <div className="fixed inset-0 bg-black/50 z-50 flex items-center justify-center" onClick={onClose}>
+    <div className="fixed inset-0 bg-background/20 backdrop-blur-sm z-50 flex items-center justify-center" onClick={onClose}>
       <div 
-        className="bg-card text-card-foreground rounded-lg shadow-xl p-6 w-full max-w-md"
+        className="bg-card text-card-foreground rounded-lg shadow-xl p-6 w-full max-w-md border border-border"
         onClick={(e) => e.stopPropagation()}
       >
-        <h2 className="text-xl font-bold mb-6">Export Settings</h2>
+        <div className="flex items-center gap-3 mb-6">
+          <div className="w-10 h-10 rounded-lg bg-primary/10 flex items-center justify-center">
+            <Upload className="w-5 h-5 text-primary" />
+          </div>
+          <div>
+            <h2 className="text-lg font-semibold text-foreground">Export Settings</h2>
+            <p className="text-sm text-muted-foreground">Choose your final video format and quality</p>
+          </div>
+        </div>
         
         <div className="space-y-4">
           <SettingRow label="Format">
-            <Select value={settings.format} onChange={e => handleValueChange('format', e.target.value)}>
-              <option value="mp4">MP4 (Video)</option>
-              <option value="gif">GIF (Animation)</option>
+            <Select value={settings.format} onValueChange={(value) => handleValueChange('format', value)}>
+              <SelectTrigger>
+                <SelectValue placeholder="Select format..." />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="mp4">MP4 (Video)</SelectItem>
+                <SelectItem value="gif">GIF (Animation)</SelectItem>
+              </SelectContent>
             </Select>
           </SettingRow>
 
           <SettingRow label="Resolution">
-            <Select value={settings.resolution} onChange={e => handleValueChange('resolution', e.target.value)}>
-              <option value="720p">HD (1280x720)</option>
-              <option value="1080p">Full HD (1920x1080)</option>
-              <option value="2k">2K (2560x1440)</option>
+            <Select value={settings.resolution} onValueChange={(value) => handleValueChange('resolution', value)}>
+              <SelectTrigger>
+                <SelectValue placeholder="Select resolution..." />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="720p">HD (1280x720)</SelectItem>
+                <SelectItem value="1080p">Full HD (1920x1080)</SelectItem>
+                <SelectItem value="2k">2K (2560x1440)</SelectItem>
+              </SelectContent>
             </Select>
           </SettingRow>
           
           <SettingRow label="Quality">
-            <Select value={settings.quality} onChange={e => handleValueChange('quality', e.target.value)}>
-              <option value="low">Low</option>
-              <option value="medium">Medium</option>
-              <option value="high">High</option>
+            <Select value={settings.quality} onValueChange={(value) => handleValueChange('quality', value)}>
+              <SelectTrigger>
+                <SelectValue placeholder="Select quality..." />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="low">Low</SelectItem>
+                <SelectItem value="medium">Medium</SelectItem>
+                <SelectItem value="high">High</SelectItem>
+              </SelectContent>
             </Select>
           </SettingRow>
           
           <SettingRow label="FPS">
-            <Select value={settings.fps} disabled>
-              <option value={30}>30 FPS</option>
+            <Select value={String(settings.fps)} disabled>
+              <SelectTrigger>
+                <SelectValue placeholder="Select FPS..." />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="30">30 FPS</SelectItem>
+              </SelectContent>
             </Select>
           </SettingRow>
         </div>
@@ -82,20 +111,10 @@ export function ExportModal({ isOpen, onClose, onStartExport }: ExportModalProps
   );
 }
 
-// Helper components
+// Helper component
 const SettingRow = ({ label, children }: { label: string, children: React.ReactNode }) => (
   <div className="flex items-center justify-between">
-    <label className="text-sm font-medium">{label}</label>
+    <label className="text-sm font-medium text-foreground">{label}</label>
     <div className="w-1/2">{children}</div>
   </div>
-);
-
-const Select = (props: React.SelectHTMLAttributes<HTMLSelectElement>) => (
-  <select
-    {...props}
-    className={cn(
-      "w-full p-2 bg-input border rounded-md focus:outline-none focus:ring-2 focus:ring-ring",
-      "disabled:opacity-50 disabled:cursor-not-allowed"
-    )}
-  />
 );
