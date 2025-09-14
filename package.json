@@ -65,6 +65,9 @@
       "icon": "public/screenawesome-appicon.png",
       "category": "Utility"
     },
+    "appImage": {
+      "args": "--no-sandbox"
+    },
     "win": {
       "target": [
         "nsis"
