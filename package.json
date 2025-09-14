@@ -63,7 +63,8 @@
         "AppImage"
       ],
       "icon": "public/screenawesome-appicon.png",
-      "category": "Utility"
+      "category": "Utility",
+      "args": ["--no-sandbox"]
     },
     "win": {
       "target": [
