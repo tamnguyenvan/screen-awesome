@@ -1,12 +1,10 @@
-name: 'Build & Release for Windows'
+name: 'Build for Windows'
 
 on:
   push:
-    # Kích hoạt workflow khi một tag mới có dạng v* (ví dụ: v1.0.0, v1.2.3) được đẩy lên
     tags:
       - 'v*'
 
-# Cấp quyền cho workflow để có thể tạo release và upload file
 permissions:
   contents: write
 
@@ -44,19 +42,28 @@ jobs:
         uses: actions/setup-python@v5
         with:
           python-version: '3.11'
-          cache: 'pip'
 
       # 5. Cài đặt FFmpeg vào PATH của hệ thống
       - name: '5. Install FFmpeg'
         uses: FedericoCarboni/setup-ffmpeg@v3
 
-      # 6. Sao chép FFmpeg vào thư mục `binaries`
-      # BƯỚC QUAN TRỌNG: Đảm bảo ffmpeg.exe nằm ở nơi code và electron-builder mong đợi
+      # 6. Copy FFmpeg to local binaries folder
       - name: '6. Copy FFmpeg to local binaries folder'
         run: |
           echo "Copying ffmpeg.exe to the location expected by the application..."
-          mkdir -p binaries/windows
-          copy (where ffmpeg) binaries\windows\ffmpeg.exe
+          # Create directory if it doesn't exist
+          if (!(Test-Path -Path "binaries/windows")) {
+            New-Item -ItemType Directory -Path "binaries/windows" -Force | Out-Null
+          }
+          # Find and copy ffmpeg.exe
+          $ffmpegPath = Get-Command ffmpeg | Select-Object -ExpandProperty Source
+          if ($ffmpegPath) {
+            Copy-Item -Path $ffmpegPath -Destination "binaries\windows\ffmpeg.exe" -Force
+            echo "ffmpeg.exe copied successfully to binaries\windows\"
+          } else {
+            echo "Error: ffmpeg.exe not found in PATH"
+            exit 1
+          }
           echo "Verifying ffmpeg.exe exists:"
           dir binaries\windows
 
@@ -64,7 +71,7 @@ jobs:
       - name: '7. Install Python Dependencies'
         run: |
           python -m pip install --upgrade pip
-          pip install pynput pyinstaller
+          pip install --no-cache-dir pynput pyinstaller
 
       # 8. Cài đặt các dependencies của Node.js
       # Sử dụng `npm ci` để cài đặt chính xác từ package-lock.json, tốt hơn cho CI
