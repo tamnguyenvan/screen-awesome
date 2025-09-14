@@ -43,37 +43,39 @@ jobs:
       - name: '5. Install npm dependencies'
         run: npm ci
 
-      # 6. Tải và thiết lập FFmpeg
-      - name: '6. Download and set up FFmpeg'
+      # 6. Cài đặt môi trường X11 ảo (Xvfb)
+      # Bước này CẦN THIẾT để pyinstaller có thể build pynput với backend Xorg
+      - name: '6. Set up virtual X11 environment'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y xvfb libxss1 libnss3 libxtst6
+
+      # 7. Tải và thiết lập FFmpeg
+      - name: '7. Download and set up FFmpeg'
         run: |
           echo "Setting up FFmpeg for Linux..."
           mkdir -p binaries/linux
           curl -L -o ffmpeg.tar.xz https://johnvansickle.com/ffmpeg/builds/ffmpeg-git-amd64-static.tar.xz
-          # Giải nén trực tiếp file ffmpeg vào thư mục đích, đơn giản và hiệu quả hơn
           tar -xf ffmpeg.tar.xz --strip-components=1 -C binaries/linux/ $(tar -tf ffmpeg.tar.xz | head -n 1)ffmpeg
           chmod +x binaries/linux/ffmpeg
           rm ffmpeg.tar.xz
           echo "FFmpeg setup complete. Verifying:"
           ls -l binaries/linux
 
-      # 7. Cập nhật phiên bản ứng dụng từ Git Tag
-      # Cải tiến: Đảm bảo file build có đúng phiên bản (ví dụ: 1.0.8) thay vì 0.0.0
-      - name: '7. Sync App Version with Git Tag'
-        # github.ref_name sẽ là 'v1.0.8', lệnh `substring` sẽ loại bỏ chữ 'v'
+      # 8. Cập nhật phiên bản ứng dụng từ Git Tag
+      - name: '8. Sync App Version with Git Tag'
         run: npm version ${{ github.ref_name }} --no-git-tag-version
 
-      # 8. Build ứng dụng mà KHÔNG PUBLISH
-      # SỬA LỖI CHÍNH: Thêm cờ '--publish never' để ngăn electron-builder tự động tạo release
-      - name: '8. Build the Application'
-        run: npm run build -- --publish never
+      # 9. Build ứng dụng với môi trường X11 ảo
+      # Sửa lỗi chính: Sử dụng xvfb-run để gói lệnh build
+      # Nó sẽ tạo một màn hình ảo để pynput nhận diện và đóng gói đúng backend.
+      - name: '9. Build the Application'
+        run: xvfb-run --auto-servernum npm run build -- --publish never
 
-      # 9. Tạo Release và Upload Artifact
-      # Cải tiến: Sử dụng action `softprops/action-gh-release` để làm cả 2 việc trong 1 bước
-      - name: '9. Create Release and Upload AppImage'
+      # 10. Tạo Release và Upload Artifact
+      - name: '10. Create Release and Upload AppImage'
         uses: softprops/action-gh-release@v2
         with:
-          # Tự động tạo ghi chú phát hành từ các commit gần nhất
           generate_release_notes: true
-          # Đường dẫn tới các file cần upload, hỗ trợ ký tự đại diện *
           files: |
             dist/*.AppImage
