@@ -30,22 +30,22 @@ export function Preview({ videoRef }: PreviewProps) {
   const {
     frameStyles, videoUrl, isPlaying, setPlaying,
     setCurrentTime, setDuration, aspectRatio, setVideoDimensions,
-    videoDimensions, isCurrentlyCut // <-- THÊM MỚI (Vấn đề 4)
+    videoDimensions, isCurrentlyCut
   } = useEditorStore();
 
   const transformContainerRef = useRef<HTMLDivElement>(null);
 
-  // Vòng lặp render để cập nhật transform (không thay đổi)
+  // For loop to update transform
   useEffect(() => {
     let animationFrameId: number;
 
     const updateTransform = () => {
       if (!transformContainerRef.current || !videoRef.current) return;
 
-      // Lấy thời gian trực tiếp từ video element
+      // Get current time from video element
       const liveCurrentTime = videoRef.current.currentTime;
 
-      // Truyền thời gian trực tiếp vào hàm tính toán
+      // Pass current time to calculateZoomTransform
       const { scale, translateX, translateY } = calculateZoomTransform(liveCurrentTime);
 
       transformContainerRef.current.style.transform = `scale(${scale}) translate(${translateX}%, ${translateY}%)`;
@@ -65,7 +65,6 @@ export function Preview({ videoRef }: PreviewProps) {
     return () => {
       cancelAnimationFrame(animationFrameId);
     };
-    // THAY ĐỔI Ở ĐÂY: Xóa 'currentTime' khỏi dependency array
   }, [isPlaying, videoRef]);
 
   useEffect(() => {
@@ -75,36 +74,36 @@ export function Preview({ videoRef }: PreviewProps) {
   }, [isPlaying, videoRef]);
 
 
-  // --- Logic xử lý Cut Region (Vấn đề 4) ---
+  // --- Logic Handle Cut Region ---
   useEffect(() => {
     const video = videoRef.current;
     if (!video) return;
     
-    // Nếu đang phát và cờ 'isCurrentlyCut' được bật (từ store)
+    // If playing and 'isCurrentlyCut' is on (from store)
     if (isPlaying && isCurrentlyCut) {
-      // Lấy state mới nhất từ store (vì chúng ta cần mảng cutRegions)
+      // Get latest state from store (we need cutRegions array)
       const { cutRegions } = useEditorStore.getState();
       
-      // Tìm xem cut region nào đang kích hoạt
+      // Find which cut region is active
       const activeCutRegion = cutRegions.find(
          r => video.currentTime >= r.startTime && video.currentTime < (r.startTime + r.duration)
       );
 
       if (activeCutRegion) {
          console.log(`Skipping cut region, jumping to ${activeCutRegion.startTime + activeCutRegion.duration}`);
-         // Nhảy video đến cuối đoạn cut
+         // Jump video to end of cut region
          video.currentTime = activeCutRegion.startTime + activeCutRegion.duration;
-         // Cập nhật lại store để nó tính toán lại (có thể sẽ tắt cờ isCurrentlyCut)
+         // Update store to recalculate (may turn off isCurrentlyCut)
          setCurrentTime(video.currentTime); 
       }
     }
-  }, [isCurrentlyCut, isPlaying, videoRef, setCurrentTime]); // Chạy mỗi khi cờ isCurrentlyCut hoặc isPlaying thay đổi
+  }, [isCurrentlyCut, isPlaying, videoRef, setCurrentTime]); // Run when isCurrentlyCut or isPlaying changes
 
 
   const backgroundStyle = useMemo(() => generateBackgroundStyle(frameStyles.background), [frameStyles.background]);
   const cssAspectRatio = useMemo(() => aspectRatio.replace(':', ' / '), [aspectRatio]);
 
-  // Tính toán aspect ratio của video gốc
+  // Calculate video aspect ratio
   const videoAspectRatio = useMemo(() => {
     if (videoDimensions.height === 0) return 16 / 9; // fallback
     return videoDimensions.width / videoDimensions.height;
@@ -112,8 +111,8 @@ export function Preview({ videoRef }: PreviewProps) {
 
   const handleTimeUpdate = () => {
     if (videoRef.current) {
-      // Hành động này sẽ gọi setter của store, 
-      // và setter này sẽ tự động cập nhật cả 'isCurrentlyCut'
+      // This will call the setter of store,
+      // and the setter will automatically update 'isCurrentlyCut'
       setCurrentTime(videoRef.current.currentTime);
     }
   };
@@ -151,12 +150,12 @@ export function Preview({ videoRef }: PreviewProps) {
         }}
       >
         {videoUrl ? (
-          // Container này giờ sẽ có aspect ratio của video
+          // Container will have aspect ratio of video
           <div
             ref={transformContainerRef}
-            className="transition-transform duration-100 max-w-full max-h-full" // Bỏ w-full, h-full, thêm max-w/h
+            className="transition-transform duration-100 max-w-full max-h-full"
             style={{
-              aspectRatio: videoAspectRatio, // Đặt aspect ratio của video gốc
+              aspectRatio: videoAspectRatio,
               borderRadius: `${frameStyles.borderRadius}px`,
               boxShadow: `0 0 ${frameStyles.shadow * 2}px rgba(0,0,0,0.${frameStyles.shadow})`,
               overflow: 'hidden',

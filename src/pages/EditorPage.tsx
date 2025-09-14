@@ -33,7 +33,7 @@ export function EditorPage() {
 
     const cleanCompleteListener = window.electronAPI.onExportComplete(({ success, outputPath, error }) => {
       setIsExporting(false);
-      setExportProgress(100); // Hoặc 0
+      setExportProgress(100); // or 0
       if (success) {
         alert(`Export successful! Saved to:\n${outputPath}`);
       } else {
@@ -47,7 +47,7 @@ export function EditorPage() {
     };
   }, []);
 
-  const handleStartExport = async (settings: ExportSettings) => { // Sửa type
+  const handleStartExport = async (settings: ExportSettings) => {
     setExportModalOpen(false);
 
     const defaultPath = `ScreenAwesome-Export-${Date.now()}.${settings.format}`;
@@ -64,17 +64,17 @@ export function EditorPage() {
       return;
     }
     
-    // Lấy toàn bộ state từ store
+    // Get full state from store
     const fullState = useEditorStore.getState();
 
-    // Tạo một đối tượng mới chỉ chứa dữ liệu, không chứa hàm (actions)
+    // Create a new object containing only data, not functions (actions)
     const plainState = {
       videoPath: fullState.videoPath,
       metadata: fullState.metadata,
       videoDimensions: fullState.videoDimensions,
       duration: fullState.duration,
       frameStyles: fullState.frameStyles,
-      aspectRatio: fullState.aspectRatio, // Tỷ lệ khung hình của preview canvas
+      aspectRatio: fullState.aspectRatio, // Aspect ratio of preview canvas
       zoomRegions: fullState.zoomRegions,
       cutRegions: fullState.cutRegions,
     };
@@ -83,10 +83,10 @@ export function EditorPage() {
     setExportProgress(0);
 
     try {
-      // Gửi đi cả state "sạch" và các cài đặt export
+      // Send the clean state and export settings
       await window.electronAPI.startExport({
         projectState: plainState,
-        exportSettings: settings, // THÊM MỚI
+        exportSettings: settings,
         outputPath: result.filePath,
       });
     } catch (e) {
@@ -125,7 +125,7 @@ export function EditorPage() {
             </div>
           </div>
 
-          {/* Timeline Area (không đổi) */}
+          {/* Timeline Area */}
           <div className="h-48 flex-shrink-0 bg-card border-t overflow-x-auto">
             <Timeline videoRef={videoRef} />
           </div>

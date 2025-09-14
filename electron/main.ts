@@ -25,13 +25,6 @@ const RESOLUTIONS: Record<ResolutionKey, { width: number; height: number }> = {
   '2k': { width: 2560, height: 1440 },
 };
 
-// Helper để lấy giá trị CRF từ tên quality
-// const QUALITY_CRF = {
-//   low: 28,
-//   medium: 23,
-//   high: 18,
-// };
-
 process.env.VITE_PUBLIC = VITE_DEV_SERVER_URL ? path.join(process.env.APP_ROOT, 'public') : RENDERER_DIST
 
 let recorderWin: BrowserWindow | null
@@ -111,7 +104,7 @@ function createEditorWindow(videoPath: string, metadataPath: string) {
 
 function cleanupAndSave(): Promise<void> {
   return new Promise((resolve) => {
-    // 1. Dừng Python tracker và đóng metadata stream
+    // 1. Stop Python tracker and close metadata stream
     if (pythonTracker) {
       if (pythonDataBuffer.trim() && metadataStream) {
         if (!firstChunkWritten) {
@@ -119,7 +112,7 @@ function cleanupAndSave(): Promise<void> {
         }
         metadataStream.write(pythonDataBuffer.trim())
         firstChunkWritten = false
-        pythonDataBuffer = '' // Xóa buffer
+        pythonDataBuffer = '' // Clear buffer
       }
       pythonTracker.kill()
       pythonTracker = null
@@ -133,23 +126,23 @@ function cleanupAndSave(): Promise<void> {
       metadataStream = null;
     }
 
-    // 2. Xử lý FFmpeg và chờ nó kết thúc
+    // 2. Handle FFmpeg and wait for it to finish
     if (ffmpegProcess) {
       const ffmpeg = ffmpegProcess;
-      ffmpegProcess = null; // Gán null ngay để tránh gọi lại
+      ffmpegProcess = null; // Assign null immediately to avoid calling again
 
-      // Lắng nghe sự kiện 'close' để biết khi nào ffmpeg đã hoàn tất
+      // Listen for 'close' event to know when ffmpeg has finished
       ffmpeg.on('close', (code) => {
         console.log(`FFmpeg process exited with code ${code}`);
-        resolve(); // Hoàn thành Promise khi ffmpeg đã đóng
+        resolve(); // Complete Promise when ffmpeg has closed
       });
 
-      // Gửi lệnh 'q' để ffmpeg kết thúc một cách an toàn
+      // Send 'q' to ffmpeg to end it safely
       ffmpeg.stdin.write('q');
       ffmpeg.stdin.end();
 
     } else {
-      // Nếu không có tiến trình ffmpeg, resolve ngay lập tức
+      // If there's no ffmpeg process, resolve immediately
       resolve();
     }
   });
@@ -203,7 +196,7 @@ async function handleStartRecording() {
   setTimeout(() => {
     countdownWin?.close()
 
-    // 1. Reset state trước khi bắt đầu ghi hình mới
+    // 1. Reset state before starting a new recording
     pythonDataBuffer = ''
     firstChunkWritten = true
 
@@ -217,22 +210,22 @@ async function handleStartRecording() {
     metadataStream.write('[\n')
 
     pythonTracker.stdout.on('data', (data) => {
-      // Nối dữ liệu mới vào buffer
+      // Append new data to buffer
       pythonDataBuffer += data.toString('utf-8')
 
-      // Tách buffer thành các dòng
+      // Split buffer into lines
       const lines = pythonDataBuffer.split('\n')
 
-      // Dòng cuối cùng có thể chưa hoàn chỉnh, giữ lại nó trong buffer
+      // Keep the last line in buffer if it's incomplete
       const completeLines = lines.slice(0, -1)
       pythonDataBuffer = lines[lines.length - 1]
 
       if (completeLines.length > 0 && metadataStream) {
         completeLines.forEach((line) => {
           const trimmedLine = line.trim()
-          if (trimmedLine) { // Bỏ qua các dòng trống
+          if (trimmedLine) { // Skip empty lines
             if (!firstChunkWritten) {
-              // Thêm dấu phẩy TRƯỚC khi ghi object mới (trừ object đầu tiên)
+              // Add comma BEFORE writing new object (except the first one)
               metadataStream?.write(',\n')
             }
             metadataStream?.write(trimmedLine)
@@ -293,42 +286,42 @@ async function handleStartRecording() {
 async function handleStopRecording(videoPath: string, metadataPath: string) {
   console.log('Stopping recording, preparing to save...');
 
-  // 1. Phá hủy tray icon để người dùng không click lại
+  // 1. Destroy tray icon so user cannot click it
   tray?.destroy();
   tray = null;
 
-  // 2. Hiển thị cửa sổ "Saving..."
+  // 2. Show saving window
   createSavingWindow();
 
-  // 3. Gọi hàm cleanup và quan trọng nhất là "await" nó
+  // 3. Call cleanup and most importantly await it
   await cleanupAndSave();
 
   console.log('Files saved successfully.');
 
-  // 4. Đóng cửa sổ "Saving..."
+  // 4. Close saving window
   savingWin?.close();
 
-  // 5. Bây giờ file đã an toàn, mở cửa sổ editor
+  // 5. Open editor window
   if (!editorWin) {
     createEditorWindow(videoPath, metadataPath);
   } else {
     editorWin.webContents.send('project:open', { videoPath, metadataPath });
     editorWin.focus();
   }
-  // Đóng cửa sổ recorder nhỏ
+  // Close recorder window
   recorderWin?.close();
 }
 
 async function handleCancelRecording(videoPath: string, metadataPath: string) {
   console.log('Cancelling recording and deleting files...');
 
-  // Dừng các tiến trình mà không cần chờ lưu
+  // Stop processes without waiting for saving
   if (pythonTracker) {
     pythonTracker.kill();
     pythonTracker = null;
   }
   if (ffmpegProcess) {
-    // Giết tiến trình thay vì chờ nó lưu
+    // Kill process without waiting for saving
     ffmpegProcess.kill('SIGKILL');
     ffmpegProcess = null;
   }
@@ -337,9 +330,9 @@ async function handleCancelRecording(videoPath: string, metadataPath: string) {
     metadataStream = null;
   }
 
-  // Xóa file
+  // Delete files
   try {
-    // Đợi một chút để hệ điều hành nhả file lock
+    // Wait a bit for the system to release file lock
     setTimeout(async () => {
       if (fsSync.existsSync(videoPath)) await fs.unlink(videoPath);
       if (fsSync.existsSync(metadataPath)) await fs.unlink(metadataPath);
@@ -416,135 +409,126 @@ async function handleExportStart(
  // eslint-disable-next-line @typescript-eslint/no-explicit-any
  { projectState, exportSettings, outputPath }: { projectState: any, exportSettings: any, outputPath: string }
 ) {
-  // THÊM LOG
   console.log('[Main] Received "export:start" event. Starting export process...');
   
-  // Lấy tham chiếu đến cửa sổ editor chính để gửi thông báo tiến độ
+  // Get reference to the main editor window to send progress updates
   const window = BrowserWindow.fromWebContents(_event.sender);
   if (!window) return;
 
-  // --- Bắt đầu chiến lược mới: Sử dụng Render Worker ---
+  // --- Start new strategy: Use Render Worker ---
 
-  // 1. Dọn dẹp worker cũ nếu có (phòng trường hợp export bị lỗi trước đó)
+  // 1. Clean up old worker if exists (to handle previous export errors)
   if (renderWorker) {
     renderWorker.close();
   }
 
-  // 2. Tạo một cửa sổ ẩn để làm worker
+  // 2. Create a hidden window to act as worker
   renderWorker = new BrowserWindow({
     show: false,
     width: 1280,
     height: 720,
     webPreferences: {
       preload: path.join(__dirname, 'preload.mjs'),
-      // Quan trọng: cho phép render mà không cần hiển thị trên màn hình
+      // Important: allow rendering without showing on screen
       offscreen: true,
     },
   });
 
-  // 3. Load trang giao diện nhưng với một hash đặc biệt ('#renderer')
-  // để App.tsx biết cần phải render component RendererPage
+  // 3. Load interface but with a special hash ('#renderer')
+  // so App.tsx knows it needs to render the RendererPage component
   const renderUrl = VITE_DEV_SERVER_URL
     ? `${VITE_DEV_SERVER_URL}#renderer`
     : path.join(RENDERER_DIST, 'index.html#renderer')
   renderWorker.loadURL(renderUrl);
-  // THÊM LOG
   console.log(`[Main] Loading render worker URL: ${renderUrl}`);
 
 
-  // 4. Chuẩn bị các đối số cho FFmpeg
+  // 4. Prepare arguments for FFmpeg
   const { resolution, fps, format } = exportSettings;
   const { width: outputWidth, height: outputHeight } = RESOLUTIONS[resolution as ResolutionKey];
 
   const ffmpegArgs = [
-    '-y', // Ghi đè file đầu ra nếu đã tồn tại
-    '-f', 'rawvideo', // Định dạng đầu vào là video thô
+    '-y', // Override output file if it exists
+    '-f', 'rawvideo', // Input format is raw video
     '-vcodec', 'rawvideo',
-    '-pix_fmt', 'rgba', // Định dạng pixel mà Canvas/Electron tạo ra
-    '-s', `${outputWidth}x${outputHeight}`, // Kích thước của mỗi frame
-    '-r', fps.toString(), // Tốc độ khung hình (fps)
-    '-i', '-', // Quan trọng: Đọc dữ liệu đầu vào từ stdin (standard input)
+    '-pix_fmt', 'rgba', // Pixel format created by Canvas/Electron
+    '-s', `${outputWidth}x${outputHeight}`, // Frame size
+    '-r', fps.toString(), // Frame rate
+    '-i', '-', // Read data from stdin (standard input)
   ];
 
-  // Thêm các tùy chọn encoding cho định dạng đầu ra
+  // Add encoding options for output format
   if (format === 'mp4') {
     ffmpegArgs.push(
       '-c:v', 'libx264',
       '-preset', 'medium',
-      '-pix_fmt', 'yuv420p' // Định dạng pixel chuẩn cho video web
+      '-pix_fmt', 'yuv420p' // Standard pixel format for web video
     );
   } else { // GIF
-    // Sử dụng bộ lọc của ffmpeg để tạo palette màu, giúp GIF có chất lượng tốt hơn
+    // Use ffmpeg filters to create palette, making GIFs of better quality
     ffmpegArgs.push(
       '-vf', 'split[s0][s1];[s0]palettegen[p];[s1][p]paletteuse'
     );
   }
 
-  ffmpegArgs.push(outputPath); // Đường dẫn file đầu ra
+  ffmpegArgs.push(outputPath); // Output file path
 
-  // 5. Khởi chạy tiến trình FFmpeg
-  // THÊM LOG
+  // 5. Spawn FFmpeg process
   console.log('[Main] Spawning FFmpeg with args:', ffmpegArgs.join(' '));
   const ffmpeg = spawn('ffmpeg', ffmpegArgs);
   let ffmpegClosed = false;
 
-  // In log lỗi từ FFmpeg để debug
+  // Listen to FFmpeg error logs for debugging
   ffmpeg.stderr.on('data', (data) => {
     console.log(`[FFmpeg stderr]: ${data.toString()}`);
   });
   
-  // 6. Lắng nghe sự kiện từ Worker thông qua IPC
-  // Listener nhận dữ liệu frame (dạng Buffer) từ worker
+  // 6. Listen to events from Worker through IPC
+  // Listener receives frame data (Buffer) from worker
   const frameListener = (_event: IpcMainInvokeEvent, { frame, progress }: { frame: Buffer, progress: number }) => {
-    // Ghi buffer của frame vào stdin của FFmpeg để nó xử lý
+    // Write buffer of frame to FFmpeg stdin for processing
     if (!ffmpegClosed && ffmpeg.stdin.writable) {
       ffmpeg.stdin.write(frame);
     }
-    // Gửi tiến độ về cho cửa sổ editor chính để cập nhật UI
+    // Send progress to main editor window to update UI
     window.webContents.send('export:progress', { progress, stage: 'Rendering...' });
   };
 
-  // Listener nhận tín hiệu khi worker đã render xong tất cả các frame
+  // Listener receives signal when worker has rendered all frames
   const finishListener = () => {
-    // THÊM LOG
     console.log('[Main] Received "export:render-finished". Closing FFmpeg stdin.');
     if (!ffmpegClosed) {
-      ffmpeg.stdin.end(); // Đóng stdin để FFmpeg hoàn tất file video
+      ffmpeg.stdin.end(); // Close stdin to signal FFmpeg to finish
     }
   };
 
   ipcMain.on('export:frame-data', frameListener);
   ipcMain.on('export:render-finished', finishListener);
 
-  // 7. Xử lý khi tiến trình FFmpeg kết thúc
+  // 7. Handle when FFmpeg process ends
   ffmpeg.on('close', (code) => {
     ffmpegClosed = true;
-    // THÊM LOG
     console.log(`[Main] FFmpeg process exited with code ${code}.`);
-    renderWorker?.close(); // Đóng cửa sổ worker
+    renderWorker?.close(); // Close worker window
     renderWorker = null;
     
-    // Gửi kết quả cuối cùng về cho editor
+    // Send final result back to editor
     if (code === 0) {
-      // THÊM LOG
       console.log(`[Main] Export successful. Sending 'export:complete' to editor.`);
       window.webContents.send('export:complete', { success: true, outputPath });
     } else {
-      // THÊM LOG
       console.error(`[Main] Export failed. Sending 'export:complete' to editor with error.`);
       window.webContents.send('export:complete', { success: false, error: `FFmpeg exited with code ${code}` });
     }
 
-    // Quan trọng: Hủy đăng ký các listener để tránh memory leak cho lần export sau
+    // Important: Remove listeners to avoid memory leaks for subsequent exports
     ipcMain.removeListener('export:frame-data', frameListener);
     ipcMain.removeListener('export:render-finished', finishListener);
   });
 
-  // 8. SỬA LỖI: Chuyển logic gửi dữ liệu vào đây, chờ tín hiệu 'ready' từ worker
+  // 8. Fix: Move data sending logic here, waiting for 'ready' signal from worker
   ipcMain.once('render:ready', () => {
-    // THÊM LOG
     console.log('[Main] Received "render:ready" from worker. Sending project state...');
-    // Gửi toàn bộ trạng thái project và cài đặt export cho worker
     renderWorker?.webContents.send('render:start', {
       projectState,
       exportSettings

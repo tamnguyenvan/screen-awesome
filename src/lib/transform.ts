@@ -50,7 +50,6 @@ function calculatePan(scale: number, focusPointX: number, focusPointY: number, v
 
 export const calculateZoomTransform = (currentTime: number) => {
   const {
-    // Xóa 'currentTime' khỏi đây
     zoomRegions,
     metadata,
     videoDimensions,
@@ -69,7 +68,6 @@ export const calculateZoomTransform = (currentTime: number) => {
     return defaultTransform;
   }
   
-  // Các logic còn lại không thay đổi, vì chúng đã sử dụng 'currentTime' đúng cách
   const { startTime, duration, zoomLevel, targetX, targetY } = activeRegion;
   const elapsed = currentTime - startTime;
 
@@ -103,7 +101,7 @@ export const calculateZoomTransform = (currentTime: number) => {
     return { scale: currentScale, translateX, translateY };
   }
 
-  // --- Phase 2: Tracking (NEW SMOOTH LOGIC) ---
+  // --- Phase 2: Tracking ---
   const prevIndex = findLastIndex(metadata, m => m.timestamp <= currentTime);
 
   if (prevIndex === -1) {

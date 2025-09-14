@@ -18,7 +18,7 @@ function App() {
     };
   }, []);
   
-  if (route.startsWith('#renderer')) { // Route mới cho worker
+  if (route.startsWith('#renderer')) {
     return <RendererPage />;
   }
 

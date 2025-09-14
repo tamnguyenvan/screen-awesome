@@ -19,19 +19,19 @@ type ExportPayload = {
   exportSettings: any;
   outputPath: string;
 }
-// Payload nhận về từ tiến trình
+// Payload received from process
 type ProgressPayload = {
   progress: number; // 0-100
   stage: string;
 }
-// Payload khi hoàn thành
+// Payload when completed
 type CompletePayload = {
   success: boolean;
   outputPath?: string;
   error?: string;
 }
 
-// Payload cho worker render
+// Payload for worker render
 type RenderStartPayload = {
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   projectState: any;
@@ -39,10 +39,9 @@ type RenderStartPayload = {
   exportSettings: any;
 }
 
-// Định nghĩa API sẽ được expose ra window object
+// Define API to be exposed to window object
 export const electronAPI = {
   startRecording: (): Promise<RecordingResult> => ipcRenderer.invoke('recording:start'),
-  // stopRecording is no longer needed here as it's triggered from the tray menu
 
   onRecordingFinished: (callback: (result: RecordingResult) => void) => {
     const listener = (_event: IpcRendererEvent, result: RecordingResult) => callback(result);
@@ -83,20 +82,20 @@ export const electronAPI = {
     return ipcRenderer.invoke('dialog:showSaveDialog', options);
   },
 
-  // --- Kênh IPC cho Render Worker ---
+  // Channel IPC for Render Worker
   onRenderStart: (callback: (payload: RenderStartPayload) => void) => {
     const listener = (_event: IpcRendererEvent, payload: RenderStartPayload) => callback(payload);
     ipcRenderer.on('render:start', listener);
     return () => ipcRenderer.removeListener('render:start', listener);
   },
 
-  // THÊM MỚI: Worker báo cho main là nó đã sẵn sàng
+  // Worker reports to main that it is ready
   rendererReady: () => {
     ipcRenderer.send('render:ready');
   },
 
   sendFrameToMain: (payload: { frame: Buffer, progress: number }) => {
-    // Sử dụng 'on' và 'send' thay vì 'invoke' để streaming
+    // Use 'send' instead of 'invoke' for streaming
     ipcRenderer.send('export:frame-data', payload);
   },
 
@@ -105,10 +104,10 @@ export const electronAPI = {
   },
 }
 
-// Expose API một cách an toàn
+// Expose API safely
 contextBridge.exposeInMainWorld('electronAPI', electronAPI)
 
-// Cũng cần định nghĩa kiểu cho TypeScript trong renderer
+// Also need to define types for TypeScript in renderer
 declare global {
   interface Window {
     electronAPI: typeof electronAPI

@@ -4,7 +4,7 @@ const countdownEl = document.getElementById("countdown");
 function updateCountdown() {
   countdownEl.textContent = count;
 
-  // restart animation mỗi lần đổi số
+  // restart animation each time the number changes
   countdownEl.style.animation = "none";
   countdownEl.offsetHeight; // force reflow
   countdownEl.style.animation = null;

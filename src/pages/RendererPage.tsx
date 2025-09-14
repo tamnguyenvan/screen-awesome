@@ -10,8 +10,6 @@ const RESOLUTIONS = {
   '2k': { width: 2560, height: 1440 },
 };
 
-// Hàm vẽ background, tái sử dụng logic từ Preview.tsx
-// (Hàm này không thay đổi, nhưng vẫn cần có)
 const drawBackground = async (ctx: CanvasRenderingContext2D, width: number, height: number, backgroundState: ReturnType<typeof useEditorStore.getState>['frameStyles']['background']) => {
   ctx.clearRect(0, 0, width, height);
 
@@ -35,20 +33,20 @@ const drawBackground = async (ctx: CanvasRenderingContext2D, width: number, heig
         ctx.fillRect(0, 0, width, height);
         return;
       }
-      // Bọc việc load ảnh trong một Promise để đảm bảo nó được vẽ xong
+      // Wrap image loading in a Promise
       await new Promise<void>((resolve, reject) => {
         const img = new Image();
         img.onload = () => {
-          // Logic để vẽ ảnh với tỷ lệ `cover`
+          // Logic to draw the image with `cover` ratio
           const imgRatio = img.width / img.height;
           const canvasRatio = width / height;
           let sx, sy, sWidth, sHeight;
-          if (imgRatio > canvasRatio) { // ảnh rộng hơn canvas
+          if (imgRatio > canvasRatio) { // Image wider than canvas
               sHeight = img.height;
               sWidth = sHeight * canvasRatio;
               sx = (img.width - sWidth) / 2;
               sy = 0;
-          } else { // ảnh cao hơn hoặc bằng canvas
+          } else { // Image taller or equal to canvas
               sWidth = img.width;
               sHeight = sWidth / canvasRatio;
               sx = 0;
@@ -107,20 +105,18 @@ export function RendererPage() {
          return;
       }
       
-      // Load state vào Zustand store của worker này
+      // Load state into Zustand store of this worker
       useEditorStore.setState(projectState);
 
-      // Chuẩn bị video element
+      // Prepare video element
       video.src = `media://${projectState.videoPath}`;
       video.muted = true;
       
-      // Wrapper Promise-based cho việc seek video
+      // Wrapper Promise-based for video seek
       const seek = (time: number): Promise<void> => {
-        // SỬA LỖI: Nếu video đã ở đúng vị trí (hoặc rất gần),
-        // resolve ngay lập tức để tránh bị kẹt vì sự kiện 'seeked' không được bắn ra.
+        // Fix: If video is already at the correct position (or very close),
+        // resolve immediately to avoid getting stuck because the 'seeked' event is not triggered.
         if (Math.abs(video.currentTime - time) < 0.01) {
-            // THÊM LOG
-            // console.log(`[RendererPage] Seek shortcut: Already at time ${time.toFixed(3)}s.`);
             return Promise.resolve();
         }
 
@@ -143,14 +139,14 @@ export function RendererPage() {
         });
       };
       
-      // --- VÒNG LẶP RENDER MỚI, CÓ KIỂM SOÁT ---
+      // --- RENDER LOOP WITH CHECK ---
       const totalFrames = Math.floor(projectState.duration * fps);
       console.log(`[RendererPage] Starting render for ${totalFrames} frames at ${fps} FPS.`);
       
       for (let frameIndex = 0; frameIndex < totalFrames; frameIndex++) {
         const currentTime = frameIndex / fps;
         
-        // Logic xử lý Cut Regions
+        // Logic to handle Cut Regions
         const activeCutRegion = projectState.cutRegions.find(
           (r: CutRegion) => currentTime >= r.startTime && currentTime < r.startTime + r.duration
         );
@@ -163,17 +159,16 @@ export function RendererPage() {
           continue; 
         }
 
-        // THÊM LOG: Báo hiệu bắt đầu xử lý frame
         console.log(`[RendererPage] Processing frame ${frameIndex + 1}/${totalFrames} at time ${currentTime.toFixed(3)}s...`);
         
-        // 1. Seek video đến đúng vị trí
+        // 1. Seek video to the correct position
         await seek(currentTime);
         
-        // Cập nhật state của store để `calculateZoomTransform` hoạt động đúng
+        // Update store state to make `calculateZoomTransform` work correctly
         useEditorStore.getState().setCurrentTime(currentTime);
         const state = useEditorStore.getState();
 
-        // 2. Render lên Canvas
+        // 2. Render to Canvas
         await drawBackground(ctx, outputWidth, outputHeight, state.frameStyles.background);
         
         ctx.save();
@@ -221,15 +216,12 @@ export function RendererPage() {
         
         ctx.restore();
         
-        // 3. Trích xuất frame và gửi về main process
+        // 3. Extract frame and send to main process
         const imageData = ctx.getImageData(0, 0, outputWidth, outputHeight);
         const frameBuffer = Buffer.from(imageData.data.buffer);
         const progress = Math.round(((frameIndex + 1) / totalFrames) * 100);
         
         window.electronAPI.sendFrameToMain({ frame: frameBuffer, progress });
-
-        // THÊM LOG: Báo hiệu đã xử lý xong frame
-        // console.log(`[RendererPage] Frame ${frameIndex + 1} sent to main process.`);
       }
       
       console.log('[RendererPage] All frames rendered. Sending "finishRender" signal.');

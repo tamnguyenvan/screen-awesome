@@ -6,7 +6,7 @@ import { cn } from '../../lib/utils';
 export type ExportSettings = {
   format: 'mp4' | 'gif';
   resolution: '720p' | '1080p' | '2k';
-  fps: 30; // Hiện tại chỉ có 30
+  fps: 30; // Only 30 FPS is supported
   quality: 'low' | 'medium' | 'high';
 }
 
@@ -82,7 +82,7 @@ export function ExportModal({ isOpen, onClose, onStartExport }: ExportModalProps
   );
 }
 
-// Helper components cho gọn
+// Helper components
 const SettingRow = ({ label, children }: { label: string, children: React.ReactNode }) => (
   <div className="flex items-center justify-between">
     <label className="text-sm font-medium">{label}</label>

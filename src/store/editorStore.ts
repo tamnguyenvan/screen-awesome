@@ -34,8 +34,8 @@ export interface ZoomRegion {
   duration: number;
   zoomLevel: number;
   easing: 'linear' | 'ease-in-out';
-  targetX: number; // Tọa độ X của click (0 to 1)
-  targetY: number; // Tọa độ Y của click (0 to 1)
+  targetX: number; // Click position X (0 to 1)
+  targetY: number; // Click position Y (0 to 1)
 }
 
 export interface CutRegion {
@@ -47,12 +47,12 @@ export interface CutRegion {
 
 export type TimelineRegion = ZoomRegion | CutRegion;
 
-// Định nghĩa kiểu cho metadata
+// Define metadata type
 interface MetaDataItem {
   timestamp: number;
   x: number;
   y: number;
-  type: 'click' | 'move' | 'scroll'; // 'roll' đổi thành 'scroll' cho rõ nghĩa hơn
+  type: 'click' | 'move' | 'scroll';
   button?: string;
   pressed?: boolean;
 }
@@ -62,8 +62,8 @@ interface EditorState {
   videoPath: string | null;
   metadataPath: string | null;
   videoUrl: string | null;
-  videoDimensions: { width: number; height: number }; // Thêm kích thước video
-  metadata: MetaDataItem[]; // Thêm để lưu trữ toàn bộ metadata
+  videoDimensions: { width: number; height: number };
+  metadata: MetaDataItem[];
   duration: number;
   currentTime: number;
   isPlaying: boolean;
@@ -80,7 +80,7 @@ interface EditorState {
 // --- Actions ---
 interface EditorActions {
   loadProject: (paths: { videoPath: string; metadataPath: string }) => Promise<void>;
-  setVideoDimensions: (dims: { width: number; height: number }) => void; // Thêm action
+  setVideoDimensions: (dims: { width: number; height: number }) => void;
   setDuration: (duration: number) => void;
   setCurrentTime: (time: number) => void;
   togglePlay: () => void;
@@ -102,7 +102,7 @@ const initialState: Omit<EditorState, 'frameStyles'> = {
   videoPath: null,
   metadataPath: null,
   videoUrl: null,
-  videoDimensions: { width: 1920, height: 1080 }, // Default, sẽ được cập nhật
+  videoDimensions: { width: 1920, height: 1080 },
   metadata: [],
   duration: 0,
   currentTime: 0,
@@ -151,7 +151,7 @@ export const useEditorStore = create(
         const metadataContent = await window.electronAPI.readFile(metadataPath);
         const metadata: MetaDataItem[] = JSON.parse(metadataContent);
 
-        // Chuyển timestamp từ ms sang s
+        // Convert timestamp from ms to s
         const processedMetadata = metadata.map(item => ({ ...item, timestamp: item.timestamp / 1000 }));
         set(state => { state.metadata = processedMetadata });
 
@@ -159,7 +159,7 @@ export const useEditorStore = create(
 
         if (clicks.length === 0) return;
 
-        // Logic gộp các click gần nhau
+        // Logic to merge clicks that are close to each other
         const mergedClickGroups: MetaDataItem[][] = [];
         if (clicks.length > 0) {
           let currentGroup = [clicks[0]];
@@ -178,8 +178,8 @@ export const useEditorStore = create(
           const firstClick = group[0];
           const lastClick = group[group.length - 1];
 
-          const startTime = firstClick.timestamp - 0.25; // Bắt đầu zoom trước khi click
-          const duration = (lastClick.timestamp - firstClick.timestamp) + 0.75; // Thời gian từ click đầu đến cuối + thêm 0.25s đầu và 0.5s cuối
+          const startTime = firstClick.timestamp - 0.25; // Start zoom before click
+          const duration = (lastClick.timestamp - firstClick.timestamp) + 0.75; // Time from first click to last click + add 0.25s at start and 0.5s at end
 
           return {
             id: `auto-zoom-${Date.now()}-${index}`,
@@ -208,21 +208,21 @@ export const useEditorStore = create(
     setCurrentTime: (time) => set(state => {
       state.currentTime = time;
 
-      // --- Logic cho Zoom Region ---
+      // --- Logic for Zoom Region ---
       const activeRegion = state.zoomRegions.find(r => r.id === state.activeZoomRegionId);
 
-      // Nếu time vẫn nằm trong region đang active, không cần làm gì cả
+      // If time still within the active region, do nothing
       if (activeRegion && time >= activeRegion.startTime && time <= activeRegion.startTime + activeRegion.duration) {
-        // Vẫn đang ở trong region cũ, nhưng cần check logic cut
+        // Still in the old region, but need to check cut logic
       } else {
-         // Nếu không, tìm region mới
+         // otherwise, find new region
         const newActiveRegion = state.zoomRegions.find(
           r => time >= r.startTime && time <= r.startTime + r.duration
         );
         state.activeZoomRegionId = newActiveRegion ? newActiveRegion.id : null;
       }
 
-      // --- Logic cho Cut Region ---
+      // --- Logic for Cut Region ---
       const activeCutRegion = state.cutRegions.find(
         r => time >= r.startTime && time <= r.startTime + r.duration
       );

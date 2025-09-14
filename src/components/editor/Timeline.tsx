@@ -20,7 +20,6 @@ interface RegionBlockProps {
 
 const PIXELS_PER_SECOND_BASE = 60;
 
-// (RegionBlock components remain unchanged)
 function ZoomRegionBlock({ region, left, width, isSelected, onMouseDown }: RegionBlockProps) {
   const zoomRegion = region as ZoomRegion;
   return (
@@ -102,7 +101,7 @@ export function Timeline({ videoRef }: TimelineProps) {
   const timeToPx = useCallback((time: number) => time * pixelsPerSecond, [pixelsPerSecond]);
   const pxToTime = useCallback((px: number) => px / pixelsPerSecond, [pixelsPerSecond]);
 
-  // (Click and Drag handlers remain unchanged)
+  // Click and Drag handlers
   const handleTimelineClick = (e: ReactMouseEvent<HTMLDivElement>) => {
     if (draggingRegion || isDraggingPlayhead || !timelineRef.current || store.duration === 0) return;
     if ((e.target as HTMLElement).closest('[data-region-id]') || (e.target as HTMLElement).closest('[data-playhead-handle]')) return;
@@ -171,7 +170,7 @@ export function Timeline({ videoRef }: TimelineProps) {
   }, [draggingRegion, isDraggingPlayhead, store, videoRef, pxToTime]);
 
 
-  // --- NEW: Smooth animation loop for playback ---
+  // Smooth animation loop for playback
   useEffect(() => {
     let animationFrameId: number;
 
@@ -196,7 +195,7 @@ export function Timeline({ videoRef }: TimelineProps) {
   }, [store.isPlaying, videoRef, timeToPx]);
 
 
-  // --- UPDATED: This effect now ONLY runs when paused ---
+  // This effect now ONLY runs when paused
   useEffect(() => {
     // This ensures the playhead is correctly positioned when NOT playing
     // (e.g., after scrubbing, clicking, or loading).

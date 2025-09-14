@@ -4,11 +4,11 @@ body {
   align-items: center;
   height: 100vh;
   margin: 0;
-  background-color: rgba(0, 0, 0, 0.7); /* Nền mờ */
+  background-color: rgba(0, 0, 0, 0.7); /* Blur background */
   font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica,
     Arial, sans-serif;
   color: white;
-  -webkit-app-region: drag; /* Cho phép kéo cửa sổ */
+  -webkit-app-region: drag; /* Allow window dragging */
 }
 
 .container {

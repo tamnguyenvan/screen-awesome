@@ -28,6 +28,6 @@ export default defineConfig({
         // ? undefined
         // : {},
     }),
-    nodePolyfills(), // this is necessary to avoid "process is not defined issue"
+    nodePolyfills(), // this is necessary to avoid "Buffer is not defined issue"
   ],
 })
