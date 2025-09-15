@@ -4,7 +4,7 @@ import { useEditorStore } from '../../store/editorStore';
 import { cn } from '../../lib/utils';
 import { WALLPAPERS } from '../../lib/constants';
 import { RegionSettingsPanel } from './RegionSettingsPanel';
-import { Palette, Image, Upload, Sparkles } from 'lucide-react';
+import { Palette, Image, Sparkles, ImageIcon, Check } from 'lucide-react';
 import { Input } from '../ui/input';
 
 type BackgroundTab = 'color' | 'gradient' | 'image' | 'wallpaper';
@@ -46,7 +46,7 @@ function FrameSettingsPanel() {
     { id: 'wallpaper', name: 'Wallpapers', icon: Sparkles },
     { id: 'gradient', name: 'Gradient', icon: Palette },
     { id: 'color', name: 'Solid', icon: Palette },
-    { id: 'image', name: 'Custom', icon: Upload },
+    { id: 'image', name: 'Image', icon: ImageIcon },
   ];
 
   return (
@@ -78,14 +78,14 @@ function FrameSettingsPanel() {
                     key={tab.id}
                     onClick={() => selectTab(tab.id as BackgroundTab)}
                     className={cn(
-                      "flex-1 flex items-center justify-center gap-2 px-3 py-2.5 text-sm font-medium rounded-md transition-all duration-200",
+                      "flex-1 flex items-center justify-center gap-2 px-2 py-1.5 text-xs font-medium rounded-md transition-all duration-200",
                       activeTab === tab.id
                         ? "bg-sidebar-primary text-sidebar-primary-foreground shadow-sm"
                         : "text-muted-foreground hover:text-sidebar-foreground hover:bg-sidebar-accent/50"
                     )}
                   >
                     <Icon className="w-4 h-4" />
-                    <span className="hidden sm:inline">{tab.name}</span>
+                    <span>{tab.name}</span>
                   </button>
                 );
               })}
@@ -154,13 +154,13 @@ function FrameSettingsPanel() {
               {activeTab === 'wallpaper' && (
                 <div className="space-y-3">
                   <label className="block text-sm font-medium text-sidebar-foreground mb-2">Choose Wallpaper</label>
-                  <div className="grid grid-cols-2 gap-3">
+                  <div className="grid grid-cols-7 gap-1.5">
                     {WALLPAPERS.map((wallpaper, index) => (
                       <button 
-                        key={wallpaper.thumbnailUrl} 
+                        key={`${wallpaper.thumbnailUrl}-${index}`} 
                         onClick={() => updateBackground({ thumbnailUrl: wallpaper.thumbnailUrl, imageUrl: wallpaper.imageUrl })} 
                         className={cn(
-                          "relative h-20 rounded-lg bg-cover bg-center border-2 transition-all duration-200 overflow-hidden group",
+                          "relative aspect-square rounded-md bg-cover bg-center border-2 transition-all duration-200 overflow-hidden group",
                           frameStyles.background.thumbnailUrl === wallpaper.thumbnailUrl 
                             ? "border-primary shadow-md ring-2 ring-primary/20" 
                             : "border-border hover:border-primary/50 hover:shadow-sm"
@@ -169,13 +169,11 @@ function FrameSettingsPanel() {
                         <img 
                           src={wallpaper.thumbnailUrl} 
                           alt={`Wallpaper ${index + 1}`} 
-                          className="w-full h-full object-cover rounded-md transition-transform duration-200 group-hover:scale-105" 
+                          className="w-full h-full object-cover rounded-sm transition-transform duration-200 group-hover:scale-105" 
                         />
                         {frameStyles.background.thumbnailUrl === wallpaper.thumbnailUrl && (
-                          <div className="absolute inset-0 bg-primary/10 rounded-md flex items-center justify-center">
-                            <div className="w-6 h-6 bg-primary rounded-full flex items-center justify-center">
-                              <div className="w-2 h-2 bg-primary-foreground rounded-full"></div>
-                            </div>
+                          <div className="absolute inset-0 bg-primary/20 rounded-sm flex items-center justify-center">
+                            <Check className="w-4 h-4 text-primary-foreground" />
                           </div>
                         )}
                       </button>

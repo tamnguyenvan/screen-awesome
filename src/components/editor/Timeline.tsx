@@ -276,10 +276,10 @@ export function Timeline({ videoRef }: TimelineProps) {
           </div>
 
           {/* Track Area */}
-          <div className="absolute top-8 left-0 right-0 bottom-0 pt-4">
+          <div className="absolute top-8 left-0 right-0 bottom-0 pt-2">
             {/* Video Track */}
             <div 
-              className="h-12 rounded-lg bg-muted/30 border border-border/30 flex items-center px-4 mb-3 backdrop-blur-sm"
+              className="h-10 rounded-lg bg-muted/30 border border-border/30 flex items-center px-4 mb-2 backdrop-blur-sm"
               style={{ width: `${store.duration * pixelsPerSecond}px` }}
             >
               <div className="flex items-center gap-2 text-sm text-muted-foreground">
@@ -290,7 +290,7 @@ export function Timeline({ videoRef }: TimelineProps) {
 
             {/* Regions Track */}
             <div 
-              className="h-12 relative rounded-lg bg-background/50 border border-border/30 backdrop-blur-sm"
+              className="h-10 relative rounded-lg bg-background/50 border border-border/30 backdrop-blur-sm"
               style={{ width: `${store.duration * pixelsPerSecond}px` }}
             >
               {/* Regions */}

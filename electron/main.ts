@@ -158,9 +158,9 @@ function createEditorWindow(videoPath: string, metadataPath: string) {
     editorWin?.webContents.send('project:open', { videoPath, metadataPath });
   });
 
-  if (process.env.NODE_ENV === 'development') {
-    editorWin.webContents.openDevTools();
-  }
+  // if (process.env.NODE_ENV === 'development') {
+  //   editorWin.webContents.openDevTools();
+  // }
 
   editorWin.on('closed', () => {
     editorWin = null;

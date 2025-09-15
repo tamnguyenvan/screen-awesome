@@ -118,7 +118,7 @@ export function Preview({ videoRef }: PreviewProps) {
 
   return (
     <div
-      className="transition-all duration-300 ease-out flex items-center justify-center relative rounded-xl overflow-hidden shadow-lg"
+      className="transition-all duration-300 ease-out flex items-center justify-center relative overflow-hidden shadow-lg"
       style={{
         ...backgroundStyle,
         aspectRatio: cssAspectRatio,

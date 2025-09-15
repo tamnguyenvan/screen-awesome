@@ -3,5 +3,18 @@ export const WALLPAPERS = [
   {imageUrl: 'wallpapers/images/wallpaper-0002.jpg', thumbnailUrl: 'wallpapers/thumbnails/wallpaper-0002.jpg'},
   {imageUrl: 'wallpapers/images/wallpaper-0003.jpg', thumbnailUrl: 'wallpapers/thumbnails/wallpaper-0003.jpg'},
   {imageUrl: 'wallpapers/images/wallpaper-0004.jpg', thumbnailUrl: 'wallpapers/thumbnails/wallpaper-0004.jpg'},
+  {imageUrl: 'wallpapers/images/wallpaper-0005.jpg', thumbnailUrl: 'wallpapers/thumbnails/wallpaper-0005.jpg'},
+  {imageUrl: 'wallpapers/images/wallpaper-0006.jpg', thumbnailUrl: 'wallpapers/thumbnails/wallpaper-0006.jpg'},
+  {imageUrl: 'wallpapers/images/wallpaper-0007.jpg', thumbnailUrl: 'wallpapers/thumbnails/wallpaper-0007.jpg'},
+  {imageUrl: 'wallpapers/images/wallpaper-0008.jpg', thumbnailUrl: 'wallpapers/thumbnails/wallpaper-0008.jpg'},
+  {imageUrl: 'wallpapers/images/wallpaper-0009.jpg', thumbnailUrl: 'wallpapers/thumbnails/wallpaper-0009.jpg'},
+  {imageUrl: 'wallpapers/images/wallpaper-0010.jpg', thumbnailUrl: 'wallpapers/thumbnails/wallpaper-0010.jpg'},
+  {imageUrl: 'wallpapers/images/wallpaper-0011.jpg', thumbnailUrl: 'wallpapers/thumbnails/wallpaper-0011.jpg'},
+  {imageUrl: 'wallpapers/images/wallpaper-0012.jpg', thumbnailUrl: 'wallpapers/thumbnails/wallpaper-0012.jpg'},
+  {imageUrl: 'wallpapers/images/wallpaper-0013.jpg', thumbnailUrl: 'wallpapers/thumbnails/wallpaper-0013.jpg'},
+  {imageUrl: 'wallpapers/images/wallpaper-0014.jpg', thumbnailUrl: 'wallpapers/thumbnails/wallpaper-0014.jpg'},
+  {imageUrl: 'wallpapers/images/wallpaper-0015.jpg', thumbnailUrl: 'wallpapers/thumbnails/wallpaper-0015.jpg'},
+  {imageUrl: 'wallpapers/images/wallpaper-0016.jpg', thumbnailUrl: 'wallpapers/thumbnails/wallpaper-0016.jpg'},
+  {imageUrl: 'wallpapers/images/wallpaper-0017.jpg', thumbnailUrl: 'wallpapers/thumbnails/wallpaper-0017.jpg'},
 ]
 export const WALLPAPERS_THUMBNAILS = WALLPAPERS.map(w => w.thumbnailUrl);

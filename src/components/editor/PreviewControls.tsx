@@ -122,21 +122,23 @@ export function PreviewControls({ videoRef }: PreviewControlsProps) {
       <div className="flex items-center">
         <div className="flex items-center gap-2">
           <span className="text-sm text-muted-foreground font-medium">Aspect:</span>
-          <Select
-            value={aspectRatio}
-            onValueChange={(value) => setAspectRatio(value as AspectRatio)}
-          >
-            <SelectTrigger label="Animation">
-              <SelectValue placeholder="Select animation type" />
-            </SelectTrigger>
-            <SelectContent>
-              <SelectItem value="16:9">16:9</SelectItem>
-              <SelectItem value="9:16">9:16</SelectItem>
-              <SelectItem value="4:3">4:3</SelectItem>
-              <SelectItem value="3:4">3:4</SelectItem>
-              <SelectItem value="1:1">1:1</SelectItem>
-            </SelectContent>
-          </Select>
+          <div className="w-28">
+            <Select
+              value={aspectRatio}
+              onValueChange={(value) => setAspectRatio(value as AspectRatio)}
+            >
+              <SelectTrigger>
+                <SelectValue placeholder="Select ratio..." />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="16:9">16:9</SelectItem>
+                <SelectItem value="9:16">9:16</SelectItem>
+                <SelectItem value="4:3">4:3</SelectItem>
+                <SelectItem value="3:4">3:4</SelectItem>
+                <SelectItem value="1:1">1:1</SelectItem>
+              </SelectContent>
+            </Select>
+          </div>
         </div>
       </div>
     </div>
