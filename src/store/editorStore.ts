@@ -13,6 +13,7 @@ interface Background {
   color?: string;
   gradientStart?: string;
   gradientEnd?: string;
+  gradientDirection?: string;
   imageUrl?: string;
   thumbnailUrl?: string;
 }

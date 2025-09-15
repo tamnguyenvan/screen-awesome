@@ -4,20 +4,23 @@ import { useEditorStore } from '../../store/editorStore';
 import { cn } from '../../lib/utils';
 import { WALLPAPERS } from '../../lib/constants';
 import { RegionSettingsPanel } from './RegionSettingsPanel';
-import { Palette, Image, Sparkles, ImageIcon, Check, UploadCloud, X, Zap } from 'lucide-react';
+import {
+  Palette, Image, Sparkles, ImageIcon, Check, UploadCloud, X, Zap,
+  ArrowUp, ArrowDown, ArrowLeft, ArrowRight, ArrowDownRight, ArrowUpLeft, ArrowDownLeft
+} from 'lucide-react';
 import { Input } from '../ui/input';
 import Slider from '../ui/slider';
 
 type BackgroundTab = 'color' | 'gradient' | 'image' | 'wallpaper';
 
 // Helper component for circular color picker
-const ColorPickerCircle = ({ 
-  label, 
-  color, 
-  name, 
+const ColorPickerCircle = ({
+  label,
+  color,
+  name,
   onChange,
-  size = 'md'
-}: { 
+  size = 'sm'
+}: {
   label: string;
   color: string;
   name: string;
@@ -26,12 +29,12 @@ const ColorPickerCircle = ({
 }) => {
   const sizeClasses = {
     sm: 'w-8 h-8',
-    md: 'w-12 h-12',
-    lg: 'w-16 h-16'
+    md: 'w-10 h-10',
+    lg: 'w-12 h-12'
   };
 
   return (
-    <div className="flex flex-col items-center gap-2">
+    <div className="flex flex-col items-center gap-1">
       <label className={cn("relative cursor-pointer group", sizeClasses[size])}>
         <input
           type="color"
@@ -42,50 +45,74 @@ const ColorPickerCircle = ({
         />
         <div
           className={cn(
-            "w-full h-full rounded-full border-3 border-sidebar-border/30 group-hover:border-primary/60 transition-all duration-300 shadow-lg group-hover:shadow-xl group-hover:scale-110 group-active:scale-100",
-            "ring-2 ring-background"
+            "w-full h-full rounded-full border-2 border-sidebar-border/30 group-hover:border-primary/60 transition-all duration-300 shadow-sm"
           )}
           style={{ backgroundColor: color }}
         />
-        <div className="absolute inset-0 rounded-full bg-gradient-to-br from-white/20 to-transparent pointer-events-none" />
       </label>
-      <span className="text-xs font-medium text-muted-foreground capitalize">{label}</span>
+      <span className="text-xs text-muted-foreground text-center leading-none">{label}</span>
     </div>
   );
 };
 
-// Enhanced gradient presets using design system colors
+// Gradient presets with proper gradient display
 const GRADIENT_PRESETS = [
-  { 
-    name: 'Primary Fade',
-    start: 'oklch(0.5854 0.2041 277.1173)', // --primary
-    end: 'oklch(1.0000 0 0)' // white
+  {
+    name: 'Top to Bottom',
+    direction: 'to bottom',
+    icon: ArrowDown
   },
-  { 
-    name: 'Accent Fade',
-    start: 'oklch(0.9299 0.0334 272.7879)', // --accent
-    end: 'oklch(1.0000 0 0)' // white
+  {
+    name: 'Bottom to Top',
+    direction: 'to top',
+    icon: ArrowUp
   },
-  { 
-    name: 'Secondary Fade',
-    start: 'oklch(0.9276 0.0058 264.5313)', // --secondary
-    end: 'oklch(1.0000 0 0)' // white
+  {
+    name: 'Left to Right',
+    direction: 'to right',
+    icon: ArrowRight
   },
-  { 
-    name: 'Muted Fade',
-    start: 'oklch(0.9670 0.0029 264.5419)', // --muted
-    end: 'oklch(1.0000 0 0)' // white
+  {
+    name: 'Right to Left',
+    direction: 'to left',
+    icon: ArrowLeft
   },
-  { 
-    name: 'Warm Gradient',
-    start: 'oklch(0.6368 0.2078 25.3313)', // warm color
-    end: 'oklch(1.0000 0 0)' // white
+  {
+    name: 'Top-Left to Bottom-Right',
+    direction: 'to bottom right',
+    icon: ArrowDownRight
   },
-  { 
-    name: 'Cool Gradient',
-    start: 'oklch(0.5854 0.2041 200)', // cool blue
-    end: 'oklch(1.0000 0 0)' // white
+  {
+    name: 'Bottom-Right to Top-Left',
+    direction: 'to top left',
+    icon: ArrowUpLeft
   },
+  {
+    name: 'Top-Right to Bottom-Left',
+    direction: 'to bottom left',
+    icon: ArrowDownLeft
+  },
+  {
+    name: 'Center Out',
+    direction: 'circle',
+    icon: Zap
+  },
+];
+
+// Quick color presets with hex values
+const COLOR_PRESETS = [
+  { name: 'Primary', color: '#7c3aed' },
+  { name: 'Blue', color: '#3b82f6' },
+  { name: 'Green', color: '#10b981' },
+  { name: 'Red', color: '#ef4444' },
+  { name: 'Orange', color: '#f97316' },
+  { name: 'Pink', color: '#ec4899' },
+  { name: 'Purple', color: '#8b5cf6' },
+  { name: 'Teal', color: '#14b8a6' },
+  { name: 'Yellow', color: '#eab308' },
+  { name: 'Indigo', color: '#6366f1' },
+  { name: 'Gray', color: '#6b7280' },
+  { name: 'Black', color: '#000000' },
 ];
 
 function FrameSettingsPanel() {
@@ -103,6 +130,22 @@ function FrameSettingsPanel() {
     updateBackground({ [name]: value });
   };
 
+  const handleColorPresetClick = (color: string) => {
+    updateBackground({ type: 'color', color: color });
+  };
+
+  const handleGradientPresetClick = (direction: string) => {
+    const gradientStart = frameStyles.background.gradientStart || '#6366f1'; // Darker purple for better contrast
+    const gradientEnd = frameStyles.background.gradientEnd || '#a5b4fc'; // Lighter version of #6366f1
+
+    updateBackground({
+      type: 'gradient',
+      gradientStart,
+      gradientEnd,
+      gradientDirection: direction
+    });
+  };
+
   const handleImageUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
     if (e.target.files && e.target.files[0]) {
       const file = e.target.files[0];
@@ -110,9 +153,8 @@ function FrameSettingsPanel() {
       updateBackground({ type: 'image', imageUrl });
     }
   };
-  
+
   const removeUploadedImage = () => {
-    // Revoke the object URL to prevent memory leaks
     if (frameStyles.background.imageUrl && frameStyles.background.imageUrl.startsWith('blob:')) {
       URL.revokeObjectURL(frameStyles.background.imageUrl);
     }
@@ -125,10 +167,10 @@ function FrameSettingsPanel() {
   };
 
   const tabs = [
-    { id: 'wallpaper', name: 'Wallpapers', icon: Sparkles, description: 'Pre-made backgrounds' },
-    { id: 'gradient', name: 'Gradient', icon: Zap, description: 'Smooth color transitions' },
-    { id: 'color', name: 'Solid', icon: Palette, description: 'Single color background' },
-    { id: 'image', name: 'Image', icon: ImageIcon, description: 'Custom images' },
+    { id: 'wallpaper', name: 'Wallpaper', icon: Sparkles },
+    { id: 'color', name: 'Color', icon: Palette },
+    { id: 'gradient', name: 'Gradient', icon: Zap },
+    { id: 'image', name: 'Image', icon: ImageIcon },
   ];
 
   return (
@@ -150,142 +192,183 @@ function FrameSettingsPanel() {
       <div className="flex-1 overflow-y-auto">
         <div className="p-6 space-y-8">
           {/* Background Section */}
-          <ControlGroup 
-            label="Background" 
+          <ControlGroup
+            label="Background"
             icon={<Image className="w-4 h-4 text-primary" />}
             description="Choose how your video background looks"
           >
-            {/* Tab Navigation */}
-            <div className="flex border border-sidebar-border rounded-lg p-1 mb-6 bg-sidebar-accent/20">
+            {/* Compact Tab Navigation */}
+            <div className="grid grid-cols-4 gap-1 p-1 bg-sidebar-accent/20 rounded-lg mb-4">
               {tabs.map((tab) => {
+                const Icon = tab.icon;
                 return (
                   <button
                     key={tab.id}
                     onClick={() => selectTab(tab.id as BackgroundTab)}
                     className={cn(
-                      "flex-1 flex items-center justify-center gap-2 px-2 py-1.5 text-xs font-medium rounded-md transition-all duration-200",
-                      "active:scale-95", // Added light click effect
+                      "flex flex-col items-center gap-1 px-2 py-2 text-xs font-medium rounded-md transition-all duration-200",
                       activeTab === tab.id
                         ? "bg-sidebar-primary text-sidebar-primary-foreground shadow-sm"
                         : "text-muted-foreground hover:text-sidebar-foreground hover:bg-sidebar-accent/50"
                     )}
                   >
-                    <span>{tab.name}</span>
+                    <Icon className="w-4 h-4" />
+                    <span className="text-xs">{tab.name}</span>
                   </button>
                 );
               })}
             </div>
 
-            {/* Tab Content with Fixed Height to Prevent Layout Shift */}
-            <div className="min-h-[280px] flex flex-col">
-              {activeTab === 'color' && (
-                <div className="flex-1 flex flex-col items-center justify-center gap-6">
-                  <div className="text-center mb-4">
-                    <h4 className="text-sm font-semibold text-sidebar-foreground mb-2">Solid Color</h4>
-                    <p className="text-xs text-muted-foreground">Pick a single color for your background</p>
+            {/* Compact Tab Content */}
+            <div className="min-h-[200px]">
+              {activeTab === 'wallpaper' && (
+                <div className="space-y-3">
+                  <div className="grid grid-cols-4 gap-2">
+                    {WALLPAPERS.slice(0, 12).map((wallpaper, index) => (
+                      <button
+                        key={`${wallpaper.thumbnailUrl}-${index}`}
+                        onClick={() => updateBackground({ thumbnailUrl: wallpaper.thumbnailUrl, imageUrl: wallpaper.imageUrl, type: 'wallpaper' })}
+                        className={cn(
+                          "relative aspect-square rounded-md overflow-hidden border-2 transition-all duration-300 group",
+                          frameStyles.background.thumbnailUrl === wallpaper.thumbnailUrl
+                            ? "border-primary shadow-md ring-1 ring-primary/20"
+                            : "border-sidebar-border hover:border-primary/50"
+                        )}
+                      >
+                        <img
+                          src={wallpaper.thumbnailUrl}
+                          alt={`Wallpaper ${index + 1}`}
+                          className="w-full h-full object-cover transition-transform duration-300 group-hover:scale-105"
+                        />
+                        {frameStyles.background.thumbnailUrl === wallpaper.thumbnailUrl && (
+                          <div className="absolute inset-0 bg-primary/20 flex items-center justify-center">
+                            <div className="w-4 h-4 bg-primary rounded-full flex items-center justify-center shadow-sm">
+                              <Check className="w-2 h-2 text-primary-foreground" />
+                            </div>
+                          </div>
+                        )}
+                      </button>
+                    ))}
                   </div>
-                  <ColorPickerCircle
-                    label="Background Color"
-                    color={frameStyles.background.color || '#ffffff'}
-                    name="color"
-                    onChange={handleBackgroundChange}
-                    size="lg"
+                  {WALLPAPERS.length > 12 && (
+                    <p className="text-xs text-muted-foreground text-center">
+                      +{WALLPAPERS.length - 12} more wallpapers
+                    </p>
+                  )}
+                </div>
+              )}
+
+              {activeTab === 'color' && (
+                <div className="space-y-4">
+                  <div className="flex items-center justify-center">
+                    <ColorPickerCircle
+                      label="Custom"
+                      color={frameStyles.background.color || '#ffffff'}
+                      name="color"
+                      onChange={handleBackgroundChange}
+                      size="md"
+                    />
+                  </div>
+
+                  <div className="space-y-3">
+                    <h5 className="text-xs font-semibold text-muted-foreground text-center uppercase tracking-wider">Presets</h5>
+                    <div className="grid grid-cols-6 gap-2">
+                      {COLOR_PRESETS.map((preset) => (
+                        <button
+                          key={preset.name}
+                          onClick={() => handleColorPresetClick(preset.color)}
+                          className="w-full aspect-square rounded-md border border-sidebar-border/30 transition-all duration-200 hover:border-primary/60 hover:scale-105"
+                          style={{ backgroundColor: preset.color }}
+                          title={preset.name}
+                        />
+                      ))}
+                    </div>
+                  </div>
+
+                  <Input
+                    type="text"
+                    value={frameStyles.background.color || ''}
+                    onChange={(e) => handleColorPresetClick(e.target.value)}
+                    className="text-xs font-mono h-8"
+                    placeholder="#FFFFFF"
                   />
                 </div>
               )}
 
               {activeTab === 'gradient' && (
-                <div className="flex-1 space-y-6">
-                  <div className="text-center">
-                    <h4 className="text-sm font-semibold text-sidebar-foreground mb-2">Custom Gradient</h4>
-                    <p className="text-xs text-muted-foreground mb-6">Create smooth color transitions</p>
-                  </div>
-                  
-                  <div className="flex items-center justify-center gap-12">
+                <div className="space-y-4">
+                  <div className="flex items-center justify-center gap-6">
                     <ColorPickerCircle
-                      label="Start Color"
-                      color={frameStyles.background.gradientStart || '#5854ec'}
+                      label="Start"
+                      color={frameStyles.background.gradientStart || '#ffffff'} // Darker color for better contrast
                       name="gradientStart"
                       onChange={handleBackgroundChange}
                     />
-                    <div className="flex-1 h-px bg-gradient-to-r from-sidebar-border to-transparent max-w-8" />
+                    <div className="flex-1 h-px bg-gradient-to-r from-sidebar-border to-transparent max-w-6" />
                     <ColorPickerCircle
-                      label="End Color"
-                      color={frameStyles.background.gradientEnd || '#ffffff'}
+                      label="End"
+                      color={frameStyles.background.gradientEnd || '#6366f1'} // Lighter color for better contrast
                       name="gradientEnd"
                       onChange={handleBackgroundChange}
                     />
                   </div>
-                  
-                  <div className="space-y-4">
-                    <div className="text-center">
-                      <h5 className="text-xs font-semibold text-muted-foreground mb-3 tracking-wider uppercase">Quick Presets</h5>
-                    </div>
-                    <div className="grid grid-cols-3 gap-3">
-                      {GRADIENT_PRESETS.map((preset, index) => (
-                        <button
-                          key={index}
-                          className={cn(
-                            "group relative aspect-square rounded-lg overflow-hidden border-2 transition-all duration-300",
-                            "hover:scale-105 hover:shadow-lg active:scale-100",
-                            "border-sidebar-border hover:border-primary/50"
-                          )}
-                          style={{ background: `linear-gradient(135deg, ${preset.start}, ${preset.end})` }}
-                          onClick={() => updateBackground({ 
-                            type: 'gradient', 
-                            gradientStart: preset.start, 
-                            gradientEnd: preset.end 
-                          })}
-                        >
-                          <div className="absolute inset-0 bg-gradient-to-br from-white/10 to-transparent opacity-0 group-hover:opacity-100 transition-opacity duration-300" />
-                          <div className="absolute inset-0 flex items-center justify-center opacity-0 group-hover:opacity-100 transition-all duration-300">
-                            <div className="w-6 h-6 bg-white/20 backdrop-blur-sm rounded-full flex items-center justify-center">
-                              <Check className="w-3 h-3 text-white" />
-                            </div>
-                          </div>
-                        </button>
-                      ))}
+
+                  <div className="space-y-3">
+                    <h5 className="text-xs font-semibold text-muted-foreground text-center uppercase tracking-wider">Direction</h5>
+                    <div className="grid grid-cols-4 gap-2">
+                      {GRADIENT_PRESETS.map((preset, index) => {
+                        const startColor = '#ffffff';
+                        const endColor = '#6366f1';
+
+                        const gradientStyle = preset.direction === 'circle'
+                          ? { background: `radial-gradient(circle, ${startColor}, ${endColor})` }
+                          : { background: `linear-gradient(${preset.direction}, ${startColor}, ${endColor})` };
+
+                        return (
+                          <button
+                            key={index}
+                            className="group relative aspect-square rounded-md overflow-hidden border-2 transition-all duration-300 flex items-center justify-center text-white/60 hover:text-white border-sidebar-border hover:border-primary/50"
+                            style={gradientStyle}
+                            onClick={() => handleGradientPresetClick(preset.direction)}
+                            title={preset.name}
+                          >
+                          </button>
+                        );
+                      })}
                     </div>
                   </div>
                 </div>
               )}
 
               {activeTab === 'image' && (
-                <div className="flex-1 space-y-4">
-                  <div className="text-center">
-                    <h4 className="text-sm font-semibold text-sidebar-foreground mb-2">Custom Image</h4>
-                    <p className="text-xs text-muted-foreground mb-6">Upload your own background image</p>
-                  </div>
-                  
+                <div className="space-y-4">
                   {frameStyles.background.imageUrl && frameStyles.background.type === 'image' ? (
                     <div className="relative group rounded-lg overflow-hidden">
                       <img
                         src={frameStyles.background.imageUrl}
                         alt="Uploaded background"
-                        className="w-full h-48 object-cover"
+                        className="w-full h-32 object-cover"
                       />
-                      <div className="absolute inset-0 bg-gradient-to-t from-black/50 to-transparent opacity-0 group-hover:opacity-100 transition-opacity duration-300" />
+                      <div className="absolute inset-0 bg-black/20 opacity-0 group-hover:opacity-100 transition-opacity duration-300" />
                       <button
                         onClick={removeUploadedImage}
-                        className="absolute top-3 right-3 w-8 h-8 bg-destructive/90 backdrop-blur-sm text-destructive-foreground rounded-full flex items-center justify-center opacity-0 group-hover:opacity-100 transition-all duration-300 hover:bg-destructive hover:scale-110"
+                        className="absolute top-2 right-2 w-6 h-6 bg-destructive/90 backdrop-blur-sm text-destructive-foreground rounded-full flex items-center justify-center opacity-0 group-hover:opacity-100 transition-all duration-300 hover:bg-destructive"
                       >
-                        <X size={16} />
+                        <X size={12} />
                       </button>
                     </div>
                   ) : (
                     <label className={cn(
-                      "flex flex-col items-center justify-center w-full h-48 rounded-xl",
+                      "flex flex-col items-center justify-center w-full h-32 rounded-lg",
                       "border-2 border-dashed border-sidebar-border/50 text-muted-foreground",
                       "hover:border-primary/50 hover:text-primary hover:bg-primary/5",
                       "transition-all duration-300 cursor-pointer group"
                     )}>
-                      <div className="flex flex-col items-center gap-3">
-                        <div className="w-12 h-12 rounded-full bg-primary/10 flex items-center justify-center group-hover:scale-110 transition-transform duration-300">
-                          <UploadCloud className="w-6 h-6" />
-                        </div>
+                      <div className="flex flex-col items-center gap-2">
+                        <UploadCloud className="w-8 h-8" />
                         <div className="text-center">
-                          <p className="text-sm font-semibold">Drop image here</p>
-                          <p className="text-xs text-muted-foreground mt-1">PNG, JPG, GIF up to 10MB</p>
+                          <p className="text-xs font-medium">Upload Image</p>
+                          <p className="text-xs text-muted-foreground">PNG, JPG, GIF</p>
                         </div>
                       </div>
                       <input
@@ -298,49 +381,11 @@ function FrameSettingsPanel() {
                   )}
                 </div>
               )}
-
-              {activeTab === 'wallpaper' && (
-                <div className="flex-1 space-y-4">
-                  <div className="text-center">
-                    <h4 className="text-sm font-semibold text-sidebar-foreground mb-2">Wallpaper Collection</h4>
-                    <p className="text-xs text-muted-foreground mb-6">Professional backgrounds ready to use</p>
-                  </div>
-                  
-                  <div className="grid grid-cols-4 gap-2">
-                    {WALLPAPERS.map((wallpaper, index) => (
-                      <button
-                        key={`${wallpaper.thumbnailUrl}-${index}`}
-                        onClick={() => updateBackground({ thumbnailUrl: wallpaper.thumbnailUrl, imageUrl: wallpaper.imageUrl })}
-                        className={cn(
-                          "relative aspect-square rounded-lg overflow-hidden border-2 transition-all duration-300 group",
-                          frameStyles.background.thumbnailUrl === wallpaper.thumbnailUrl
-                            ? "border-primary shadow-lg ring-2 ring-primary/20 scale-105"
-                            : "border-sidebar-border hover:border-primary/50 hover:shadow-md hover:scale-105"
-                        )}
-                      >
-                        <img
-                          src={wallpaper.thumbnailUrl}
-                          alt={`Wallpaper ${index + 1}`}
-                          className="w-full h-full object-cover transition-transform duration-300 group-hover:scale-110"
-                        />
-                        <div className="absolute inset-0 bg-gradient-to-t from-black/20 to-transparent opacity-0 group-hover:opacity-100 transition-opacity duration-300" />
-                        {frameStyles.background.thumbnailUrl === wallpaper.thumbnailUrl && (
-                          <div className="absolute inset-0 bg-primary/20 flex items-center justify-center">
-                            <div className="w-6 h-6 bg-primary rounded-full flex items-center justify-center shadow-lg">
-                              <Check className="w-3 h-3 text-primary-foreground" />
-                            </div>
-                          </div>
-                        )}
-                      </button>
-                    ))}
-                  </div>
-                </div>
-              )}
             </div>
           </ControlGroup>
 
           {/* Enhanced Padding Control */}
-          <ControlGroup 
+          <ControlGroup
             label={`Padding (${frameStyles.padding}%)`}
             description="Space around your video content"
           >
@@ -360,7 +405,7 @@ function FrameSettingsPanel() {
           </ControlGroup>
 
           {/* Enhanced Frame Effects */}
-          <ControlGroup 
+          <ControlGroup
             label="Frame Effects"
             description="Visual enhancements for your video"
           >
