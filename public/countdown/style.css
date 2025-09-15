@@ -1,50 +1,67 @@
 /* public/countdown/style.css */
 
-body {
-  margin: 0;
-  overflow: hidden;
-  display: flex;
-  justify-content: center;
-  align-items: center;
-  height: 100vh;
-  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif, "Apple Color Emoji", "Segoe UI Emoji";
+/*
+  CSS variables copied from the main app's dark theme for consistency.
+*/
+:root {
+  --card: oklch(0.2795 0.0368 260.0310);
+  --primary: oklch(0.6801 0.1583 276.9349);
+  --border: oklch(0.4461 0.0263 256.8018);
+  --font-sans: 'Inter', -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
 }
 
-#countdown-container {
-  width: 200px;
-  height: 200px;
-  border-radius: 50%; /* Perfect circle */
-  
-  /* Frosted glass effect */
-  background-color: rgba(23, 25, 35, 0.7); /* Dark, semi-transparent background */
-  backdrop-filter: blur(16px);
-  -webkit-backdrop-filter: blur(16px); /* For Electron/Chromium */
-
-  /* Subtle border and shadow for depth */
-  border: 1px solid rgba(255, 255, 255, 0.15);
-  box-shadow: 0 10px 25px rgba(0, 0, 0, 0.3);
-
-  /* Center the number */
-  display: flex;
-  justify-content: center;
-  align-items: center;
-
-  /* Text style */
-  color: white;
-  font-size: 5rem;
-  font-weight: 700;
-  
-  /* Entrance animation */
-  animation: scaleIn 0.3s ease-out forwards;
-}
-
-@keyframes scaleIn {
-  from {
-    transform: scale(0.8);
-    opacity: 0;
+/*
+  Keyframe animation for the pulse effect.
+*/
+@keyframes pulse {
+  0% {
+    transform: scale(0.9);
+    opacity: 0.8;
   }
-  to {
+  50% {
+    transform: scale(1.05);
+    opacity: 1;
+  }
+  100% {
     transform: scale(1);
     opacity: 1;
   }
+}
+
+/*
+  Basic setup for the body to center the content.
+*/
+body {
+  margin: 0;
+  height: 100vh;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background-color: transparent; /* Essential for the window transparency */
+  font-family: var(--font-sans);
+  overflow: hidden;
+  color: white; /* Fallback color */
+}
+
+/*
+  The main countdown number container.
+  Styled as a vibrant, circular element.
+*/
+#countdown-number {
+  width: 250px;
+  height: 250px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+
+  font-size: 150px;
+  font-weight: 800;
+  color: var(--primary);
+
+  /* Theming and Effects */
+  background-color: color-mix(in oklch, var(--card) 80%, transparent); /* Semi-transparent card color */
+  border: 2px solid color-mix(in oklch, var(--border) 50%, transparent);
+  border-radius: 50%; /* Make it a circle */
+  backdrop-filter: blur(16px); /* The blur effect */
+  box-shadow: 0 10px 30px rgba(0, 0, 0, 0.3);
 }

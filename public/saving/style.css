@@ -1,70 +1,77 @@
-/* public/saving/style.css */
+/* public/saving/style.css - v2 (Fixed Contrast) */
+
+/*
+  Using explicit hex codes inspired by the app's dark theme for reliability
+  in a simple HTML context. This prevents browser default styles (like black text)
+  from appearing on our dark background.
+*/
+:root {
+  --color-card-bg: rgba(24, 24, 27, 0.85);      /* Dark gray, semi-transparent (zinc-900) */
+  --color-text-primary: #fafafa;         /* Off-white (zinc-50) */
+  --color-text-secondary: #a1a1aa;       /* Lighter gray (zinc-400) */
+  --color-brand-primary: #9333ea;        /* Bright purple (purple-600) */
+  --color-border: rgba(63, 63, 70, 0.7); /* Mid-dark gray, semi-transparent (zinc-700) */
+  --radius: 0.75rem;                     /* 12px, consistent with the editor */
+  --font-sans: 'Inter', -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+}
+
+@keyframes spin {
+  from { transform: rotate(0deg); }
+  to { transform: rotate(360deg); }
+}
 
 body {
   margin: 0;
-  overflow: hidden;
-  display: flex;
-  justify-content: center;
-  align-items: center;
   height: 100vh;
-  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif, "Apple Color Emoji", "Segoe UI Emoji";
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background-color: transparent; /* Essential for vibrancy effect */
+  font-family: var(--font-sans);
+  overflow: hidden;
 }
 
-#saving-container {
+.container {
   width: 300px;
-  padding: 30px;
-  box-sizing: border-box;
-  border-radius: 24px; /* Rounded rectangle */
-
-  /* Frosted glass effect (same as countdown) */
-  background-color: rgba(23, 25, 35, 0.7);
-  backdrop-filter: blur(16px);
-  -webkit-backdrop-filter: blur(16px);
-
-  /* Subtle border and shadow (same as countdown) */
-  border: 1px solid rgba(255, 255, 255, 0.15);
-  box-shadow: 0 10px 25px rgba(0, 0, 0, 0.3);
-
-  /* Center content vertically */
+  padding: 2rem;
   display: flex;
   flex-direction: column;
   align-items: center;
-  gap: 15px;
-  
-  /* Entrance animation (same as countdown) */
-  animation: scaleIn 0.3s ease-out forwards;
+  gap: 1.25rem; /* 20px */
+
+  /* Set a default text color for all children to prevent browser defaults */
+  color: var(--color-text-primary);
+
+  /* Theming and Effects */
+  background-color: var(--color-card-bg);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius);
+  backdrop-filter: blur(16px); /* The beautiful blur effect */
+  box-shadow: 0 10px 40px rgba(0, 0, 0, 0.4);
 }
 
-#saving-text {
-  margin: 0;
-  color: white;
-  font-size: 1.1rem;
-  font-weight: 500;
-}
-
-/* CSS-only Spinner */
-.spinner {
-  width: 32px;
-  height: 32px;
-  border: 4px solid rgba(255, 255, 255, 0.2);
-  border-top-color: rgba(255, 255, 255, 0.8);
+.loader {
+  width: 36px;
+  height: 36px;
+  border: 4px solid var(--color-border);
+  border-top-color: var(--color-brand-primary); /* Use brand color for the active part */
   border-radius: 50%;
   animation: spin 1s linear infinite;
 }
 
-@keyframes spin {
-  to {
-    transform: rotate(360deg);
-  }
+.text-content {
+  text-align: center;
 }
 
-@keyframes scaleIn {
-  from {
-    transform: scale(0.8);
-    opacity: 0;
-  }
-  to {
-    transform: scale(1);
-    opacity: 1;
-  }
+.text-content h2 {
+  margin: 0 0 0.375rem 0; /* 6px */
+  font-size: 1.125rem; /* 18px */
+  font-weight: 600;
+  color: var(--color-text-primary); /* Explicitly set main text color */
+}
+
+.text-content p {
+  margin: 0;
+  font-size: 0.875rem; /* 14px */
+  color: var(--color-text-secondary); /* Explicitly set muted text color */
 }
