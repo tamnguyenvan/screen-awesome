@@ -125,6 +125,10 @@ function createEditorWindow(videoPath: string, metadataPath: string) {
     autoHideMenuBar: true,
     width: 1280,
     height: 800,
+    minWidth: 1024,
+    minHeight: 768,
+    frame: false, // Frameless on Win/Linux
+    titleBarStyle: 'hidden', // Keep traffic lights on macOS
     webPreferences: {
       preload: path.join(__dirname, 'preload.mjs'),
       webSecurity: VITE_DEV_SERVER_URL ? false : true,
@@ -154,10 +158,6 @@ function createEditorWindow(videoPath: string, metadataPath: string) {
     editorWin?.webContents.send('project:open', { videoPath, metadataPath });
   });
 
-  // Mở DevTools để debug cả trong production nếu cần
-  // if (process.env.NODE_ENV !== 'production' || true) { // Tạm thời bật để debug
-  //   editorWin.webContents.openDevTools();
-  // }
   if (process.env.NODE_ENV === 'development') {
     editorWin.webContents.openDevTools();
   }
@@ -635,6 +635,27 @@ app.whenReady().then(() => {
       console.error('Failed to register protocol', error);
       return callback({ error: -6 }); // FILE_NOT_FOUND
     }
+  });
+
+  // --- IPC Handlers for Window Controls ---
+  ipcMain.on('window:minimize', (event) => {
+    const window = BrowserWindow.fromWebContents(event.sender);
+    window?.minimize();
+  });
+  ipcMain.on('window:maximize', (event) => {
+    const window = BrowserWindow.fromWebContents(event.sender);
+    if (window?.isMaximized()) {
+      window.unmaximize();
+    } else {
+      window?.maximize();
+    }
+  });
+  ipcMain.on('window:close', (event) => {
+    const window = BrowserWindow.fromWebContents(event.sender);
+    window?.close();
+  });
+  ipcMain.handle('app:getPlatform', () => {
+    return process.platform;
   });
 
   ipcMain.handle('recording:start', handleStartRecording)

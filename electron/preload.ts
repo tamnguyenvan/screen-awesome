@@ -41,6 +41,7 @@ type RenderStartPayload = {
 
 // Define API to be exposed to window object
 export const electronAPI = {
+  // --- Recording ---
   startRecording: (): Promise<RecordingResult> => ipcRenderer.invoke('recording:start'),
 
   onRecordingFinished: (callback: (result: RecordingResult) => void) => {
@@ -52,7 +53,7 @@ export const electronAPI = {
     };
   },
 
-  // --- For the editor window ---
+  // --- Editor window ---
   onProjectOpen: (callback: (payload: ProjectPayload) => void) => {
     const listener = (_event: IpcRendererEvent, payload: ProjectPayload) => callback(payload);
     ipcRenderer.on('project:open', listener);
@@ -64,6 +65,7 @@ export const electronAPI = {
 
   readFile: (filePath: string): Promise<string> => ipcRenderer.invoke('fs:readFile', filePath),
 
+  // --- Export ---
   startExport: (payload: ExportPayload): Promise<void> => ipcRenderer.invoke('export:start', payload),
 
   onExportProgress: (callback: (payload: ProgressPayload) => void) => {
@@ -82,26 +84,27 @@ export const electronAPI = {
     return ipcRenderer.invoke('dialog:showSaveDialog', options);
   },
 
-  // Channel IPC for Render Worker
+  // --- Render Worker ---
   onRenderStart: (callback: (payload: RenderStartPayload) => void) => {
     const listener = (_event: IpcRendererEvent, payload: RenderStartPayload) => callback(payload);
     ipcRenderer.on('render:start', listener);
     return () => ipcRenderer.removeListener('render:start', listener);
   },
-
-  // Worker reports to main that it is ready
   rendererReady: () => {
     ipcRenderer.send('render:ready');
   },
-
   sendFrameToMain: (payload: { frame: Buffer, progress: number }) => {
-    // Use 'send' instead of 'invoke' for streaming
     ipcRenderer.send('export:frame-data', payload);
   },
-
   finishRender: () => {
     ipcRenderer.send('export:render-finished');
   },
+
+  // --- Window Controls ---
+  minimizeWindow: () => ipcRenderer.send('window:minimize'),
+  maximizeWindow: () => ipcRenderer.send('window:maximize'),
+  closeWindow: () => ipcRenderer.send('window:close'),
+  getPlatform: (): Promise<NodeJS.Platform> => ipcRenderer.invoke('app:getPlatform'),
 }
 
 // Expose API safely

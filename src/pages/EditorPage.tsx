@@ -8,6 +8,7 @@ import { PreviewControls } from '../components/editor/PreviewControls';
 import { ExportButton } from '../components/editor/ExportButton';
 import { ExportModal, ExportSettings } from '../components/editor/ExportModal';
 import { ExportProgressOverlay } from '../components/editor/ExportProgressOverlay';
+import { WindowControls } from '../components/editor/WindowControls';
 
 export function EditorPage() {
   const loadProject = useEditorStore((state) => state.loadProject);
@@ -15,8 +16,11 @@ export function EditorPage() {
   const [isExportModalOpen, setExportModalOpen] = useState(false);
   const [isExporting, setIsExporting] = useState(false);
   const [exportProgress, setExportProgress] = useState(0);
+  const [platform, setPlatform] = useState<NodeJS.Platform | null>(null);
 
   useEffect(() => {
+    window.electronAPI.getPlatform().then(setPlatform);
+
     const cleanup = window.electronAPI.onProjectOpen(async (payload) => {
       console.log('Received project to open:', payload);
       await loadProject(payload);
@@ -94,18 +98,28 @@ export function EditorPage() {
 
   return (
     <main className="h-screen w-screen bg-background flex flex-col overflow-hidden select-none">
-      {/* Header */}
-      <header className="h-16 flex-shrink-0 border-b border-border bg-card/50 backdrop-blur-sm flex items-center justify-between px-6">
-        <div className="flex items-center gap-3">
-          <div className="w-8 h-8 rounded-lg bg-primary/20 flex items-center justify-center">
-            <div className="w-4 h-4 rounded-sm bg-primary"></div>
-          </div>
+      {/* Custom Draggable Title Bar */}
+      <header
+        className="relative h-14 flex-shrink-0 border-b border-border bg-card/50 backdrop-blur-sm"
+        style={{ WebkitAppRegion: 'drag' }}
+      >
+        {/* Left Side: Custom controls for Win/Linux */}
+        <div className="absolute left-4 top-1/2 -translate-y-1/2">
+          {platform !== 'darwin' && <WindowControls />}
+        </div>
+        
+        {/* Center: Title */}
+        <div className="absolute left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2 flex items-center gap-2 pointer-events-none">
           <h1 className="text-xl font-semibold text-foreground tracking-tight">ScreenAwesome</h1>
         </div>
-        <ExportButton
-          isExporting={isExporting}
-          onClick={() => setExportModalOpen(true)}
-        />
+        
+        {/* Right Side: Export Button */}
+        <div className="absolute right-4 top-1/2 -translate-y-1/2" style={{ WebkitAppRegion: 'no-drag' }}>
+          <ExportButton
+            isExporting={isExporting}
+            onClick={() => setExportModalOpen(true)}
+          />
+        </div>
       </header>
 
       {/* Main Content */}
