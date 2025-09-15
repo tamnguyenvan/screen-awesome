@@ -2,7 +2,7 @@
 import React, { useRef, useState, MouseEvent as ReactMouseEvent, useEffect, useCallback, memo } from 'react';
 import { useEditorStore, TimelineRegion, ZoomRegion } from '../../store/editorStore';
 import { cn } from '../../lib/utils';
-import { Camera, Scissors } from 'lucide-react';
+import { Film, Scissors } from 'lucide-react';
 
 interface TimelineProps {
   videoRef: React.RefObject<HTMLVideoElement>;
@@ -19,16 +19,12 @@ interface RegionBlockProps {
 
 const PIXELS_PER_SECOND_BASE = 200;
 
-// --- GIAO DIỆN CÂN BẰNG ---
-// Vẫn sử dụng React.memo để tối ưu
-const BalancedRegionBlock = memo(function BalancedRegionBlock({ region, left, width, isSelected, onMouseDown, setRef }: RegionBlockProps) {
+const RegionBlock = memo(function RegionBlock({ region, left, width, isSelected, onMouseDown, setRef }: RegionBlockProps) {
   const isZoom = region.type === 'zoom';
 
-  // Sử dụng màu từ theme, nhưng là màu solid, không gradient
   const baseBgColor = isZoom ? 'bg-primary' : 'bg-destructive';
   const baseTextColor = isZoom ? 'text-primary-foreground' : 'text-destructive-foreground';
 
-  // Handle styles - đơn giản, hiệu năng cao
   const handleBaseClasses = "absolute top-0 bottom-0 w-2.5 cursor-ew-resize flex items-center justify-center";
   const handleInnerClasses = "w-px h-3.5 bg-current opacity-50 rounded-full";
 
@@ -37,17 +33,16 @@ const BalancedRegionBlock = memo(function BalancedRegionBlock({ region, left, wi
       ref={setRef}
       data-region-id={region.id}
       className={cn(
-        "absolute h-12 rounded-lg flex items-center text-xs font-medium cursor-pointer transition-shadow duration-200",
+        "absolute h-14 rounded-lg flex items-center text-xs font-medium cursor-pointer transition-shadow duration-200",
         baseBgColor,
         baseTextColor,
-        // Chỉ thêm shadow nhẹ khi được chọn hoặc hover, thay vì lúc nào cũng có
         isSelected ? "ring-2 ring-offset-2 ring-offset-background ring-ring z-10 shadow-md" : "hover:shadow-sm"
       )}
       style={{ left: `${left}px`, width: `${width}px` }}
       onMouseDown={(e) => onMouseDown(e, region, 'move')}
     >
       <div className="flex items-center gap-2 overflow-hidden px-3">
-        {isZoom ? <Camera size={14} className="flex-shrink-0" /> : <Scissors size={14} className="flex-shrink-0" />}
+        {isZoom ? <Film size={14} className="flex-shrink-0" /> : <Scissors size={14} className="flex-shrink-0" />}
         <span className="truncate">
           {isZoom ? `${(region as ZoomRegion).zoomLevel.toFixed(1)}x Zoom` : 'Cut'}
         </span>
@@ -92,11 +87,11 @@ export function Timeline({ videoRef }: TimelineProps) {
     if (containerRef.current) observer.observe(containerRef.current);
     return () => observer.disconnect();
   }, []);
-  
+
   const pixelsPerSecond = PIXELS_PER_SECOND_BASE * store.timelineZoom;
   const timeToPx = useCallback((time: number) => time * pixelsPerSecond, [pixelsPerSecond]);
   const pxToTime = useCallback((px: number) => px / pixelsPerSecond, [pixelsPerSecond]);
-  
+
   const handleTimelineClick = (e: ReactMouseEvent<HTMLDivElement>) => {
     if (draggingRegion || isDraggingPlayhead || !timelineRef.current || store.duration === 0) return;
     if ((e.target as HTMLElement).closest('[data-region-id]') || (e.target as HTMLElement).closest('[data-playhead-handle]')) return;
@@ -106,7 +101,7 @@ export function Timeline({ videoRef }: TimelineProps) {
     if (videoRef.current) videoRef.current.currentTime = newTime;
     store.setSelectedRegionId(null);
   };
-  
+
   const handleRegionMouseDown = useCallback((e: ReactMouseEvent<HTMLDivElement>, region: TimelineRegion, type: 'move' | 'resize-left' | 'resize-right') => {
     e.stopPropagation();
     store.setSelectedRegionId(region.id);
@@ -115,8 +110,9 @@ export function Timeline({ videoRef }: TimelineProps) {
       id: region.id, type,
       initialX: e.clientX, initialStartTime: region.startTime, initialDuration: region.duration
     });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [store.setSelectedRegionId]);
-  
+
   const handlePlayheadMouseDown = (e: ReactMouseEvent<HTMLDivElement>) => {
     e.stopPropagation();
     setIsDraggingPlayhead(true);
@@ -134,13 +130,13 @@ export function Timeline({ videoRef }: TimelineProps) {
         if (videoRef.current) videoRef.current.currentTime = newTime;
         return;
       }
-      
+
       if (draggingRegion) {
         const element = regionRefs.current.get(draggingRegion.id);
         if (!element) return;
-        
+
         const deltaX = e.clientX - draggingRegion.initialX;
-        
+
         if (draggingRegion.type === 'move') {
           element.style.transform = `translateX(${deltaX}px)`;
         } else if (draggingRegion.type === 'resize-right') {
@@ -156,7 +152,7 @@ export function Timeline({ videoRef }: TimelineProps) {
         }
       }
     };
-    
+
     const handleMouseUp = (e: MouseEvent) => {
       document.body.style.cursor = 'default';
 
@@ -165,11 +161,11 @@ export function Timeline({ videoRef }: TimelineProps) {
       if (draggingRegion) {
         const element = regionRefs.current.get(draggingRegion.id);
         if (element) element.style.transform = 'translateX(0px)';
-        
+
         const deltaX = e.clientX - draggingRegion.initialX;
         const deltaTime = pxToTime(deltaX);
-        let finalUpdates: Partial<TimelineRegion> = {};
-        
+        const finalUpdates: Partial<TimelineRegion> = {};
+
         if (draggingRegion.type === 'move') {
           finalUpdates.startTime = Math.max(0, draggingRegion.initialStartTime + deltaTime);
         } else if (draggingRegion.type === 'resize-right') {
@@ -182,21 +178,21 @@ export function Timeline({ videoRef }: TimelineProps) {
           finalUpdates.duration = (draggingRegion.initialStartTime + draggingRegion.initialDuration) - newStartTime;
           finalUpdates.startTime = newStartTime;
         }
-        
+
         store.updateRegion(draggingRegion.id, finalUpdates);
         setDraggingRegion(null);
       }
     };
-    
+
     window.addEventListener('mousemove', handleMouseMove);
     window.addEventListener('mouseup', handleMouseUp);
-    
+
     return () => {
       window.removeEventListener('mousemove', handleMouseMove);
       window.removeEventListener('mouseup', handleMouseUp);
     };
   }, [draggingRegion, isDraggingPlayhead, store, videoRef, pxToTime, timeToPx]);
-  
+
   useEffect(() => {
     let animationFrameId: number;
     const animatePlayhead = () => {
@@ -208,7 +204,7 @@ export function Timeline({ videoRef }: TimelineProps) {
     if (store.isPlaying) animationFrameId = requestAnimationFrame(animatePlayhead);
     return () => cancelAnimationFrame(animationFrameId);
   }, [store.isPlaying, videoRef, timeToPx]);
-  
+
   useEffect(() => {
     if (!store.isPlaying && playheadRef.current && store.duration > 0) {
       playheadRef.current.style.transform = `translateX(${timeToPx(store.currentTime)}px)`;
@@ -217,18 +213,18 @@ export function Timeline({ videoRef }: TimelineProps) {
 
   const totalWidthPx = (store.duration * pixelsPerSecond) + (containerWidth / 2);
   const allRegions = [...store.zoomRegions, ...store.cutRegions];
-  
+
   return (
     // --- GIAO DIỆN CÂN BẰNG ---
     <div className="h-full flex flex-col bg-background">
-      <div 
-        ref={containerRef} 
-        className="flex-1 overflow-x-auto overflow-y-hidden p-4" 
+      <div
+        ref={containerRef}
+        className="flex-1 overflow-x-auto overflow-y-hidden p-4"
         onMouseDown={handleTimelineClick}
       >
-        <div 
-          ref={timelineRef} 
-          className="relative h-full min-w-full" 
+        <div
+          ref={timelineRef}
+          className="relative h-full min-w-full"
           style={{ width: `${totalWidthPx}px` }}
         >
           {/* Ruler */}
@@ -249,17 +245,10 @@ export function Timeline({ videoRef }: TimelineProps) {
 
           {/* Tracks Area */}
           <div className="absolute top-8 left-0 right-0 bottom-0 pt-4 space-y-3">
-            {/* Video Track: Giao diện nhẹ nhàng hơn */}
-            <div className="h-14 rounded-lg bg-muted/50 border border-border/30 flex items-center px-4" style={{ width: `${store.duration * pixelsPerSecond}px` }}>
-              <div className="flex items-center gap-2 text-sm text-secondary-foreground">
-                <span className="font-medium">Video Track</span>
-              </div>
-            </div>
-
             {/* Regions Track */}
-            <div className="h-14 relative" style={{ width: `${store.duration * pixelsPerSecond}px` }}>
+            <div className="h-24 relative" style={{ width: `${store.duration * pixelsPerSecond}px` }}>
               {allRegions.map(region => (
-                <BalancedRegionBlock
+                <RegionBlock
                   key={region.id}
                   region={region}
                   left={timeToPx(region.startTime)}
@@ -276,8 +265,8 @@ export function Timeline({ videoRef }: TimelineProps) {
           {store.duration > 0 && (
             <div ref={playheadRef} className="absolute top-0 bottom-0 z-30 pointer-events-none">
               <div className="w-0.5 h-full bg-primary shadow-sm"></div>
-              <div 
-                data-playhead-handle 
+              <div
+                data-playhead-handle
                 className={cn("absolute -top-1 w-5 h-5 rounded-full bg-primary border-2 border-background shadow-lg pointer-events-auto transition-transform duration-200 hover:scale-110", isDraggingPlayhead ? "cursor-grabbing scale-110" : "cursor-grab")}
                 style={{ transform: 'translateX(-50%)' }}
                 onMouseDown={handlePlayheadMouseDown}

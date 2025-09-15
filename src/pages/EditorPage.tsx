@@ -142,7 +142,7 @@ export function EditorPage() {
           </div>
 
           {/* Timeline Area */}
-          <div className="h-60 flex-shrink-0 bg-card/30 border-t border-border backdrop-blur-sm overflow-hidden">
+          <div className="h-48 flex-shrink-0 bg-card/30 border-t border-border backdrop-blur-sm overflow-hidden">
             <Timeline videoRef={videoRef} />
           </div>
         </div>
