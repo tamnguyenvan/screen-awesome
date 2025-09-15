@@ -25,40 +25,72 @@ export const CutRegionBlock = memo(function CutRegionBlock({
       ref={setRef}
       data-region-id={region.id}
       className={cn(
-        "absolute h-18 rounded-lg flex items-center text-sm cursor-pointer transition-all duration-200",
+        "absolute h-14 rounded-2xl flex items-center text-sm cursor-pointer transition-all duration-200",
+        "border-2",
         isSelected 
-          ? "bg-red-500/80 text-white border-2 border-red-500 z-10 shadow-lg" 
-          : "bg-red-200 text-red-800 hover:bg-red-300 shadow-sm"
+          ? "bg-destructive/15 border-destructive text-destructive-foreground shadow-md z-20" 
+          : "bg-muted/80 border-border/60 text-muted-foreground hover:bg-muted hover:border-border shadow-sm"
       )}
       style={{ left: `${left}px`, width: `${width}px` }}
       onMouseDown={(e) => onMouseDown(e, region, 'move')}
     >
-      {/* Left resize strip */}
+      {/* Left resize handle */}
       <div
         className={cn(
-          "absolute top-0 left-0 w-3 h-full rounded-l-lg cursor-ew-resize flex items-center justify-center",
-          isSelected ? "bg-red-600" : "bg-red-400/60 hover:bg-red-500/60"
+          "absolute top-0 left-0 w-2 h-full rounded-l-2xl cursor-ew-resize",
+          "flex items-center justify-center transition-colors",
+          isSelected
+            ? "bg-destructive/20 hover:bg-destructive/30"
+            : "bg-transparent hover:bg-border/20"
         )}
         onMouseDown={(e) => onMouseDown(e, region, 'resize-left')}
       >
-        <div className="w-0.5 h-6 bg-white/50 rounded-full" />
+        <div className={cn(
+          "w-0.5 h-6 rounded-full",
+          isSelected 
+            ? "bg-destructive" 
+            : "bg-border"
+        )} />
       </div>
 
       {/* Content area */}
-      <div className="flex-1 flex items-center justify-center gap-3 overflow-hidden px-5">
-        <Scissors size={18} className="flex-shrink-0" />
-        <span className="truncate text-sm">Cut</span>
+      <div className="flex-1 flex items-center justify-center gap-2 overflow-hidden px-5">
+        <Scissors 
+          size={14} 
+          className={cn(
+            "flex-shrink-0",
+            isSelected 
+              ? "text-destructive" 
+              : "text-muted-foreground"
+          )} 
+        />
+        <span className={cn(
+          "truncate text-xs font-medium",
+          isSelected 
+            ? "text-destructive" 
+            : "text-muted-foreground"
+        )}>
+          Cut
+        </span>
       </div>
 
-      {/* Right resize strip */}
+      {/* Right resize handle */}
       <div
         className={cn(
-          "absolute top-0 right-0 w-3 h-full rounded-r-lg cursor-ew-resize flex items-center justify-center",
-          isSelected ? "bg-red-600" : "bg-red-400/60 hover:bg-red-500/60"
+          "absolute top-0 right-0 w-2 h-full rounded-r-2xl cursor-ew-resize",
+          "flex items-center justify-center transition-colors",
+          isSelected
+            ? "bg-destructive/20 hover:bg-destructive/30"
+            : "bg-transparent hover:bg-border/20"
         )}
         onMouseDown={(e) => onMouseDown(e, region, 'resize-right')}
       >
-        <div className="w-0.5 h-6 bg-white/50 rounded-full" />
+        <div className={cn(
+          "w-0.5 h-6 rounded-full",
+          isSelected 
+            ? "bg-destructive" 
+            : "bg-border"
+        )} />
       </div>
     </div>
   );

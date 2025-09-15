@@ -79,27 +79,46 @@ export function Timeline({ videoRef }: TimelineProps) {
   const totalWidthPx = duration * pixelsPerSecond;
 
   // --- END LOGIC MỚI ---
+  
+  // CHANGE START: Helper function to update video time cleanly
+  const updateVideoTime = useCallback((time: number) => {
+    const clampedTime = Math.max(0, Math.min(time, duration));
+    setCurrentTime(clampedTime);
+    if (videoRef.current) {
+      videoRef.current.currentTime = clampedTime;
+    }
+  }, [duration, setCurrentTime, videoRef]);
+  // CHANGE END
 
   const handleTimelineClick = (e: ReactMouseEvent<HTMLDivElement>) => {
     if (draggingRegion || isDraggingPlayhead || !timelineRef.current || duration === 0) return;
     if ((e.target as HTMLElement).closest('[data-region-id]') || (e.target as HTMLElement).closest('[data-playhead-handle]')) return;
     const rect = timelineRef.current.getBoundingClientRect();
     const newTime = pxToTime(e.clientX - rect.left);
-    setCurrentTime(newTime);
-    if (videoRef.current) videoRef.current.currentTime = newTime;
+    updateVideoTime(newTime); // Use helper
     setSelectedRegionId(null);
   };
 
   const handleRegionMouseDown = useCallback((e: ReactMouseEvent<HTMLDivElement>, region: TimelineRegion, type: 'move' | 'resize-left' | 'resize-right') => {
     e.stopPropagation();
     setSelectedRegionId(region.id);
+
+    // CHANGE START: Set playhead on initial click
+    // When resizing left, it feels better to snap to the left edge
+    // When resizing right, it feels better to snap to the right edge
+    if (type === 'move' || type === 'resize-left') {
+        updateVideoTime(region.startTime);
+    } else if (type === 'resize-right') {
+        updateVideoTime(region.startTime + region.duration);
+    }
+    // CHANGE END
+    
     document.body.style.cursor = type === 'move' ? 'grabbing' : 'ew-resize';
     setDraggingRegion({
       id: region.id, type,
       initialX: e.clientX, initialStartTime: region.startTime, initialDuration: region.duration
     });
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [setSelectedRegionId]);
+  }, [setSelectedRegionId, updateVideoTime]); // Add updateVideoTime to dependencies
 
   const handlePlayheadMouseDown = (e: ReactMouseEvent<HTMLDivElement>) => {
     e.stopPropagation();
@@ -130,14 +149,11 @@ export function Timeline({ videoRef }: TimelineProps) {
   }, [duration, timeToPx]);
 
   useEffect(() => {
-    // Logic kéo thả vẫn giữ nguyên, vì nó phụ thuộc vào timeToPx/pxToTime đã được cập nhật
     const handleMouseMove = (e: MouseEvent) => {
       if (isDraggingPlayhead && timelineRef.current) {
         const rect = timelineRef.current.getBoundingClientRect();
-        let newTime = pxToTime(e.clientX - rect.left);
-        newTime = Math.max(0, Math.min(newTime, duration));
-        setCurrentTime(newTime);
-        if (videoRef.current) videoRef.current.currentTime = newTime;
+        const newTime = pxToTime(e.clientX - rect.left);
+        updateVideoTime(newTime); // Use helper
         return;
       }
 
@@ -145,19 +161,36 @@ export function Timeline({ videoRef }: TimelineProps) {
         const element = regionRefs.current.get(draggingRegion.id);
         if (!element) return;
         const deltaX = e.clientX - draggingRegion.initialX;
+        
+        // CHANGE START: Update playhead while dragging/resizing
+        const deltaTime = pxToTime(deltaX);
 
         if (draggingRegion.type === 'move') {
+          const newStartTime = draggingRegion.initialStartTime + deltaTime;
+          updateVideoTime(newStartTime);
           element.style.transform = `translateX(${deltaX}px)`;
+
         } else if (draggingRegion.type === 'resize-right') {
-          const newWidth = timeToPx(draggingRegion.initialDuration) + deltaX;
-          element.style.width = `${Math.max(timeToPx(0.2), newWidth)}px`;
+          const newDuration = Math.max(0.2, draggingRegion.initialDuration + deltaTime);
+          const newEndTime = draggingRegion.initialStartTime + newDuration;
+          updateVideoTime(newEndTime);
+          const newWidth = timeToPx(newDuration);
+          element.style.width = `${newWidth}px`;
+
         } else if (draggingRegion.type === 'resize-left') {
+          const newStartTime = Math.min(
+            draggingRegion.initialStartTime + draggingRegion.initialDuration - 0.2,
+            draggingRegion.initialStartTime + deltaTime
+          );
+          updateVideoTime(newStartTime);
+          
           const initialWidthPx = timeToPx(draggingRegion.initialDuration);
           const newWidth = Math.max(timeToPx(0.2), initialWidthPx - deltaX);
           const newTranslateX = Math.min(deltaX, initialWidthPx - timeToPx(0.2));
           element.style.transform = `translateX(${newTranslateX}px)`;
           element.style.width = `${newWidth}px`;
         }
+        // CHANGE END
       }
     };
     const handleMouseUp = (e: MouseEvent) => {
@@ -165,7 +198,11 @@ export function Timeline({ videoRef }: TimelineProps) {
       if (isDraggingPlayhead) setIsDraggingPlayhead(false);
       if (draggingRegion) {
         const element = regionRefs.current.get(draggingRegion.id);
-        if (element) element.style.transform = 'translateX(0px)';
+        if (element) {
+            // Reset visual transform after drag, the position is now controlled by state
+            element.style.transform = 'translateX(0px)';
+        }
+
         const deltaX = e.clientX - draggingRegion.initialX;
         const deltaTime = pxToTime(deltaX);
         const finalUpdates: Partial<TimelineRegion> = {};
@@ -192,7 +229,9 @@ export function Timeline({ videoRef }: TimelineProps) {
       window.removeEventListener('mousemove', handleMouseMove);
       window.removeEventListener('mouseup', handleMouseUp);
     };
-  }, [draggingRegion, isDraggingPlayhead, videoRef, pxToTime, timeToPx]);
+    // CHANGE START: Add `updateVideoTime` and `updateRegion` to dependency array
+  }, [draggingRegion, isDraggingPlayhead, pxToTime, timeToPx, updateVideoTime, updateRegion]);
+  // CHANGE END
 
   useEffect(() => {
     let animationFrameId: number;
