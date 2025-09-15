@@ -36,7 +36,7 @@ export function PreviewControls({ videoRef }: PreviewControlsProps) {
 
   return (
     <div className={cn(
-      "h-16 bg-card/80 backdrop-blur-sm border border-border/50 rounded-xl",
+      "h-16 bg-card/80 backdrop-blur-sm border-t border-border/50",
       "flex items-center justify-between px-6 shadow-sm"
     )}>
       {/* Left Controls */}
@@ -66,8 +66,8 @@ export function PreviewControls({ videoRef }: PreviewControlsProps) {
           <div className="w-24">
             <Slider
               min={0.5}
-              max={5}
-              step={0.25}
+              max={4}
+              step={0.5}
               value={timelineZoom}
               onChange={(value) => setTimelineZoom(value)}
               className="w-full h-2 bg-muted rounded-full appearance-none cursor-pointer accent-primary slider"

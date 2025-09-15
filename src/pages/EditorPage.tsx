@@ -57,7 +57,7 @@ export function EditorPage() {
     const result = await window.electronAPI.showSaveDialog({
       title: 'Save Video',
       defaultPath,
-      filters: settings.format === 'mp4' 
+      filters: settings.format === 'mp4'
         ? [{ name: 'MP4 Video', extensions: ['mp4'] }]
         : [{ name: 'GIF Animation', extensions: ['gif'] }],
     });
@@ -66,7 +66,7 @@ export function EditorPage() {
       console.log('User cancelled the save dialog.');
       return;
     }
-    
+
     const fullState = useEditorStore.getState();
 
     const plainState = {
@@ -107,12 +107,12 @@ export function EditorPage() {
         <div className="absolute left-4 top-1/2 -translate-y-1/2">
           {platform !== 'darwin' && <WindowControls />}
         </div>
-        
+
         {/* Center: Title */}
         <div className="absolute left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2 flex items-center gap-2 pointer-events-none">
           <h1 className="text-xl font-semibold text-foreground tracking-tight">ScreenAwesome</h1>
         </div>
-        
+
         {/* Right Side: Export Button */}
         <div className="absolute right-4 top-1/2 -translate-y-1/2" style={{ WebkitAppRegion: 'no-drag' }}>
           <ExportButton
@@ -132,8 +132,8 @@ export function EditorPage() {
         {/* Center Area */}
         <div className="flex-1 flex flex-col overflow-hidden bg-background">
           {/* Preview Area */}
-          <div className="flex-1 flex flex-col p-6 gap-6 overflow-hidden">
-            <div className="flex-1 flex items-center justify-center overflow-hidden rounded-xl bg-muted/20 border border-border/50">
+          <div className="flex-1 flex flex-col overflow-hidden">
+            <div className="flex-1 flex items-center justify-center m-6 overflow-hidden rounded-xl bg-muted/20 border border-border/50">
               <Preview videoRef={videoRef} />
             </div>
             <div className="flex-shrink-0">
@@ -142,7 +142,7 @@ export function EditorPage() {
           </div>
 
           {/* Timeline Area */}
-          <div className="h-52 flex-shrink-0 bg-card/30 border-t border-border backdrop-blur-sm overflow-hidden">
+          <div className="h-48 flex-shrink-0 bg-card/30 border-t border-border backdrop-blur-sm overflow-hidden">
             <Timeline videoRef={videoRef} />
           </div>
         </div>
