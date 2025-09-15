@@ -35,11 +35,7 @@ function FrameSettingsPanel() {
 
   const selectTab = (tab: BackgroundTab) => {
     setActiveTab(tab);
-    if (tab === 'wallpaper' && !WALLPAPERS.map(w=>w.thumbnailUrl).includes(frameStyles.background.thumbnailUrl || '')) {
-      updateBackground({ type: 'wallpaper', thumbnailUrl: WALLPAPERS[0].thumbnailUrl, imageUrl: WALLPAPERS[0].imageUrl });
-    } else {
-      updateBackground({ type: tab });
-    }
+    updateBackground({ type: tab });
   };
 
   const tabs = [
