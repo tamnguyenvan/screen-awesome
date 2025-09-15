@@ -91,6 +91,7 @@ interface EditorActions {
   setAspectRatio: (ratio: AspectRatio) => void;
   addZoomRegion: () => void;
   addCutRegion: () => void;
+  addCutRegionFromStrip: () => void;
   updateRegion: (id: string, updates: Partial<TimelineRegion>) => void;
   deleteRegion: (id: string) => void;
   setSelectedRegionId: (id: string | null) => void;
@@ -289,6 +290,30 @@ export const useEditorStore = create(
     },
 
     addCutRegion: () => {
+      const newRegion: CutRegion = {
+        id: `cut-${Date.now()}`,
+        type: 'cut',
+        startTime: get().currentTime,
+        duration: 2,
+      };
+      set(state => {
+        state.cutRegions.push(newRegion);
+      });
+    },
+
+    addCutRegionFromStrip: () => {
+      const newRegion: CutRegion = {
+        id: `cut-${Date.now()}`,
+        type: 'cut',
+        startTime: get().currentTime,
+        duration: 2,
+      };
+      set(state => {
+        state.cutRegions.push(newRegion);
+      });
+    },
+
+    addCutRegionFromRightStrip: () => {
       const newRegion: CutRegion = {
         id: `cut-${Date.now()}`,
         type: 'cut',

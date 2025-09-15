@@ -38,6 +38,7 @@ export function Timeline({ videoRef }: TimelineProps) {
     zoomRegions,
     cutRegions,
     selectedRegionId,
+    addCutRegionFromStrip,
     updateRegion,
     setCurrentTime,
     setSelectedRegionId,
@@ -55,6 +56,22 @@ export function Timeline({ videoRef }: TimelineProps) {
 
   const [isDraggingPlayhead, setIsDraggingPlayhead] = useState(false);
   const [containerWidth, setContainerWidth] = useState(0);
+
+  // Add these states to the component (before the return statement):
+  const [isDraggingLeftStrip, setIsDraggingLeftStrip] = useState(false);
+  const [isDraggingRightStrip, setIsDraggingRightStrip] = useState(false);
+
+  const handleLeftStripDrag = useCallback((e: ReactMouseEvent<HTMLDivElement>) => {
+    e.stopPropagation();
+    setIsDraggingLeftStrip(true);
+    document.body.style.cursor = 'grab';
+  }, []);
+
+  const handleRightStripDrag = useCallback((e: ReactMouseEvent<HTMLDivElement>) => {
+    e.stopPropagation();
+    setIsDraggingRightStrip(true);
+    document.body.style.cursor = 'grab';
+  }, []);
 
   useEffect(() => {
     if (containerRef.current) setContainerWidth(containerRef.current.clientWidth);
@@ -79,7 +96,7 @@ export function Timeline({ videoRef }: TimelineProps) {
   const totalWidthPx = duration * pixelsPerSecond;
 
   // --- END LOGIC MỚI ---
-  
+
   // CHANGE START: Helper function to update video time cleanly
   const updateVideoTime = useCallback((time: number) => {
     const clampedTime = Math.max(0, Math.min(time, duration));
@@ -107,12 +124,12 @@ export function Timeline({ videoRef }: TimelineProps) {
     // When resizing left, it feels better to snap to the left edge
     // When resizing right, it feels better to snap to the right edge
     if (type === 'move' || type === 'resize-left') {
-        updateVideoTime(region.startTime);
+      updateVideoTime(region.startTime);
     } else if (type === 'resize-right') {
-        updateVideoTime(region.startTime + region.duration);
+      updateVideoTime(region.startTime + region.duration);
     }
     // CHANGE END
-    
+
     document.body.style.cursor = type === 'move' ? 'grabbing' : 'ew-resize';
     setDraggingRegion({
       id: region.id, type,
@@ -161,7 +178,7 @@ export function Timeline({ videoRef }: TimelineProps) {
         const element = regionRefs.current.get(draggingRegion.id);
         if (!element) return;
         const deltaX = e.clientX - draggingRegion.initialX;
-        
+
         // CHANGE START: Update playhead while dragging/resizing
         const deltaTime = pxToTime(deltaX);
 
@@ -183,7 +200,7 @@ export function Timeline({ videoRef }: TimelineProps) {
             draggingRegion.initialStartTime + deltaTime
           );
           updateVideoTime(newStartTime);
-          
+
           const initialWidthPx = timeToPx(draggingRegion.initialDuration);
           const newWidth = Math.max(timeToPx(0.2), initialWidthPx - deltaX);
           const newTranslateX = Math.min(deltaX, initialWidthPx - timeToPx(0.2));
@@ -192,6 +209,16 @@ export function Timeline({ videoRef }: TimelineProps) {
         }
         // CHANGE END
       }
+
+      if (isDraggingLeftStrip && timelineRef.current) {
+        // Visual feedback while dragging from left strip
+        document.body.style.cursor = 'grabbing';
+      }
+
+      if (isDraggingRightStrip && timelineRef.current) {
+        // Visual feedback while dragging from right strip
+        document.body.style.cursor = 'grabbing';
+      }
     };
     const handleMouseUp = (e: MouseEvent) => {
       document.body.style.cursor = 'default';
@@ -199,8 +226,8 @@ export function Timeline({ videoRef }: TimelineProps) {
       if (draggingRegion) {
         const element = regionRefs.current.get(draggingRegion.id);
         if (element) {
-            // Reset visual transform after drag, the position is now controlled by state
-            element.style.transform = 'translateX(0px)';
+          // Reset visual transform after drag, the position is now controlled by state
+          element.style.transform = 'translateX(0px)';
         }
 
         const deltaX = e.clientX - draggingRegion.initialX;
@@ -222,6 +249,38 @@ export function Timeline({ videoRef }: TimelineProps) {
         updateRegion(draggingRegion.id, finalUpdates);
         setDraggingRegion(null);
       }
+
+      if (isDraggingLeftStrip && timelineRef.current) {
+        const rect = timelineRef.current.getBoundingClientRect();
+        const dropTime = pxToTime(e.clientX - rect.left);
+        if (dropTime > 0 && dropTime < duration) {
+          // Add cut region from left strip position to drop position
+          // const newCutRegion = {
+          //   id: `cut-${Date.now()}`,
+          //   type: 'cut' as const,
+          //   startTime: 0,
+          //   duration: Math.min(dropTime, duration),
+          // };
+          addCutRegionFromStrip();
+        }
+        setIsDraggingLeftStrip(false);
+      }
+
+      if (isDraggingRightStrip && timelineRef.current) {
+        const rect = timelineRef.current.getBoundingClientRect();
+        const dropTime = pxToTime(e.clientX - rect.left);
+        if (dropTime > 0 && dropTime < duration) {
+          // Add cut region from drop position to end
+          // const newCutRegion = {
+          //   id: `cut-${Date.now()}`,
+          //   type: 'cut' as const,
+          //   startTime: dropTime,
+          //   duration: duration - dropTime,
+          // };
+          addCutRegionFromStrip();
+        }
+        setIsDraggingRightStrip(false);
+      }
     };
     window.addEventListener('mousemove', handleMouseMove);
     window.addEventListener('mouseup', handleMouseUp);
@@ -230,7 +289,7 @@ export function Timeline({ videoRef }: TimelineProps) {
       window.removeEventListener('mouseup', handleMouseUp);
     };
     // CHANGE START: Add `updateVideoTime` and `updateRegion` to dependency array
-  }, [draggingRegion, isDraggingPlayhead, pxToTime, timeToPx, updateVideoTime, updateRegion]);
+  }, [draggingRegion, isDraggingPlayhead, isDraggingLeftStrip, isDraggingRightStrip, pxToTime, timeToPx, updateVideoTime, updateRegion, duration]);
   // CHANGE END
 
   useEffect(() => {
@@ -255,15 +314,23 @@ export function Timeline({ videoRef }: TimelineProps) {
 
   return (
     <div className="h-full flex flex-col bg-background p-4">
-      <div className="h-full flex flex-row rounded-lg overflow-hidden">
-        {/*  Left strip */}
-        <div className="w-8 h-full rounded-lt-lg rounded-lr-lg bg-background border border-border/80 bg-muted/50">
-          <Scissors size={24} className="flex-shrink-0" />
+      <div className="h-full flex flex-row rounded-lg overflow-hidden shadow-sm">
+        {/* Left Strip */}
+        <div
+          className={cn(
+            "w-12 h-full rounded-l-lg bg-card border border-border/80 flex items-center justify-center transition-all duration-150 cursor-grab select-none cursor-ew-resize",
+            isDraggingLeftStrip ? "bg-primary/10 border-primary/40 cursor-grabbing scale-105" : "hover:bg-accent/50 hover:border-accent-foreground/20"
+          )}
+          onMouseDown={handleLeftStripDrag}
+        >
+          <div className="flex flex-col items-center gap-1">
+            <Scissors size={20} className="text-muted-foreground" />
+          </div>
         </div>
 
         <div
           ref={containerRef}
-          className="flex-1 overflow-x-auto overflow-y-hidden border border-border/80 bg-muted/20"
+          className="flex-1 overflow-x-auto overflow-y-hidden border-y border-border/80 bg-card/50"
           onMouseDown={handleTimelineClick}
         >
           <div
@@ -272,18 +339,41 @@ export function Timeline({ videoRef }: TimelineProps) {
             style={{ width: `${totalWidthPx}px` }}
           >
             {/* Ruler */}
-            <div className="h-8 absolute top-0 left-0 right-0 border-b border-border/50">
+            <div className="h-12 absolute top-0 left-0 right-0 border-b-2 border-border/60 bg-gradient-to-b from-muted/80 to-muted/40">
               {rulerTicks.map(({ time, type }) => (
-                <div key={`tick-${time}`} className="absolute top-0 flex flex-col items-center" style={{ left: `${timeToPx(time)}px` }}>
-                  <div className={cn("w-px bg-border/80", type === 'major' ? 'h-2.5' : 'h-1.5')}></div>
-                  {type === 'major' && <span className="text-xs text-muted-foreground font-mono mt-1 select-none">{time}s</span>}
+                <div
+                  key={`tick-${time}`}
+                  className="absolute top-0 flex flex-col items-center group"
+                  style={{ left: `${timeToPx(time)}px` }}
+                >
+                  {/* tick marks */}
+                  <div className={cn(
+                    "bg-foreground/70 transition-all duration-150",
+                    type === 'major'
+                      ? 'w-0.5 h-6 shadow-sm group-hover:bg-primary group-hover:h-7'
+                      : 'w-px h-3 group-hover:bg-foreground group-hover:h-4'
+                  )}></div>
+
+                  {/* time labels */}
+                  {type === 'major' && (
+                    <div className="mt-1 px-2 py-0.5 rounded-md bg-background/80 backdrop-blur-sm border border-border/50 shadow-xs">
+                      <span className="text-xs text-foreground/90 font-mono font-medium tracking-wide">
+                        {time >= 60 ? `${Math.floor(time / 60)}:${String(time % 60).padStart(2, '0')}` : `${time}s`}
+                      </span>
+                    </div>
+                  )}
                 </div>
               ))}
+
+              {/* Ruler background pattern */}
+              <div className="absolute inset-0 opacity-5">
+                <div className="w-full h-full bg-gradient-to-r from-transparent via-foreground/10 to-transparent"></div>
+              </div>
             </div>
 
             {/* Tracks Area */}
-            <div className="absolute top-8 left-0 right-0 bottom-0 pt-4 space-y-3">
-              <div className="h-24 relative">
+            <div className="absolute top-12 left-0 right-0 bottom-0 pt-6 space-y-4">
+              <div className="h-24 relative bg-gradient-to-b from-background/50 to-background/20">
                 {allRegions.map(region => (
                   region.type === 'zoom' ?
                     <ZoomRegionBlock
@@ -312,33 +402,55 @@ export function Timeline({ videoRef }: TimelineProps) {
             {/* Playhead */}
             {duration > 0 && (
               <div ref={playheadRef} className="absolute top-0 bottom-0 z-30 pointer-events-none">
-                {/* Vertical line */}
-                <div className="w-0.5 h-full bg-primary shadow-sm"></div>
+                {/* vertical line with gradient */}
+                <div className="w-0.5 h-full bg-gradient-to-b from-primary via-primary to-primary/60 shadow-lg"></div>
 
-                {/* Triangle handle */}
+                {/* triangle handle */}
                 <div
                   data-playhead-handle
                   className={cn(
-                    "absolute top-0 pointer-events-auto",
-                    isDraggingPlayhead ? "cursor-grabbing scale-110" : "cursor-grab"
+                    "absolute top-0 pointer-events-auto transition-all duration-150",
+                    isDraggingPlayhead
+                      ? "cursor-grabbing scale-125 drop-shadow-lg"
+                      : "cursor-grab hover:scale-110 drop-shadow-md"
                   )}
                   style={{
                     transform: 'translateX(-50%)',
-                    left: '1px' // Offset để căn giữa với line
+                    left: '1px'
                   }}
                   onMouseDown={handlePlayheadMouseDown}
                 >
-                  {/* Inverted triangle */}
-                  <div className="w-0 h-0 border-l-[8px] border-r-[8px] border-t-[12px] border-l-transparent border-r-transparent border-t-primary shadow-lg" />
+                  {/* inverted triangle with glow */}
+                  <div className="relative">
+                    <div className="w-0 h-0 border-l-[10px] border-r-[10px] border-t-[16px] border-l-transparent border-r-transparent border-t-primary shadow-xl drop-shadow-lg" />
+                    <div className="absolute inset-0 w-0 h-0 border-l-[8px] border-r-[8px] border-t-[12px] border-l-transparent border-r-transparent border-t-primary/80 translate-x-[2px] translate-y-[2px]" />
+                  </div>
+                </div>
+              </div>
+            )}
+
+            {/* Drag indicators when dragging from strips */}
+            {(isDraggingLeftStrip || isDraggingRightStrip) && (
+              <div className="absolute inset-0 pointer-events-none z-20">
+                <div className="w-full h-full border-2 border-dashed border-primary/50 bg-primary/5 rounded-lg animate-pulse">
+                  <div className="absolute inset-4 border border-dashed border-primary/30 rounded"></div>
                 </div>
               </div>
             )}
           </div>
         </div>
 
-        {/* Right strip */}
-        <div className="w-8 h-full rounded-lt-lg rounded-lr-lg bg-background border border-border/80 bg-muted/50">
-          <Scissors size={24} className="flex-shrink-0" />
+        {/* Right Strip */}
+        <div
+          className={cn(
+            "w-12 h-full rounded-r-lg bg-card border border-border/80 flex items-center justify-center transition-all duration-150 cursor-grab select-none cursor-ew-resize",
+            isDraggingRightStrip ? "bg-primary/10 border-primary/40 cursor-grabbing scale-105" : "hover:bg-accent/50 hover:border-accent-foreground/20"
+          )}
+          onMouseDown={handleRightStripDrag}
+        >
+          <div className="flex flex-col items-center gap-1">
+            <Scissors size={20} className="text-muted-foreground" />
+          </div>
         </div>
       </div>
     </div>
