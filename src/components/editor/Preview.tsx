@@ -13,8 +13,15 @@ const generateBackgroundStyle = (backgroundState: ReturnType<typeof useEditorSto
   switch (backgroundState.type) {
     case 'color':
       return { background: backgroundState.color || '#ffffff' };
-    case 'gradient':
-      return { background: `linear-gradient(135deg, ${backgroundState.gradientStart}, ${backgroundState.gradientEnd})` };
+    case 'gradient': {
+      const start = backgroundState.gradientStart || '#000000';
+      const end = backgroundState.gradientEnd || '#ffffff';
+      const direction = backgroundState.gradientDirection || 'to right';
+      const gradient = direction.includes('circle')
+        ? `radial-gradient(${direction}, ${start}, ${end})`
+        : `linear-gradient(${direction}, ${start}, ${end})`;
+      return { background: gradient };
+    }
     case 'image':
     case 'wallpaper':
       return {

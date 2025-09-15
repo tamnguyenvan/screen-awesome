@@ -239,43 +239,33 @@ export const useEditorStore = create(
     updateBackground: (bg) => set((state) => {
       const currentBg = state.frameStyles.background;
 
-      // NOTE:
-      // If `bg` doesn't contain `type` or if `type` hasn't changed from the current one,
-      // it means we're just updating a single value (e.g., changing a color).
-      // In this case, it's safe to merge the properties.
       if (!bg.type || bg.type === currentBg.type) {
         Object.assign(state.frameStyles.background, bg);
         return;
       }
 
-      // NOTE:
-      // If `type` changes (e.g., from 'wallpaper' to 'gradient'),
-      // we need to create a new background object to ensure the state remains valid.
       const newBackgroundState: Background = { type: bg.type };
 
       switch (bg.type) {
         case 'color':
-          // Set default value for 'color' type
           newBackgroundState.color = '#ffffff';
           break;
         case 'gradient':
-          // Set default values for 'gradient' type
-          newBackgroundState.gradientStart = '#2b3a67';
-          newBackgroundState.gradientEnd = '#0b0f2b';
+          newBackgroundState.gradientStart = currentBg.gradientStart || '#2b3a67';
+          newBackgroundState.gradientEnd = currentBg.gradientEnd || '#0b0f2b';
+          newBackgroundState.gradientDirection = currentBg.gradientDirection || 'to bottom right';
           break;
         case 'image':
-          // Reset imageUrl to prepare for loading a new image
-          newBackgroundState.imageUrl = '';
+          // Set default to first wallpaper
+          newBackgroundState.imageUrl = WALLPAPERS[0].imageUrl;
+          newBackgroundState.thumbnailUrl = WALLPAPERS[0].thumbnailUrl;
           break;
         case 'wallpaper':
-          // Always select the first wallpaper as default when switching to this tab
           newBackgroundState.imageUrl = WALLPAPERS[0].imageUrl;
           newBackgroundState.thumbnailUrl = WALLPAPERS[0].thumbnailUrl;
           break;
       }
 
-      // NOTE:
-      // Replace the entire old background object with the newly created one.
       state.frameStyles.background = newBackgroundState;
     }),
 
