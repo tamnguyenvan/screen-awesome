@@ -42,7 +42,7 @@ type RenderStartPayload = {
 // Define API to be exposed to window object
 export const electronAPI = {
   // --- Recording ---
-  startRecording: (): Promise<RecordingResult> => ipcRenderer.invoke('recording:start'),
+  startRecording: (options: { source: 'area' | 'fullscreen' | 'window' }): Promise<RecordingResult> => ipcRenderer.invoke('recording:start', options),
 
   onRecordingFinished: (callback: (result: RecordingResult) => void) => {
     const listener = (_event: IpcRendererEvent, result: RecordingResult) => callback(result);

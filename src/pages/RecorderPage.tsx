@@ -29,15 +29,20 @@ export function RecorderPage() {
 
   const handleStart = async () => {
     try {
-      const result = await window.electronAPI.startRecording();
+      // MODIFIED HERE: Pass the current source to the main process
+      const result = await window.electronAPI.startRecording({ source });
+
       if (!result.canceled && result.filePath) {
         setRecordingState('recording');
         console.log('Recording started, saving to:', result.filePath);
       } else {
         console.log('Recording start was canceled by user.');
+        // If recording was canceled (e.g., from selection screen), reset state
+        setRecordingState('idle');
       }
     } catch (error) {
       console.error('Failed to start recording:', error);
+      setRecordingState('idle'); // Reset on error
     }
   };
 
@@ -66,7 +71,6 @@ export function RecorderPage() {
             icon={<Crop size={18} />}
             isActive={source === 'area'}
             onClick={() => setSource('area')}
-            disabled={true}
           />
           <SourceButton
             label="Full Screen"
@@ -79,7 +83,6 @@ export function RecorderPage() {
             icon={<RectangleHorizontal size={18} />}
             isActive={source === 'window'}
             onClick={() => setSource('window')}
-            disabled={true}
           />
         </div>
 

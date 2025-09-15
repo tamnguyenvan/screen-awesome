@@ -54,6 +54,7 @@ let editorWin: BrowserWindow | null
 let countdownWin: BrowserWindow | null = null;
 let renderWorker: BrowserWindow | null = null;
 let savingWin: BrowserWindow | null = null;
+let selectionWin: BrowserWindow | null = null;
 let tray: Tray | null = null
 
 let pythonTracker: ChildProcessWithoutNullStreams | null = null
@@ -238,6 +239,30 @@ function createCountdownWindow() {
   })
 }
 
+function createSelectionWindow() {
+  selectionWin = new BrowserWindow({
+    fullscreen: true,
+    transparent: true,
+    frame: false,
+    alwaysOnTop: true,
+    webPreferences: {
+      nodeIntegration: true, // Required for renderer.js to use require('electron')
+      contextIsolation: false,
+    }
+  });
+
+  const selectionUrl = VITE_DEV_SERVER_URL
+    ? path.join(process.env.APP_ROOT, 'public/selection/index.html')
+    : path.join(RENDERER_DIST, 'selection/index.html');
+
+  selectionWin.loadFile(selectionUrl);
+
+  selectionWin.on('closed', () => {
+    selectionWin = null;
+  });
+}
+
+
 async function ensureDirectoryExists(dirPath: string) {
   try {
     await fs.mkdir(dirPath, { recursive: true });
@@ -247,7 +272,7 @@ async function ensureDirectoryExists(dirPath: string) {
   }
 }
 
-async function handleStartRecording() {
+async function startActualRecording(ffmpegArgs: string[]) {
   const recordingDir = path.join(process.env.HOME || process.env.USERPROFILE || '.', '.screenawesome');
   await ensureDirectoryExists(recordingDir);
   const baseName = `ScreenAwesome-recording-${Date.now()}`
@@ -258,27 +283,22 @@ async function handleStartRecording() {
 
   createCountdownWindow()
 
+  // Python setup (no changes needed here)
   let pythonExecutable: string;
   let scriptArgs: string[] = [];
-
   if (app.isPackaged) {
-    // Production Environment: Run the executable file compiled by PyInstaller.
-    // process.resourcesPath points to the directory containing application resources.
     const executableName = process.platform === 'win32' ? 'tracker.exe' : 'tracker';
     pythonExecutable = path.join(process.resourcesPath, 'app.asar.unpacked', 'python', 'dist', 'tracker', executableName);
-    log.info(`[Production] Using PyInstaller executable at: ${pythonExecutable}`);
   } else {
-    // Development Environment: Run the script directly using Python from venv.
     pythonExecutable = path.join(process.env.APP_ROOT, 'venv/bin/python');
     const scriptPath = path.join(process.env.APP_ROOT, 'python/tracker.py');
     scriptArgs = [scriptPath];
-    log.info(`[Development] Using Python script: ${pythonExecutable} ${scriptArgs.join(' ')}`);
   }
 
   setTimeout(() => {
     countdownWin?.close()
 
-    // 1. Reset state before starting a new recording
+    // 1. Reset state
     pythonDataBuffer = ''
     firstChunkWritten = true
 
@@ -287,7 +307,6 @@ async function handleStartRecording() {
       pythonTracker = spawn(pythonExecutable, scriptArgs);
     } catch (error) {
       log.error('Failed to spawn Python process:', error);
-      // Có thể thêm logic thông báo lỗi cho người dùng ở đây
       return;
     }
 
@@ -296,22 +315,16 @@ async function handleStartRecording() {
     metadataStream.write('[\n')
 
     pythonTracker.stdout.on('data', (data) => {
-      // Append new data to buffer
+      // ... (logic xử lý data của python không đổi)
       pythonDataBuffer += data.toString('utf-8')
-
-      // Split buffer into lines
       const lines = pythonDataBuffer.split('\n')
-
-      // Keep the last line in buffer if it's incomplete
       const completeLines = lines.slice(0, -1)
       pythonDataBuffer = lines[lines.length - 1]
-
       if (completeLines.length > 0 && metadataStream) {
         completeLines.forEach((line) => {
           const trimmedLine = line.trim()
-          if (trimmedLine) { // Skip empty lines
+          if (trimmedLine) {
             if (!firstChunkWritten) {
-              // Add comma BEFORE writing new object (except the first one)
               metadataStream?.write(',\n')
             }
             metadataStream?.write(trimmedLine)
@@ -325,20 +338,11 @@ async function handleStartRecording() {
       console.error(`Python Tracker Error: ${data}`)
     })
 
-    // 4. Start FFmpeg
-    const display = process.env.DISPLAY || ':0.0'
-    const args = [
-      '-f', 'x11grab',
-      '-i', display,
-      '-c:v', 'libx264',
-      '-preset', 'ultrafast',
-      '-pix_fmt', 'yuv420p',
-      videoPath
-    ]
-
+    // 4. Start FFmpeg with the provided arguments
+    const finalArgs = [...ffmpegArgs, videoPath]; // Add output path
     log.info(`FFmpeg path: ${FFMPEG_PATH}`)
-    log.info(`Starting FFmpeg with args: ${args.join(' ')}`)
-    ffmpegProcess = spawn(FFMPEG_PATH, args)
+    log.info(`Starting FFmpeg with args: ${finalArgs.join(' ')}`)
+    ffmpegProcess = spawn(FFMPEG_PATH, finalArgs)
     ffmpegProcess.stderr.on('data', (data) => {
       log.info(`FFmpeg: ${data}`)
     })
@@ -346,7 +350,6 @@ async function handleStartRecording() {
     // 5. Create Tray Icon
     const icon = nativeImage.createFromPath(path.join(process.env.VITE_PUBLIC, 'screenawesome-appicon.png'))
     tray = new Tray(icon)
-
     const contextMenu = Menu.buildFromTemplate([
       {
         label: 'Stop Recording',
@@ -366,9 +369,72 @@ async function handleStartRecording() {
     tray.setToolTip('ScreenAwesome is recording...')
     tray.setContextMenu(contextMenu)
 
-  }, 3800)
+  }, 3800) // Countdown delay
 
   return { canceled: false, filePath: videoPath }
+}
+
+async function handleStartRecording(_event: IpcMainInvokeEvent, options: { source: 'fullscreen' | 'area' }) {
+  const { source } = options;
+  const display = process.env.DISPLAY || ':0.0';
+
+  if (source === 'area') {
+    // Hide the recorder and open selection window
+    recorderWin?.hide();
+    createSelectionWindow();
+
+    // Await for selection to be made
+    return new Promise((resolve) => {
+      ipcMain.once('selection:complete', (_event, geometry: { x: number; y: number; width: number; height: number }) => {
+        selectionWin?.close();
+        
+        // --- START OF FIX ---
+        // Ensure width and height are even numbers for libx264 compatibility
+        const safeWidth = Math.floor(geometry.width / 2) * 2;
+        const safeHeight = Math.floor(geometry.height / 2) * 2;
+        
+        // Check if the resulting size is too small to record
+        if (safeWidth < 10 || safeHeight < 10) {
+            log.error('Selected area is too small to record after adjustment.');
+            recorderWin?.show(); // Show recorder again
+            dialog.showErrorBox('Recording Error', 'The selected area is too small to record. Please select a larger area.');
+            resolve({ canceled: true, filePath: undefined });
+            return;
+        }
+        
+        log.info(`Received selection geometry: ${JSON.stringify(geometry)}. Adjusted to: ${safeWidth}x${safeHeight}`);
+        // --- END OF FIX ---
+
+        const ffmpegArgs = [
+          '-f', 'x11grab',
+          // Use the adjusted safe dimensions
+          '-video_size', `${safeWidth}x${safeHeight}`,
+          '-i', `${display}+${geometry.x},${geometry.y}`,
+          '-c:v', 'libx264',
+          '-preset', 'ultrafast',
+          '-pix_fmt', 'yuv420p',
+        ];
+        resolve(startActualRecording(ffmpegArgs));
+      });
+
+      ipcMain.once('selection:cancel', () => {
+        log.info('Selection was cancelled.');
+        selectionWin?.close();
+        recorderWin?.show(); // Show recorder again
+        resolve({ canceled: true, filePath: undefined });
+      });
+    });
+
+  } else { // Default to fullscreen
+    const ffmpegArgs = [
+      '-f', 'x11grab',
+      '-i', display,
+      '-c:v', 'libx264',
+      '-preset', 'ultrafast',
+      '-pix_fmt', 'yuv420p',
+    ];
+    return startActualRecording(ffmpegArgs);
+  }
 }
 
 async function handleStopRecording(videoPath: string, metadataPath: string) {
