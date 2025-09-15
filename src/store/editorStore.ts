@@ -252,8 +252,8 @@ export const useEditorStore = create(
           newBackgroundState.color = '#ffffff';
           break;
         case 'gradient':
-          newBackgroundState.gradientStart = currentBg.gradientStart || '#2b3a67';
-          newBackgroundState.gradientEnd = currentBg.gradientEnd || '#0b0f2b';
+          newBackgroundState.gradientStart = currentBg.gradientStart || '#6366f1';
+          newBackgroundState.gradientEnd = currentBg.gradientEnd || '#9ca9ff';
           newBackgroundState.gradientDirection = currentBg.gradientDirection || 'to bottom right';
           break;
         case 'image':

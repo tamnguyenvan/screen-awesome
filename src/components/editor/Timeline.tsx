@@ -288,9 +288,10 @@ export function Timeline({ videoRef }: TimelineProps) {
       window.removeEventListener('mousemove', handleMouseMove);
       window.removeEventListener('mouseup', handleMouseUp);
     };
-    // CHANGE START: Add `updateVideoTime` and `updateRegion` to dependency array
-  }, [draggingRegion, isDraggingPlayhead, isDraggingLeftStrip, isDraggingRightStrip, pxToTime, timeToPx, updateVideoTime, updateRegion, duration]);
-  // CHANGE END
+
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [draggingRegion, isDraggingPlayhead, isDraggingLeftStrip, isDraggingRightStrip,
+    pxToTime, timeToPx, updateVideoTime, updateRegion, duration]);
 
   useEffect(() => {
     let animationFrameId: number;
