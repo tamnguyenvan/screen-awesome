@@ -444,6 +444,12 @@ function createRecorderWindow() {
     transparent: true,
     alwaysOnTop: true,
     resizable: false,
+    // --- VIBRANCY SETTINGS ---
+    // For macOS, uncomment the line below for a native blur effect
+    // vibrancy: 'under-window',
+    // For Windows and Linux, 'transparent: true' is key.
+    // The blur effect is then handled by CSS in the renderer process.
+    // We must ensure no background color is set here if transparent is true.
     webPreferences: {
       nodeIntegration: true,
       preload: path.join(__dirname, 'preload.mjs'),

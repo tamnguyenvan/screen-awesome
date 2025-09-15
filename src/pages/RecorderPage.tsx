@@ -28,8 +28,6 @@ export function RecorderPage() {
   }, []);
 
   const handleStart = async () => {
-    // Current implementation only supports fullscreen recording.
-    // The UI reflects this by disabling other options.
     try {
       const result = await window.electronAPI.startRecording();
       if (!result.canceled && result.filePath) {
@@ -48,64 +46,69 @@ export function RecorderPage() {
   }
 
   return (
+    // Set the main container to be transparent to allow the window's vibrancy/blur effect to show through.
     <main
       className="flex items-center justify-center h-screen bg-transparent select-none p-4"
       style={{ WebkitAppRegion: 'drag' }}
     >
       <div
-        className="flex items-center p-3 gap-5 bg-gray-900/60 backdrop-blur-xl rounded-3xl border border-white/10 shadow-2xl"
+        className={cn(
+          "flex items-center p-2 gap-4 rounded-xl border",
+          "bg-card/90 border-border/60 text-card-foreground",
+          "shadow-2xl backdrop-blur-2xl"
+        )}
         style={{ WebkitAppRegion: 'no-drag' }}
       >
         {/* Group 1: Recording Source */}
-        <div className="flex items-center p-2 bg-black/25 rounded-full">
+        <div className="flex items-center p-1 bg-background/50 rounded-lg border border-border/50">
           <SourceButton
-            label="Select Area"
-            icon={<Crop className="w-5 h-5" />}
+            label="Area"
+            icon={<Crop size={18} />}
             isActive={source === 'area'}
             onClick={() => setSource('area')}
             disabled={true}
           />
           <SourceButton
             label="Full Screen"
-            icon={<Monitor className="w-5 h-5" />}
+            icon={<Monitor size={18} />}
             isActive={source === 'fullscreen'}
             onClick={() => setSource('fullscreen')}
           />
           <SourceButton
             label="Window"
-            icon={<RectangleHorizontal className="w-5 h-5" />}
+            icon={<RectangleHorizontal size={18} />}
             isActive={source === 'window'}
             onClick={() => setSource('window')}
             disabled={true}
           />
         </div>
 
-        <div className="w-px h-10 bg-white/20"></div>
+        <div className="w-px h-8 bg-border"></div>
 
         {/* Group 2: Actions */}
-        <div className="flex items-center gap-3">
-          <Button
-            onClick={handleStart}
-            className="flex items-center gap-3 px-8 h-12 text-base font-bold text-white bg-blue-600 rounded-xl hover:bg-blue-700 transition-colors"
-          >
-            <Radio className="w-6 h-6" />
-            <span>Record</span>
-          </Button>
-
+        <div className="flex items-center gap-2">
           <DeviceButton
             label="Microphone"
-            icon={<Mic className="w-6 h-6" />}
+            icon={<Mic size={20} />}
             isActive={mic === 'on'}
             onClick={() => setMic(mic === 'on' ? 'off' : 'on')}
             disabled={true} // Functionality not implemented
           />
           <DeviceButton
             label="Webcam"
-            icon={<Webcam className="w-6 h-6" />}
+            icon={<Webcam size={20} />}
             isActive={webcam === 'on'}
             onClick={() => setWebcam(webcam === 'on' ? 'off' : 'on')}
             disabled={true} // Functionality not implemented
           />
+          <Button
+            onClick={handleStart}
+            className="flex items-center gap-2 px-6 h-10 text-base font-semibold"
+            size="lg"
+          >
+            <Radio size={20} />
+            <span>Record</span>
+          </Button>
         </div>
       </div>
     </main>
@@ -118,16 +121,18 @@ const SourceButton = ({ label, icon, isActive, ...props }: React.ButtonHTMLAttri
   icon: React.ReactNode,
   isActive: boolean,
 }) => (
-  <button
-    {...props}
+  <Button
+    variant={isActive ? 'default' : 'ghost'}
+    size="sm"
     className={cn(
-      "flex items-center gap-2 px-4 py-2 rounded-full text-sm font-semibold transition-colors focus:outline-none focus-visible:ring-2 focus-visible:ring-blue-500 disabled:opacity-50 disabled:cursor-not-allowed",
-      isActive ? "bg-blue-600 text-white shadow-md" : "text-gray-300 hover:bg-white/10",
+      "flex items-center gap-2 px-4 py-2 font-semibold transition-all duration-200",
+      !isActive && "text-muted-foreground"
     )}
+    {...props}
   >
     {icon}
     <span>{label}</span>
-  </button>
+  </Button>
 );
 
 // Helper component for device buttons (Mic, Webcam)
@@ -136,14 +141,16 @@ const DeviceButton = ({ label, icon, isActive, ...props }: React.ButtonHTMLAttri
   icon: React.ReactNode,
   isActive: boolean,
 }) => (
-  <button
-    {...props}
+  <Button
+    variant="outline"
+    size="icon"
     aria-label={label}
     className={cn(
-      "p-3 rounded-xl transition-colors focus:outline-none focus-visible:ring-2 focus-visible:ring-blue-500 disabled:opacity-50 disabled:cursor-not-allowed",
-      isActive ? "bg-blue-600/90 text-white" : "bg-black/25 text-gray-300 hover:bg-white/10",
+      "h-10 w-10 bg-background/50 border-border/50",
+      isActive && "bg-primary/20 text-primary border-primary/30 ring-2 ring-primary/20"
     )}
+    {...props}
   >
     {icon}
-  </button>
+  </Button>
 );
