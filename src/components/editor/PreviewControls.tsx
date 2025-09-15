@@ -36,7 +36,7 @@ export function PreviewControls({ videoRef }: PreviewControlsProps) {
 
   return (
     <div className={cn(
-      "h-16 bg-card/80 backdrop-blur-sm border border-border/50 rounded-xl",
+      "h-16 bg-card/80 backdrop-blur-sm border-t border-border/50",
       "flex items-center justify-between px-6 shadow-sm"
     )}>
       {/* Left Controls */}

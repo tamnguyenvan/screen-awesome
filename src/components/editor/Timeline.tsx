@@ -2,7 +2,7 @@
 import React, { useRef, useState, MouseEvent as ReactMouseEvent, useEffect, useCallback } from 'react';
 import { useEditorStore, TimelineRegion, ZoomRegion } from '../../store/editorStore';
 import { cn } from '../../lib/utils';
-import { Camera, Scissors, Clock } from 'lucide-react';
+import { Camera, Scissors } from 'lucide-react';
 
 interface TimelineProps {
   videoRef: React.RefObject<HTMLVideoElement>;
@@ -18,7 +18,7 @@ interface RegionBlockProps {
   onMouseDown: RegionMouseEvent;
 }
 
-const PIXELS_PER_SECOND_BASE = 60;
+const PIXELS_PER_SECOND_BASE = 200;
 
 function ZoomRegionBlock({ region, left, width, isSelected, onMouseDown }: RegionBlockProps) {
   const zoomRegion = region as ZoomRegion;
@@ -26,30 +26,36 @@ function ZoomRegionBlock({ region, left, width, isSelected, onMouseDown }: Regio
     <div
       data-region-id={region.id}
       className={cn(
-        "absolute h-full rounded-lg flex items-center px-3 text-primary-foreground text-xs cursor-pointer group",
+        "absolute h-full rounded-lg flex items-center justify-center text-primary-foreground text-xs cursor-pointer",
         "bg-gradient-to-r from-primary to-primary/90 shadow-sm border border-primary/20",
         "transition-all duration-200 hover:shadow-md",
-        isSelected && "ring-2 ring-ring z-10 shadow-lg scale-105"
+        isSelected && "ring-2 ring-ring z-10 shadow-lg scale-y-105"
       )}
       style={{ left: `${left}px`, width: `${width}px` }}
       onMouseDown={(e) => onMouseDown(e, 'move')}
     >
-      <div className="flex items-center gap-2 overflow-hidden">
+      <div className="flex items-center gap-2 overflow-hidden px-3">
         <Camera size={14} className="flex-shrink-0" />
         <span className="truncate font-medium">
           {zoomRegion.zoomLevel.toFixed(1)}x Zoom
         </span>
       </div>
       
-      {/* Resize handles */}
+      {/* Resize handles - Always visible */}
       <div
-        className="absolute left-0 top-0 bottom-0 w-3 cursor-ew-resize opacity-0 group-hover:opacity-100 bg-primary-foreground/20 rounded-l-lg transition-opacity duration-200"
+        className="absolute left-0 top-0 bottom-0 w-2.5 cursor-ew-resize bg-primary-foreground/20 rounded-l-lg flex items-center justify-center space-x-px"
         onMouseDown={(e) => onMouseDown(e, 'resize-left')}
-      />
+      >
+        <div className="w-px h-3 bg-primary-foreground/50 rounded-full" />
+        <div className="w-px h-3 bg-primary-foreground/50 rounded-full" />
+      </div>
       <div
-        className="absolute right-0 top-0 bottom-0 w-3 cursor-ew-resize opacity-0 group-hover:opacity-100 bg-primary-foreground/20 rounded-r-lg transition-opacity duration-200"
+        className="absolute right-0 top-0 bottom-0 w-2.5 cursor-ew-resize bg-primary-foreground/20 rounded-r-lg flex items-center justify-center space-x-px"
         onMouseDown={(e) => onMouseDown(e, 'resize-right')}
-      />
+      >
+        <div className="w-px h-3 bg-primary-foreground/50 rounded-full" />
+        <div className="w-px h-3 bg-primary-foreground/50 rounded-full" />
+      </div>
     </div>
   );
 }
@@ -59,31 +65,38 @@ function CutRegionBlock({ region, left, width, isSelected, onMouseDown }: Region
     <div
       data-region-id={region.id}
       className={cn(
-        "absolute h-full rounded-lg flex items-center px-3 text-destructive-foreground text-xs cursor-pointer group",
+        "absolute h-full rounded-lg flex items-center justify-center text-destructive-foreground text-xs cursor-pointer",
         "bg-gradient-to-r from-destructive to-destructive/90 shadow-sm border border-destructive/20",
         "transition-all duration-200 hover:shadow-md",
-        isSelected && "ring-2 ring-ring z-10 shadow-lg scale-105"
+        isSelected && "ring-2 ring-ring z-10 shadow-lg scale-y-105"
       )}
       style={{ left: `${left}px`, width: `${width}px` }}
       onMouseDown={(e) => onMouseDown(e, 'move')}
     >
-      <div className="flex items-center gap-2 overflow-hidden">
+      <div className="flex items-center gap-2 overflow-hidden px-3">
         <Scissors size={14} className="flex-shrink-0" />
         <span className="truncate font-medium">Cut</span>
       </div>
       
-      {/* Resize handles */}
+      {/* Resize handles - Always visible */}
       <div
-        className="absolute left-0 top-0 bottom-0 w-3 cursor-ew-resize opacity-0 group-hover:opacity-100 bg-destructive-foreground/20 rounded-l-lg transition-opacity duration-200"
+        className="absolute left-0 top-0 bottom-0 w-2.5 cursor-ew-resize bg-destructive-foreground/20 rounded-l-lg flex items-center justify-center space-x-px"
         onMouseDown={(e) => onMouseDown(e, 'resize-left')}
-      />
+      >
+        <div className="w-px h-3 bg-destructive-foreground/50 rounded-full" />
+        <div className="w-px h-3 bg-destructive-foreground/50 rounded-full" />
+      </div>
       <div
-        className="absolute right-0 top-0 bottom-0 w-3 cursor-ew-resize opacity-0 group-hover:opacity-100 bg-destructive-foreground/20 rounded-r-lg transition-opacity duration-200"
+        className="absolute right-0 top-0 bottom-0 w-2.5 cursor-ew-resize bg-destructive-foreground/20 rounded-r-lg flex items-center justify-center space-x-px"
         onMouseDown={(e) => onMouseDown(e, 'resize-right')}
-      />
+      >
+        <div className="w-px h-3 bg-destructive-foreground/50 rounded-full" />
+        <div className="w-px h-3 bg-destructive-foreground/50 rounded-full" />
+      </div>
     </div>
   );
 }
+
 
 export function Timeline({ videoRef }: TimelineProps) {
   const store = useEditorStore();
@@ -228,17 +241,6 @@ export function Timeline({ videoRef }: TimelineProps) {
 
   return (
     <div className="h-full flex flex-col bg-card/30 backdrop-blur-sm">
-      {/* Timeline Header */}
-      <div className="flex items-center justify-between px-6 py-3 border-b border-border/50">
-        <div className="flex items-center gap-2">
-          <Clock className="w-4 h-4 text-muted-foreground" />
-          <span className="text-sm font-medium text-foreground">Timeline</span>
-        </div>
-        <div className="text-xs text-muted-foreground font-mono">
-          {store.duration > 0 ? `${store.duration.toFixed(1)}s total` : 'No video loaded'}
-        </div>
-      </div>
-
       {/* Timeline Content */}
       <div 
         ref={containerRef} 
@@ -276,13 +278,13 @@ export function Timeline({ videoRef }: TimelineProps) {
           </div>
 
           {/* Track Area */}
-          <div className="absolute top-8 left-0 right-0 bottom-0 pt-2">
+          <div className="absolute top-8 left-0 right-0 bottom-0 pt-4 space-y-2">
             {/* Video Track */}
             <div 
-              className="h-10 rounded-lg bg-muted/30 border border-border/30 flex items-center px-4 mb-2 backdrop-blur-sm"
+              className="h-14 rounded-lg bg-accent/20 border border-border/30 flex items-center px-4 backdrop-blur-sm"
               style={{ width: `${store.duration * pixelsPerSecond}px` }}
             >
-              <div className="flex items-center gap-2 text-sm text-muted-foreground">
+              <div className="flex items-center gap-2 text-sm text-secondary-foreground">
                 <div className="w-2 h-2 rounded-full bg-primary"></div>
                 <span className="font-medium">Video Track</span>
               </div>
@@ -290,7 +292,7 @@ export function Timeline({ videoRef }: TimelineProps) {
 
             {/* Regions Track */}
             <div 
-              className="h-10 relative rounded-lg bg-background/50 border border-border/30 backdrop-blur-sm"
+              className="h-14 relative rounded-lg bg-background/50 border border-border/30 backdrop-blur-sm"
               style={{ width: `${store.duration * pixelsPerSecond}px` }}
             >
               {/* Regions */}
@@ -331,12 +333,6 @@ export function Timeline({ videoRef }: TimelineProps) {
                 onMouseDown={handlePlayheadMouseDown}
               >
                 <div className="absolute inset-1 rounded-full bg-background opacity-20"></div>
-              </div>
-
-              {/* Current Time Label */}
-              <div className="absolute -top-8 bg-primary text-primary-foreground text-xs font-mono px-2 py-1 rounded shadow-lg pointer-events-none"
-                   style={{ transform: 'translateX(-50%)' }}>
-                {Math.floor(store.currentTime / 60)}:{Math.floor(store.currentTime % 60).toString().padStart(2, '0')}
               </div>
             </div>
           )}
