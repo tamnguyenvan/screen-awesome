@@ -5,6 +5,7 @@ import { Button } from '../ui/button';
 import { Trash2, Camera, Scissors } from 'lucide-react';
 import { Input } from '../ui/input';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '../ui/select';
+import Slider from '../ui/slider';
 
 interface RegionSettingsPanelProps {
   region: TimelineRegion;
@@ -97,18 +98,13 @@ export function RegionSettingsPanel({ region }: RegionSettingsPanelProps) {
                   {region.zoomLevel.toFixed(1)}x
                 </span>
               </div>
-              <Input
-                type="range"
-                name="zoomLevel"
-                min="1"
-                max="5"
-                step="0.1"
+              <Slider
+                min={1}
+                max={5}
+                step={0.1}
                 value={region.zoomLevel}
-                onChange={(e) => handleValueChange('zoomLevel', e.target.value)}
+                onChange={(value) => handleValueChange('zoomLevel', value)}
                 className="w-full h-2 bg-muted rounded-full appearance-none cursor-pointer accent-primary slider"
-                style={{
-                  background: `linear-gradient(to right, oklch(var(--primary)) 0%, oklch(var(--primary)) ${((region.zoomLevel - 1) / 4) * 100}%, oklch(var(--muted)) ${((region.zoomLevel - 1) / 4) * 100}%, oklch(var(--muted)) 100%)`
-                }}
               />
               <div className="flex justify-between text-xs text-muted-foreground mt-1">
                 <span>1x</span>

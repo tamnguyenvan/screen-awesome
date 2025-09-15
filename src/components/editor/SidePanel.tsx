@@ -6,6 +6,7 @@ import { WALLPAPERS } from '../../lib/constants';
 import { RegionSettingsPanel } from './RegionSettingsPanel';
 import { Palette, Image, Sparkles, ImageIcon, Check } from 'lucide-react';
 import { Input } from '../ui/input';
+import Slider from '../ui/slider';
 
 type BackgroundTab = 'color' | 'gradient' | 'image' | 'wallpaper';
 
@@ -13,10 +14,9 @@ function FrameSettingsPanel() {
   const { frameStyles, updateFrameStyle, updateBackground } = useEditorStore();
   const [activeTab, setActiveTab] = useState<BackgroundTab>(frameStyles.background.type);
   
-  const handleStyleChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-    const { name, value, type } = e.target;
+  const handleStyleChange = (name: string, value: string | number) => {
     updateFrameStyle({
-      [name]: type === 'number' ? parseFloat(value) : value,
+      [name]: value,
     });
   };
 
@@ -187,17 +187,12 @@ function FrameSettingsPanel() {
           {/* Padding Control */}
           <ControlGroup label={`Padding (${frameStyles.padding}%)`}>
             <div className="space-y-3">
-              <Input
-                type="range"
-                name="padding"
-                min="0"
-                max="30"
+              <Slider
+                min={0}
+                max={30}
                 value={frameStyles.padding}
-                onChange={handleStyleChange}
+                onChange={(value) => handleStyleChange("padding", value)}
                 className="w-full h-2 bg-muted rounded-full appearance-none cursor-pointer accent-primary slider"
-                style={{
-                  background: `linear-gradient(to right, oklch(var(--primary)) 0%, oklch(var(--primary)) ${(frameStyles.padding / 30) * 100}%, oklch(var(--muted)) ${(frameStyles.padding / 30) * 100}%, oklch(var(--muted)) 100%)`
-                }}
               />
               <div className="flex justify-between text-xs text-muted-foreground">
                 <span>0%</span>
@@ -213,17 +208,12 @@ function FrameSettingsPanel() {
                 <label className="block text-sm font-medium text-sidebar-foreground mb-3">
                   Border Radius ({frameStyles.borderRadius}px)
                 </label>
-                <Input
-                  type="range" 
-                  name="borderRadius" 
-                  min="0" 
-                  max="50"
+                <Slider
+                  min={0} 
+                  max={50}
                   value={frameStyles.borderRadius} 
-                  onChange={handleStyleChange}
+                  onChange={(value) => handleStyleChange("borderRadius", value)}
                   className="w-full h-2 bg-muted rounded-full appearance-none cursor-pointer accent-primary slider"
-                  style={{
-                    background: `linear-gradient(to right, oklch(var(--primary)) 0%, oklch(var(--primary)) ${(frameStyles.borderRadius / 50) * 100}%, oklch(var(--muted)) ${(frameStyles.borderRadius / 50) * 100}%, oklch(var(--muted)) 100%)`
-                  }}
                 />
                 <div className="flex justify-between text-xs text-muted-foreground mt-1">
                   <span>Sharp</span>
@@ -235,17 +225,12 @@ function FrameSettingsPanel() {
                 <label className="block text-sm font-medium text-sidebar-foreground mb-3">
                   Shadow ({frameStyles.shadow}px)
                 </label>
-                <Input
-                  type="range" 
-                  name="shadow" 
-                  min="0" 
-                  max="50"
+                <Slider
+                  min={0} 
+                  max={50}
                   value={frameStyles.shadow} 
-                  onChange={handleStyleChange}
+                  onChange={(value) => handleStyleChange("shadow", value)}
                   className="w-full h-2 bg-muted rounded-full appearance-none cursor-pointer accent-primary slider"
-                  style={{
-                    background: `linear-gradient(to right, oklch(var(--primary)) 0%, oklch(var(--primary)) ${(frameStyles.shadow / 50) * 100}%, oklch(var(--muted)) ${(frameStyles.shadow / 50) * 100}%, oklch(var(--muted)) 100%)`
-                  }}
                 />
                 <div className="flex justify-between text-xs text-muted-foreground mt-1">
                   <span>None</span>
@@ -257,17 +242,12 @@ function FrameSettingsPanel() {
                 <label className="block text-sm font-medium text-sidebar-foreground mb-3">
                   Border Width ({frameStyles.borderWidth}px)
                 </label>
-                <Input
-                  type="range" 
-                  name="borderWidth" 
-                  min="0" 
-                  max="20"
+                <Slider
+                  min={0} 
+                  max={20}
                   value={frameStyles.borderWidth} 
-                  onChange={handleStyleChange}
+                  onChange={(value) => handleStyleChange("borderWidth", value)}
                   className="w-full h-2 bg-muted rounded-full appearance-none cursor-pointer accent-primary slider"
-                  style={{
-                    background: `linear-gradient(to right, oklch(var(--primary)) 0%, oklch(var(--primary)) ${(frameStyles.borderWidth / 20) * 100}%, oklch(var(--muted)) ${(frameStyles.borderWidth / 20) * 100}%, oklch(var(--muted)) 100%)`
-                  }}
                 />
                 <div className="flex justify-between text-xs text-muted-foreground mt-1">
                   <span>None</span>
@@ -284,7 +264,7 @@ function FrameSettingsPanel() {
                     type="color" 
                     name="borderColor" 
                     value={frameStyles.borderColor}
-                    onChange={handleStyleChange}
+                    onChange={(e) => handleStyleChange("borderColor", e.target.value)}
                     className="w-full h-12 p-1 border border-sidebar-border rounded-lg bg-input cursor-pointer"
                   />
                 </div>

@@ -4,8 +4,8 @@ import { Play, Pause, Rewind, Scissors, Plus, ZoomIn } from 'lucide-react';
 import { useEditorStore, AspectRatio } from '../../store/editorStore';
 import { Button } from '../ui/button';
 import { cn } from '../../lib/utils';
-import { Input } from '../ui/input';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '../ui/select';
+import Slider from '../ui/slider';
 
 interface PreviewControlsProps {
   videoRef: React.RefObject<HTMLVideoElement>;
@@ -64,17 +64,13 @@ export function PreviewControls({ videoRef }: PreviewControlsProps) {
         <div className="flex items-center gap-3 ml-6 px-4 py-2 bg-background/30 rounded-lg border border-border/30">
           <ZoomIn className="w-4 h-4 text-muted-foreground" />
           <div className="w-24">
-            <Input
-              type="range"
-              min="0.5"
-              max="5"
-              step="0.25"
+            <Slider
+              min={0.5}
+              max={5}
+              step={0.25}
               value={timelineZoom}
-              onChange={(e) => setTimelineZoom(parseFloat(e.target.value))}
+              onChange={(value) => setTimelineZoom(value)}
               className="w-full h-2 bg-muted rounded-full appearance-none cursor-pointer accent-primary slider"
-              style={{
-                background: `linear-gradient(to right, oklch(var(--primary)) 0%, oklch(var(--primary)) ${((timelineZoom - 0.5) / 4.5) * 100}%, oklch(var(--muted)) ${((timelineZoom - 0.5) / 4.5) * 100}%, oklch(var(--muted)) 100%)`
-              }}
             />
           </div>
           <span className="text-xs text-muted-foreground font-mono min-w-[2.5rem]">
