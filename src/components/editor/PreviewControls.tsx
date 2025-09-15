@@ -65,9 +65,9 @@ export function PreviewControls({ videoRef }: PreviewControlsProps) {
           <ZoomIn className="w-4 h-4 text-muted-foreground" />
           <div className="w-24">
             <Slider
-              min={1}      // Thay đổi: Tối thiểu là 1x
-              max={10}     // Thay đổi: Tăng tối đa để zoom được nhiều hơn
-              step={0.1}   // Thay đổi: Bước nhỏ hơn để điều khiển mượt hơn
+              min={1}
+              max={4}
+              step={0.5}
               value={timelineZoom}
               onChange={(value) => setTimelineZoom(value)}
               className="w-full h-2 bg-muted rounded-full appearance-none cursor-pointer accent-primary slider"

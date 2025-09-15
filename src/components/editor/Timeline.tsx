@@ -8,6 +8,7 @@ import { ZoomRegionBlock } from './timeline/ZooomRegionBlock';
 import { CutRegionBlock } from './timeline/CutRegionBlock';
 
 import { cn } from '../../lib/utils';
+import { Scissors } from 'lucide-react';
 
 interface TimelineProps {
   videoRef: React.RefObject<HTMLVideoElement>;
@@ -36,7 +37,7 @@ export function Timeline({ videoRef }: TimelineProps) {
     timelineZoom,
     zoomRegions,
     cutRegions,
-    activeZoomRegionId,
+    selectedRegionId,
     updateRegion,
     setCurrentTime,
     setSelectedRegionId,
@@ -215,81 +216,90 @@ export function Timeline({ videoRef }: TimelineProps) {
 
   return (
     <div className="h-full flex flex-col bg-background p-4">
-      <div
-        ref={containerRef}
-        className="flex-1 overflow-x-auto overflow-y-hidden border border-border/80 rounded-lg bg-muted/20"
-        onMouseDown={handleTimelineClick}
-      >
-        <div
-          ref={timelineRef}
-          className="relative h-full min-w-full"
-          style={{ width: `${totalWidthPx}px` }}
-        >
-          {/* Ruler */}
-          <div className="h-8 absolute top-0 left-0 right-0 border-b border-border/50">
-            {rulerTicks.map(({ time, type }) => (
-              <div key={`tick-${time}`} className="absolute top-0 flex flex-col items-center" style={{ left: `${timeToPx(time)}px` }}>
-                <div className={cn("w-px bg-border/80", type === 'major' ? 'h-2.5' : 'h-1.5')}></div>
-                {type === 'major' && <span className="text-xs text-muted-foreground font-mono mt-1 select-none">{time}s</span>}
-              </div>
-            ))}
-          </div>
+      <div className="h-full flex flex-row rounded-lg overflow-hidden">
+        {/*  Left strip */}
+        <div className="w-8 h-full rounded-lt-lg rounded-lr-lg bg-background border border-border/80 bg-muted/50">
+          <Scissors size={24} className="flex-shrink-0" />
+        </div>
 
-          {/* Tracks Area */}
-          <div className="absolute top-8 left-0 right-0 bottom-0 pt-4 space-y-3">
-            <div className="h-24 relative">
-              {allRegions.map(region => (
-                region.type === 'zoom' ?
-                  <ZoomRegionBlock
-                    key={region.id}
-                    region={region}
-                    left={timeToPx(region.startTime)}
-                    width={timeToPx(region.duration)}
-                    isSelected={activeZoomRegionId === region.id}
-                    onMouseDown={handleRegionMouseDown}
-                    setRef={(el) => regionRefs.current.set(region.id, el)}
-                  />
-                  :
-                  <CutRegionBlock
-                    key={region.id}
-                    region={region}
-                    left={timeToPx(region.startTime)}
-                    width={timeToPx(region.duration)}
-                    isSelected={activeZoomRegionId === region.id}
-                    onMouseDown={handleRegionMouseDown}
-                    setRef={(el) => regionRefs.current.set(region.id, el)}
-                  />
+        <div
+          ref={containerRef}
+          className="flex-1 overflow-x-auto overflow-y-hidden border border-border/80 bg-muted/20"
+          onMouseDown={handleTimelineClick}
+        >
+          <div
+            ref={timelineRef}
+            className="relative h-full min-w-full"
+            style={{ width: `${totalWidthPx}px` }}
+          >
+            {/* Ruler */}
+            <div className="h-8 absolute top-0 left-0 right-0 border-b border-border/50">
+              {rulerTicks.map(({ time, type }) => (
+                <div key={`tick-${time}`} className="absolute top-0 flex flex-col items-center" style={{ left: `${timeToPx(time)}px` }}>
+                  <div className={cn("w-px bg-border/80", type === 'major' ? 'h-2.5' : 'h-1.5')}></div>
+                  {type === 'major' && <span className="text-xs text-muted-foreground font-mono mt-1 select-none">{time}s</span>}
+                </div>
               ))}
             </div>
-          </div>
 
-          {/* Playhead */}
-          {duration > 0 && (
-            <div ref={playheadRef} className="absolute top-0 bottom-0 z-30 pointer-events-none">
-              {/* Vertical line */}
-              <div className="w-0.5 h-full bg-primary shadow-sm"></div>
-
-              {/* Triangle handle */}
-              <div
-                data-playhead-handle
-                className={cn(
-                  "absolute top-0 pointer-events-auto",
-                  isDraggingPlayhead ? "cursor-grabbing scale-110" : "cursor-grab"
-                )}
-                style={{
-                  transform: 'translateX(-50%)',
-                  left: '1px' // Offset để căn giữa với line
-                }}
-                onMouseDown={handlePlayheadMouseDown}
-              >
-                {/* Inverted triangle */}
-                <div className="w-0 h-0 border-l-[8px] border-r-[8px] border-t-[12px] border-l-transparent border-r-transparent border-t-primary shadow-lg">
-                  {/* Inner triangle for depth effect */}
-                  <div className="absolute -top-[10px] -left-[6px] w-0 h-0 border-l-[6px] border-r-[6px] border-t-[8px] border-l-transparent border-r-transparent border-t-background opacity-30"></div>
-                </div>
+            {/* Tracks Area */}
+            <div className="absolute top-8 left-0 right-0 bottom-0 pt-4 space-y-3">
+              <div className="h-24 relative">
+                {allRegions.map(region => (
+                  region.type === 'zoom' ?
+                    <ZoomRegionBlock
+                      key={region.id}
+                      region={region}
+                      left={timeToPx(region.startTime)}
+                      width={timeToPx(region.duration)}
+                      isSelected={selectedRegionId === region.id}
+                      onMouseDown={handleRegionMouseDown}
+                      setRef={(el) => regionRefs.current.set(region.id, el)}
+                    />
+                    :
+                    <CutRegionBlock
+                      key={region.id}
+                      region={region}
+                      left={timeToPx(region.startTime)}
+                      width={timeToPx(region.duration)}
+                      isSelected={selectedRegionId === region.id}
+                      onMouseDown={handleRegionMouseDown}
+                      setRef={(el) => regionRefs.current.set(region.id, el)}
+                    />
+                ))}
               </div>
             </div>
-          )}
+
+            {/* Playhead */}
+            {duration > 0 && (
+              <div ref={playheadRef} className="absolute top-0 bottom-0 z-30 pointer-events-none">
+                {/* Vertical line */}
+                <div className="w-0.5 h-full bg-primary shadow-sm"></div>
+
+                {/* Triangle handle */}
+                <div
+                  data-playhead-handle
+                  className={cn(
+                    "absolute top-0 pointer-events-auto",
+                    isDraggingPlayhead ? "cursor-grabbing scale-110" : "cursor-grab"
+                  )}
+                  style={{
+                    transform: 'translateX(-50%)',
+                    left: '1px' // Offset để căn giữa với line
+                  }}
+                  onMouseDown={handlePlayheadMouseDown}
+                >
+                  {/* Inverted triangle */}
+                  <div className="w-0 h-0 border-l-[8px] border-r-[8px] border-t-[12px] border-l-transparent border-r-transparent border-t-primary shadow-lg" />
+                </div>
+              </div>
+            )}
+          </div>
+        </div>
+
+        {/* Right strip */}
+        <div className="w-8 h-full rounded-lt-lg rounded-lr-lg bg-background border border-border/80 bg-muted/50">
+          <Scissors size={24} className="flex-shrink-0" />
         </div>
       </div>
     </div>

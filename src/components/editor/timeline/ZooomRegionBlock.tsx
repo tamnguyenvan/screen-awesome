@@ -25,9 +25,9 @@ export const ZoomRegionBlock = memo(function ZoomRegionBlock({
       ref={setRef}
       data-region-id={region.id}
       className={cn(
-        "absolute h-18 rounded-lg flex items-center text-sm cursor-pointer transition-all duration-200",
+        "absolute h-18 rounded-lg flex items-center text-sm cursor-pointer transition-all duration-200 border border-gray-400/60",
         isSelected 
-          ? "bg-primary/80 text-primary-foreground border-2 border-primary z-10 shadow-lg" 
+          ? "bg-primary/90 text-primary-foreground border-2 border-primary z-10 shadow-lg" 
           : "bg-gray-200 text-gray-700 hover:bg-gray-300 shadow-sm"
       )}
       style={{ left: `${left}px`, width: `${width}px` }}
