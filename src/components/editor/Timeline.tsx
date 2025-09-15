@@ -1,72 +1,46 @@
 // src/components/editor/Timeline.tsx
-import React, { useRef, useState, MouseEvent as ReactMouseEvent, useEffect, useCallback, memo } from 'react';
-import { useEditorStore, TimelineRegion, ZoomRegion } from '../../store/editorStore';
+import React, {
+  useRef, useState, MouseEvent as ReactMouseEvent,
+  useEffect, useCallback, useMemo
+} from 'react';
+import { useEditorStore, TimelineRegion } from '../../store/editorStore';
+import { ZoomRegionBlock } from './timeline/ZooomRegionBlock';
+import { CutRegionBlock } from './timeline/CutRegionBlock';
+
 import { cn } from '../../lib/utils';
-import { Film, Scissors } from 'lucide-react';
 
 interface TimelineProps {
   videoRef: React.RefObject<HTMLVideoElement>;
 }
+// Hàm mới: Tính toán khoảng cách vạch chia thước đo thông minh
+const calculateRulerInterval = (duration: number): { major: number; minor: number } => {
+  if (duration <= 0) return { major: 1, minor: 0.5 };
 
-interface RegionBlockProps {
-  region: TimelineRegion;
-  left: number;
-  width: number;
-  isSelected: boolean;
-  onMouseDown: (e: ReactMouseEvent<HTMLDivElement>, region: TimelineRegion, type: 'move' | 'resize-left' | 'resize-right') => void;
-  setRef: (el: HTMLDivElement | null) => void;
-}
+  const targetMajorTicks = 10; // Số lượng vạch chính mong muốn
+  const roughInterval = duration / targetMajorTicks;
 
-const PIXELS_PER_SECOND_BASE = 200;
+  // Các khoảng "đẹp": 0.1s, 0.5s, 1s, 2s, 5s, 10s, 15s, 30s, 1m, 2m, 5m...
+  const niceIntervals = [0.1, 0.2, 0.5, 1, 2, 5, 10, 15, 30, 60, 120, 300, 600];
 
-const RegionBlock = memo(function RegionBlock({ region, left, width, isSelected, onMouseDown, setRef }: RegionBlockProps) {
-  const isZoom = region.type === 'zoom';
+  const major = niceIntervals.find(i => i >= roughInterval) || niceIntervals[niceIntervals.length - 1];
+  const minor = major / (major > 1 ? 5 : 2); // Chia nhỏ hơn cho các khoảng lớn
 
-  const baseBgColor = isZoom ? 'bg-primary' : 'bg-destructive';
-  const baseTextColor = isZoom ? 'text-primary-foreground' : 'text-destructive-foreground';
-
-  const handleBaseClasses = "absolute top-0 bottom-0 w-2.5 cursor-ew-resize flex items-center justify-center";
-  const handleInnerClasses = "w-px h-3.5 bg-current opacity-50 rounded-full";
-
-  return (
-    <div
-      ref={setRef}
-      data-region-id={region.id}
-      className={cn(
-        "absolute h-14 rounded-lg flex items-center text-xs font-medium cursor-pointer transition-shadow duration-200",
-        baseBgColor,
-        baseTextColor,
-        isSelected ? "ring-2 ring-offset-2 ring-offset-background ring-ring z-10 shadow-md" : "hover:shadow-sm"
-      )}
-      style={{ left: `${left}px`, width: `${width}px` }}
-      onMouseDown={(e) => onMouseDown(e, region, 'move')}
-    >
-      <div className="flex items-center gap-2 overflow-hidden px-3">
-        {isZoom ? <Film size={14} className="flex-shrink-0" /> : <Scissors size={14} className="flex-shrink-0" />}
-        <span className="truncate">
-          {isZoom ? `${(region as ZoomRegion).zoomLevel.toFixed(1)}x Zoom` : 'Cut'}
-        </span>
-      </div>
-
-      {/* Resize handles */}
-      <div
-        className={cn(handleBaseClasses, "left-0 rounded-l-lg")}
-        onMouseDown={(e) => onMouseDown(e, region, 'resize-left')}
-      >
-        <div className={handleInnerClasses} />
-      </div>
-      <div
-        className={cn(handleBaseClasses, "right-0 rounded-r-lg")}
-        onMouseDown={(e) => onMouseDown(e, region, 'resize-right')}
-      >
-        <div className={handleInnerClasses} />
-      </div>
-    </div>
-  );
-});
+  return { major, minor };
+};
 
 export function Timeline({ videoRef }: TimelineProps) {
-  const store = useEditorStore();
+  const {
+    isPlaying,
+    currentTime,
+    duration,
+    timelineZoom,
+    zoomRegions,
+    cutRegions,
+    activeZoomRegionId,
+    updateRegion,
+    setCurrentTime,
+    setSelectedRegionId,
+  } = useEditorStore();
   const containerRef = useRef<HTMLDivElement>(null);
   const timelineRef = useRef<HTMLDivElement>(null);
   const playheadRef = useRef<HTMLDivElement>(null);
@@ -88,30 +62,43 @@ export function Timeline({ videoRef }: TimelineProps) {
     return () => observer.disconnect();
   }, []);
 
-  const pixelsPerSecond = PIXELS_PER_SECOND_BASE * store.timelineZoom;
+  // --- LOGIC TÍNH TOÁN PIXEL MỚI ---
+  const pixelsPerSecond = useMemo(() => {
+    if (duration === 0 || containerWidth === 0) {
+      return 200; // Giá trị mặc định khi chưa có video
+    }
+    // Ở 1x, timeline vừa khít container. Các mức zoom khác sẽ nhân lên.
+    const basePps = containerWidth / duration;
+    return basePps * timelineZoom;
+  }, [duration, containerWidth, timelineZoom]);
+
   const timeToPx = useCallback((time: number) => time * pixelsPerSecond, [pixelsPerSecond]);
   const pxToTime = useCallback((px: number) => px / pixelsPerSecond, [pixelsPerSecond]);
 
+  const totalWidthPx = duration * pixelsPerSecond;
+
+  // --- END LOGIC MỚI ---
+
   const handleTimelineClick = (e: ReactMouseEvent<HTMLDivElement>) => {
-    if (draggingRegion || isDraggingPlayhead || !timelineRef.current || store.duration === 0) return;
+    if (draggingRegion || isDraggingPlayhead || !timelineRef.current || duration === 0) return;
     if ((e.target as HTMLElement).closest('[data-region-id]') || (e.target as HTMLElement).closest('[data-playhead-handle]')) return;
     const rect = timelineRef.current.getBoundingClientRect();
     const newTime = pxToTime(e.clientX - rect.left);
-    store.setCurrentTime(newTime);
+    setCurrentTime(newTime);
     if (videoRef.current) videoRef.current.currentTime = newTime;
-    store.setSelectedRegionId(null);
+    setSelectedRegionId(null);
   };
 
   const handleRegionMouseDown = useCallback((e: ReactMouseEvent<HTMLDivElement>, region: TimelineRegion, type: 'move' | 'resize-left' | 'resize-right') => {
     e.stopPropagation();
-    store.setSelectedRegionId(region.id);
+    setSelectedRegionId(region.id);
     document.body.style.cursor = type === 'move' ? 'grabbing' : 'ew-resize';
     setDraggingRegion({
       id: region.id, type,
       initialX: e.clientX, initialStartTime: region.startTime, initialDuration: region.duration
     });
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [store.setSelectedRegionId]);
+  }, [setSelectedRegionId]);
 
   const handlePlayheadMouseDown = (e: ReactMouseEvent<HTMLDivElement>) => {
     e.stopPropagation();
@@ -119,14 +106,36 @@ export function Timeline({ videoRef }: TimelineProps) {
     document.body.style.cursor = 'grabbing';
   };
 
+  // Memoize ruler ticks for performance
+  const rulerTicks = useMemo(() => {
+    if (duration <= 0) return [];
+
+    const interval = calculateRulerInterval(duration);
+    const ticks = [];
+
+    for (let time = 0; time <= duration; time += interval.major) {
+      ticks.push({ time, type: 'major' });
+    }
+
+    // Add minor ticks if there's enough space
+    if (timeToPx(interval.minor) > 20) {
+      for (let time = 0; time <= duration; time += interval.minor) {
+        if (time % interval.major !== 0) {
+          ticks.push({ time, type: 'minor' });
+        }
+      }
+    }
+    return ticks;
+  }, [duration, timeToPx]);
+
   useEffect(() => {
-    // --- LOGIC DOM MANIPULATION GIỮ NGUYÊN ---
+    // Logic kéo thả vẫn giữ nguyên, vì nó phụ thuộc vào timeToPx/pxToTime đã được cập nhật
     const handleMouseMove = (e: MouseEvent) => {
       if (isDraggingPlayhead && timelineRef.current) {
         const rect = timelineRef.current.getBoundingClientRect();
         let newTime = pxToTime(e.clientX - rect.left);
-        newTime = Math.max(0, Math.min(newTime, store.duration));
-        store.setCurrentTime(newTime);
+        newTime = Math.max(0, Math.min(newTime, duration));
+        setCurrentTime(newTime);
         if (videoRef.current) videoRef.current.currentTime = newTime;
         return;
       }
@@ -134,7 +143,6 @@ export function Timeline({ videoRef }: TimelineProps) {
       if (draggingRegion) {
         const element = regionRefs.current.get(draggingRegion.id);
         if (!element) return;
-
         const deltaX = e.clientX - draggingRegion.initialX;
 
         if (draggingRegion.type === 'move') {
@@ -146,22 +154,17 @@ export function Timeline({ videoRef }: TimelineProps) {
           const initialWidthPx = timeToPx(draggingRegion.initialDuration);
           const newWidth = Math.max(timeToPx(0.2), initialWidthPx - deltaX);
           const newTranslateX = Math.min(deltaX, initialWidthPx - timeToPx(0.2));
-
           element.style.transform = `translateX(${newTranslateX}px)`;
           element.style.width = `${newWidth}px`;
         }
       }
     };
-
     const handleMouseUp = (e: MouseEvent) => {
       document.body.style.cursor = 'default';
-
       if (isDraggingPlayhead) setIsDraggingPlayhead(false);
-
       if (draggingRegion) {
         const element = regionRefs.current.get(draggingRegion.id);
         if (element) element.style.transform = 'translateX(0px)';
-
         const deltaX = e.clientX - draggingRegion.initialX;
         const deltaTime = pxToTime(deltaX);
         const finalUpdates: Partial<TimelineRegion> = {};
@@ -178,20 +181,17 @@ export function Timeline({ videoRef }: TimelineProps) {
           finalUpdates.duration = (draggingRegion.initialStartTime + draggingRegion.initialDuration) - newStartTime;
           finalUpdates.startTime = newStartTime;
         }
-
-        store.updateRegion(draggingRegion.id, finalUpdates);
+        updateRegion(draggingRegion.id, finalUpdates);
         setDraggingRegion(null);
       }
     };
-
     window.addEventListener('mousemove', handleMouseMove);
     window.addEventListener('mouseup', handleMouseUp);
-
     return () => {
       window.removeEventListener('mousemove', handleMouseMove);
       window.removeEventListener('mouseup', handleMouseUp);
     };
-  }, [draggingRegion, isDraggingPlayhead, store, videoRef, pxToTime, timeToPx]);
+  }, [draggingRegion, isDraggingPlayhead, videoRef, pxToTime, timeToPx]);
 
   useEffect(() => {
     let animationFrameId: number;
@@ -201,25 +201,23 @@ export function Timeline({ videoRef }: TimelineProps) {
       }
       animationFrameId = requestAnimationFrame(animatePlayhead);
     };
-    if (store.isPlaying) animationFrameId = requestAnimationFrame(animatePlayhead);
+    if (isPlaying) animationFrameId = requestAnimationFrame(animatePlayhead);
     return () => cancelAnimationFrame(animationFrameId);
-  }, [store.isPlaying, videoRef, timeToPx]);
+  }, [isPlaying, videoRef, timeToPx]);
 
   useEffect(() => {
-    if (!store.isPlaying && playheadRef.current && store.duration > 0) {
-      playheadRef.current.style.transform = `translateX(${timeToPx(store.currentTime)}px)`;
+    if (!isPlaying && playheadRef.current && duration > 0) {
+      playheadRef.current.style.transform = `translateX(${timeToPx(currentTime)}px)`;
     }
-  }, [store.currentTime, store.isPlaying, store.duration, timeToPx]);
+  }, [currentTime, isPlaying, duration, timeToPx]);
 
-  const totalWidthPx = (store.duration * pixelsPerSecond) + (containerWidth / 2);
-  const allRegions = [...store.zoomRegions, ...store.cutRegions];
+  const allRegions = [...zoomRegions, ...cutRegions];
 
   return (
-    // --- GIAO DIỆN CÂN BẰNG ---
-    <div className="h-full flex flex-col bg-background">
+    <div className="h-full flex flex-col bg-background p-4">
       <div
         ref={containerRef}
-        className="flex-1 overflow-x-auto overflow-y-hidden p-4"
+        className="flex-1 overflow-x-auto overflow-y-hidden border border-border/80 rounded-lg bg-muted/20"
         onMouseDown={handleTimelineClick}
       >
         <div
@@ -229,49 +227,66 @@ export function Timeline({ videoRef }: TimelineProps) {
         >
           {/* Ruler */}
           <div className="h-8 absolute top-0 left-0 right-0 border-b border-border/50">
-            {store.duration > 0 && Array.from({ length: Math.floor(store.duration) + 1 }).map((_, sec) => {
-              const shouldShow = pixelsPerSecond > 20 || (sec % 5 === 0 && pixelsPerSecond > 5) || (sec % 10 === 0);
-              if (shouldShow) {
-                return (
-                  <div key={sec} className="absolute flex flex-col items-center" style={{ left: `${timeToPx(sec)}px` }}>
-                    <div className="w-px h-2.5 bg-border/80"></div>
-                    <span className="text-xs text-muted-foreground font-mono mt-1">{sec}s</span>
-                  </div>
-                );
-              }
-              return null;
-            })}
+            {rulerTicks.map(({ time, type }) => (
+              <div key={`tick-${time}`} className="absolute top-0 flex flex-col items-center" style={{ left: `${timeToPx(time)}px` }}>
+                <div className={cn("w-px bg-border/80", type === 'major' ? 'h-2.5' : 'h-1.5')}></div>
+                {type === 'major' && <span className="text-xs text-muted-foreground font-mono mt-1 select-none">{time}s</span>}
+              </div>
+            ))}
           </div>
 
           {/* Tracks Area */}
           <div className="absolute top-8 left-0 right-0 bottom-0 pt-4 space-y-3">
-            {/* Regions Track */}
-            <div className="h-24 relative" style={{ width: `${store.duration * pixelsPerSecond}px` }}>
+            <div className="h-24 relative">
               {allRegions.map(region => (
-                <RegionBlock
-                  key={region.id}
-                  region={region}
-                  left={timeToPx(region.startTime)}
-                  width={timeToPx(region.duration)}
-                  isSelected={store.selectedRegionId === region.id}
-                  onMouseDown={handleRegionMouseDown}
-                  setRef={(el) => regionRefs.current.set(region.id, el)}
-                />
+                region.type === 'zoom' ?
+                  <ZoomRegionBlock
+                    key={region.id}
+                    region={region}
+                    left={timeToPx(region.startTime)}
+                    width={timeToPx(region.duration)}
+                    isSelected={activeZoomRegionId === region.id}
+                    onMouseDown={handleRegionMouseDown}
+                    setRef={(el) => regionRefs.current.set(region.id, el)}
+                  />
+                  :
+                  <CutRegionBlock
+                    key={region.id}
+                    region={region}
+                    left={timeToPx(region.startTime)}
+                    width={timeToPx(region.duration)}
+                    isSelected={activeZoomRegionId === region.id}
+                    onMouseDown={handleRegionMouseDown}
+                    setRef={(el) => regionRefs.current.set(region.id, el)}
+                  />
               ))}
             </div>
           </div>
 
           {/* Playhead */}
-          {store.duration > 0 && (
+          {duration > 0 && (
             <div ref={playheadRef} className="absolute top-0 bottom-0 z-30 pointer-events-none">
+              {/* Vertical line */}
               <div className="w-0.5 h-full bg-primary shadow-sm"></div>
+
+              {/* Triangle handle */}
               <div
                 data-playhead-handle
-                className={cn("absolute -top-1 w-5 h-5 rounded-full bg-primary border-2 border-background shadow-lg pointer-events-auto transition-transform duration-200 hover:scale-110", isDraggingPlayhead ? "cursor-grabbing scale-110" : "cursor-grab")}
-                style={{ transform: 'translateX(-50%)' }}
+                className={cn(
+                  "absolute top-0 pointer-events-auto",
+                  isDraggingPlayhead ? "cursor-grabbing scale-110" : "cursor-grab"
+                )}
+                style={{
+                  transform: 'translateX(-50%)',
+                  left: '1px' // Offset để căn giữa với line
+                }}
                 onMouseDown={handlePlayheadMouseDown}
               >
-                <div className="absolute inset-1 rounded-full bg-background opacity-20"></div>
+                {/* Inverted triangle */}
+                <div className="w-0 h-0 border-l-[8px] border-r-[8px] border-t-[12px] border-l-transparent border-r-transparent border-t-primary shadow-lg">
+                  {/* Inner triangle for depth effect */}
+                  <div className="absolute -top-[10px] -left-[6px] w-0 h-0 border-l-[6px] border-r-[6px] border-t-[8px] border-l-transparent border-r-transparent border-t-background opacity-30"></div>
+                </div>
               </div>
             </div>
           )}
