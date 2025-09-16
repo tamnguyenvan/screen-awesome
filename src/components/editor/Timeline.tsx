@@ -3,7 +3,7 @@ import React, {
   useRef, useState, MouseEvent as ReactMouseEvent,
   useEffect, useCallback, useMemo
 } from 'react';
-import { useEditorStore, TimelineRegion } from '../../store/editorStore';
+import { useEditorStore, TimelineRegion, CutRegion } from '../../store/editorStore';
 import { ZoomRegionBlock } from './timeline/ZooomRegionBlock';
 import { CutRegionBlock } from './timeline/CutRegionBlock';
 import { Playhead } from './timeline/Playhead';
@@ -38,8 +38,10 @@ export function Timeline({ videoRef }: TimelineProps) {
     timelineZoom,
     zoomRegions,
     cutRegions,
+    previewCutRegion,
     selectedRegionId,
-    addCutRegionFromStrip,
+    addCutRegion,
+    setPreviewCutRegion,
     updateRegion,
     setCurrentTime,
     setSelectedRegionId,
@@ -192,7 +194,6 @@ export function Timeline({ videoRef }: TimelineProps) {
         if (!element) return;
         const deltaX = e.clientX - draggingRegion.initialX;
 
-        // CHANGE START: Update playhead while dragging/resizing
         const deltaTime = pxToTime(deltaX);
 
         if (draggingRegion.type === 'move') {
@@ -220,17 +221,32 @@ export function Timeline({ videoRef }: TimelineProps) {
           element.style.transform = `translateX(${newTranslateX}px)`;
           element.style.width = `${newWidth}px`;
         }
-        // CHANGE END
       }
 
-      if (isDraggingLeftStrip && timelineRef.current) {
-        // Visual feedback while dragging from left strip
+      if ((isDraggingLeftStrip || isDraggingRightStrip) && timelineRef.current) {
         document.body.style.cursor = 'grabbing';
-      }
+        const rect = timelineRef.current.getBoundingClientRect();
+        const mouseX = e.clientX - rect.left;
+        const timeAtMouse = pxToTime(Math.max(0, mouseX));
 
-      if (isDraggingRightStrip && timelineRef.current) {
-        // Visual feedback while dragging from right strip
-        document.body.style.cursor = 'grabbing';
+        let previewRegion: CutRegion | null = null;
+        if (isDraggingLeftStrip) {
+            previewRegion = {
+                id: 'preview-cut-left',
+                type: 'cut',
+                startTime: 0,
+                duration: Math.min(timeAtMouse, duration),
+            };
+        } else if (isDraggingRightStrip) {
+            const startTime = Math.max(0, timeAtMouse);
+            previewRegion = {
+                id: 'preview-cut-right',
+                type: 'cut',
+                startTime: startTime,
+                duration: duration - startTime,
+            };
+        }
+        setPreviewCutRegion(previewRegion);
       }
     };
     const handleMouseUp = (e: MouseEvent) => {
@@ -263,37 +279,19 @@ export function Timeline({ videoRef }: TimelineProps) {
         setDraggingRegion(null);
       }
 
-      if (isDraggingLeftStrip && timelineRef.current) {
-        const rect = timelineRef.current.getBoundingClientRect();
-        const dropTime = pxToTime(e.clientX - rect.left);
-        if (dropTime > 0 && dropTime < duration) {
-          // Add cut region from left strip position to drop position
-          // const newCutRegion = {
-          //   id: `cut-${Date.now()}`,
-          //   type: 'cut' as const,
-          //   startTime: 0,
-          //   duration: Math.min(dropTime, duration),
-          // };
-          addCutRegionFromStrip();
+      if ((isDraggingLeftStrip || isDraggingRightStrip) && previewCutRegion) {
+        if (previewCutRegion.duration > 0.1) { // Chỉ thêm nếu vùng cắt đủ lớn
+          addCutRegion({
+            startTime: previewCutRegion.startTime,
+            duration: previewCutRegion.duration,
+            trimType: isDraggingLeftStrip ? 'start' : 'end',
+          });
         }
-        setIsDraggingLeftStrip(false);
       }
-
-      if (isDraggingRightStrip && timelineRef.current) {
-        const rect = timelineRef.current.getBoundingClientRect();
-        const dropTime = pxToTime(e.clientX - rect.left);
-        if (dropTime > 0 && dropTime < duration) {
-          // Add cut region from drop position to end
-          // const newCutRegion = {
-          //   id: `cut-${Date.now()}`,
-          //   type: 'cut' as const,
-          //   startTime: dropTime,
-          //   duration: duration - dropTime,
-          // };
-          addCutRegionFromStrip();
-        }
-        setIsDraggingRightStrip(false);
-      }
+      // Dọn dẹp sau khi nhả chuột
+      if (isDraggingLeftStrip) setIsDraggingLeftStrip(false);
+      if (isDraggingRightStrip) setIsDraggingRightStrip(false);
+      setPreviewCutRegion(null); // Luôn xóa preview region khi nhả chuột
     };
     window.addEventListener('mousemove', handleMouseMove);
     window.addEventListener('mouseup', handleMouseUp);
@@ -304,7 +302,7 @@ export function Timeline({ videoRef }: TimelineProps) {
 
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [draggingRegion, isDraggingPlayhead, isDraggingLeftStrip, isDraggingRightStrip,
-    pxToTime, timeToPx, updateVideoTime, updateRegion, duration]);
+      pxToTime, timeToPx, updateVideoTime, updateRegion, duration, addCutRegion, setPreviewCutRegion, previewCutRegion]);
 
   useEffect(() => {
     let animationFrameId: number;
@@ -332,7 +330,7 @@ export function Timeline({ videoRef }: TimelineProps) {
         {/* Left Strip (Static) */}
         <div
           className={cn(
-            "w-6 flex-shrink-0 h-full rounded-l-xl bg-card flex items-center justify-center transition-all duration-150 cursor-grab select-none",
+            "w-6 flex-shrink-0 h-full rounded-l-xl bg-card flex items-center justify-center transition-all duration-150 cursor-ew-resize select-none",
             isDraggingLeftStrip ? "bg-primary/10" : "hover:bg-accent/50"
           )}
           onMouseDown={handleLeftStripDrag}
@@ -416,6 +414,18 @@ export function Timeline({ videoRef }: TimelineProps) {
                       setRef={(el) => regionRefs.current.set(region.id, el)}
                     />
                 ))}
+
+                {previewCutRegion && (
+                  <CutRegionBlock
+                    region={previewCutRegion}
+                    left={timeToPx(previewCutRegion.startTime)}
+                    width={timeToPx(previewCutRegion.duration)}
+                    isSelected={false}
+                    isDraggable={false} // Quan trọng: Vô hiệu hóa kéo thả
+                    onMouseDown={() => {}} // No-op
+                    setRef={() => {}}     // No-op
+                  />
+                )}
               </div>
             </div>
 
@@ -433,22 +443,13 @@ export function Timeline({ videoRef }: TimelineProps) {
                 />
               </div>
             )}
-
-            {/* Drag indicators when dragging from strips */}
-            {(isDraggingLeftStrip || isDraggingRightStrip) && (
-              <div className="absolute inset-0 pointer-events-none z-20">
-                <div className="w-full h-full border-2 border-dashed border-primary/50 bg-primary/5 rounded-lg animate-pulse">
-                  <div className="absolute inset-4 border border-dashed border-primary/30 rounded"></div>
-                </div>
-              </div>
-            )}
           </div>
         </div>
 
         {/* Right Strip (Static) */}
         <div
           className={cn(
-            "w-6 flex-shrink-0 h-full rounded-r-xl bg-card flex items-center justify-center transition-all duration-150 cursor-grab select-none",
+            "w-6 flex-shrink-0 h-full rounded-r-xl bg-card flex items-center justify-center transition-all duration-150 cursor-ew-resize select-none",
             isDraggingRightStrip ? "bg-primary/10" : "hover:bg-accent/50"
           )}
           onMouseDown={handleRightStripDrag}

@@ -1,15 +1,17 @@
 import { memo, MouseEvent as ReactMouseEvent } from 'react';
-import { TimelineRegion } from '../../../store/editorStore';
+import { TimelineRegion, CutRegion } from '../../../store/editorStore';
 import { cn } from '../../../lib/utils';
 import { Scissors } from 'lucide-react';
 
 interface CutRegionBlockProps {
-  region: TimelineRegion;
+  region: CutRegion;
   left: number;
   width: number;
   isSelected: boolean;
+  isDraggable?: boolean;
   onMouseDown: (e: ReactMouseEvent<HTMLDivElement>, region: TimelineRegion, type: 'move' | 'resize-left' | 'resize-right') => void;
   setRef: (el: HTMLDivElement | null) => void;
+
 }
 
 export const CutRegionBlock = memo(function CutRegionBlock({
@@ -17,41 +19,86 @@ export const CutRegionBlock = memo(function CutRegionBlock({
   left,
   width,
   isSelected,
+  isDraggable = true,
+
   onMouseDown,
   setRef
 }: CutRegionBlockProps) {
+  const isTrimRegion = region.trimType === 'start' || region.trimType === 'end';
+
+  const handleMouseDown = (e: ReactMouseEvent<HTMLDivElement>, type: 'move' | 'resize-left' | 'resize-right') => {
+    // Nếu là vùng trim đặc biệt, không cho phép di chuyển 'move'
+    if (isTrimRegion && type === 'move') return;
+
+    if (!isDraggable) return;
+    onMouseDown(e, region, type);
+  }
+
+  const canResizeLeft = isDraggable && (!isTrimRegion || region.trimType === 'end');
+  const canResizeRight = isDraggable && (!isTrimRegion || region.trimType === 'start');
+
   return (
     <div
       ref={setRef}
       data-region-id={region.id}
       className={cn(
-        "absolute h-12 rounded-lg flex items-center cursor-pointer transition-all duration-200",
-        "border",
-        isSelected
-          ? "bg-destructive/10 border-destructive/30 shadow-sm"
-          : "bg-muted/60 border-border/40 hover:bg-muted/80 hover:border-border/60 shadow-xs"
+        "absolute h-12 flex items-center transition-all duration-75",
+        // Apply border radius based on trim type and resize handles
+        isTrimRegion
+          ? region.trimType === 'start'
+            ? 'rounded-r-lg' // Only round right side for start trim
+            : 'rounded-l-lg' // Only round left side for end trim
+          : 'rounded-lg', // Default rounded corners for non-trim regions
+        isDraggable && "border shadow-xs",
+        isDraggable && (isSelected
+          ? "bg-destructive/10 border-destructive/30"
+          : "bg-muted/60 border-border/40 hover:bg-muted/80 hover:border-border/60"),
+        // Thay đổi con trỏ dựa trên loại region
+        isDraggable && (isTrimRegion ? "cursor-default" : "cursor-pointer"),
+        !isDraggable && "bg-foreground/20 backdrop-blur-sm cursor-default pointer-events-none",
       )}
       style={{ left: `${left}px`, width: `${width}px` }}
-      onMouseDown={(e) => onMouseDown(e, region, 'move')}
+      onMouseDown={(e) => handleMouseDown(e, 'move')}
     >
-      {/* Left resize handle */}
-      <div
-        className="absolute left-0 top-0 w-1 h-full bg-destructive/60 rounded-l-lg cursor-ew-resize opacity-0 hover:opacity-100 transition-opacity duration-200"
-        onMouseDown={(e) => onMouseDown(e, region, 'resize-left')}
-      />
+      {/* Hiển thị handle resize bên trái có điều kiện */}
+      {canResizeLeft && (
+        <div
+          className="absolute left-0 top-0 w-1 h-full bg-destructive/60 rounded-l-lg cursor-ew-resize opacity-0 hover:opacity-100 transition-opacity duration-200"
+          onMouseDown={(e) => handleMouseDown(e, 'resize-left')}
+        />
+      )}
+
+      {/* Ẩn các handle resize nếu không draggable */}
+      {isDraggable && !isTrimRegion && (
+        <>
+          {/* Left resize handle */}
+          <div
+            className="absolute left-0 top-0 w-1 h-full bg-destructive/60 rounded-l-lg cursor-ew-resize opacity-0 hover:opacity-100 transition-opacity duration-200"
+            onMouseDown={(e) => handleMouseDown(e, 'resize-left')}
+          />
+          {/* Right resize handle */}
+          <div
+            className="absolute right-0 top-0 w-1 h-full bg-destructive/60 rounded-r-lg cursor-ew-resize opacity-0 hover:opacity-100 transition-opacity duration-200"
+            onMouseDown={(e) => handleMouseDown(e, 'resize-right')}
+          />
+        </>
+      )}
 
       {/* Content area */}
-      <div className="flex-1 flex items-center justify-center gap-2 px-3">
-        <Scissors className="w-3.5 h-3.5 text-destructive/80" />
-        <span className="text-xs font-medium text-destructive/80">Cut</span>
+      <div className="w-full flex items-center justify-center gap-2 px-3 pointer-events-none"> {/* Thêm pointer-events-none để không cản trở sự kiện onMouseDown của div cha */}
+        <Scissors className={cn("w-3.5 h-3.5", isDraggable ? "text-destructive/80" : "text-white/80")} />
+        <span className={cn("text-xs font-medium", isDraggable ? "text-destructive/80" : "text-white/80")}>
+          Trim
+        </span>
       </div>
 
-      {/* Right resize handle */}
-
-      <div
-        className="absolute right-0 top-0 w-1 h-full bg-destructive/60 rounded-r-lg cursor-ew-resize opacity-0 hover:opacity-100 transition-opacity duration-200"
-        onMouseDown={(e) => onMouseDown(e, region, 'resize-right')}
-      />
+      {/* Hiển thị handle resize bên phải có điều kiện */}
+      {canResizeRight && (
+        <div
+          className="absolute right-0 top-0 w-1 h-full bg-destructive/60 rounded-r-lg cursor-ew-resize opacity-0 hover:opacity-100 transition-opacity duration-200"
+          onMouseDown={(e) => handleMouseDown(e, 'resize-right')}
+        />
+      )}
     </div>
   );
 });

@@ -44,6 +44,7 @@ export interface CutRegion {
   type: 'cut';
   startTime: number;
   duration: number;
+  trimType?: 'start' | 'end';
 }
 
 export type TimelineRegion = ZoomRegion | CutRegion;
@@ -72,6 +73,7 @@ interface EditorState {
   aspectRatio: AspectRatio;
   zoomRegions: ZoomRegion[];
   cutRegions: CutRegion[];
+  previewCutRegion: CutRegion | null;
   selectedRegionId: string | null;
   activeZoomRegionId: string | null;
   isCurrentlyCut: boolean;
@@ -91,11 +93,11 @@ interface EditorActions {
   updateBackground: (bg: Partial<Background>) => void;
   setAspectRatio: (ratio: AspectRatio) => void;
   addZoomRegion: () => void;
-  addCutRegion: () => void;
-  addCutRegionFromStrip: () => void;
+  addCutRegion: (regionData?: Partial<CutRegion>) => void;
   updateRegion: (id: string, updates: Partial<TimelineRegion>) => void;
   deleteRegion: (id: string) => void;
   setSelectedRegionId: (id: string | null) => void;
+  setPreviewCutRegion: (region: CutRegion | null) => void;
   toggleTheme: () => void;
   setTimelineZoom: (zoom: number) => void;
   reset: () => void;
@@ -114,6 +116,7 @@ const initialState: Omit<EditorState, 'frameStyles'> = {
   aspectRatio: '16:9',
   zoomRegions: [],
   cutRegions: [],
+  previewCutRegion: null,
   selectedRegionId: null,
   activeZoomRegionId: null,
   isCurrentlyCut: false,
@@ -292,36 +295,13 @@ export const useEditorStore = create(
       });
     },
 
-    addCutRegion: () => {
+    addCutRegion: (regionData) => {
       const newRegion: CutRegion = {
         id: `cut-${Date.now()}`,
         type: 'cut',
         startTime: get().currentTime,
         duration: 2,
-      };
-      set(state => {
-        state.cutRegions.push(newRegion);
-      });
-    },
-
-    addCutRegionFromStrip: () => {
-      const newRegion: CutRegion = {
-        id: `cut-${Date.now()}`,
-        type: 'cut',
-        startTime: get().currentTime,
-        duration: 2,
-      };
-      set(state => {
-        state.cutRegions.push(newRegion);
-      });
-    },
-
-    addCutRegionFromRightStrip: () => {
-      const newRegion: CutRegion = {
-        id: `cut-${Date.now()}`,
-        type: 'cut',
-        startTime: get().currentTime,
-        duration: 2,
+        ...regionData, // Ghi đè bằng dữ liệu được truyền vào
       };
       set(state => {
         state.cutRegions.push(newRegion);
@@ -343,6 +323,9 @@ export const useEditorStore = create(
     setSelectedRegionId: (id) => set(state => { state.selectedRegionId = id; }),
     toggleTheme: () => set(state => {
       state.theme = state.theme === 'dark' ? 'light' : 'dark';
+    }),
+    setPreviewCutRegion: (region) => set(state => {
+      state.previewCutRegion = region;
     }),
     setTimelineZoom: (zoom) => set(state => { state.timelineZoom = zoom; }),
 
