@@ -11,6 +11,9 @@ import { Playhead } from './timeline/Playhead';
 import { cn } from '../../lib/utils';
 import { Scissors } from 'lucide-react';
 
+const MINIMUM_REGION_DURATION = 0.1; // 100ms
+
+
 interface TimelineProps {
   videoRef: React.RefObject<HTMLVideoElement>;
 }
@@ -192,8 +195,11 @@ export function Timeline({ videoRef }: TimelineProps) {
       if (draggingRegion) {
         const element = regionRefs.current.get(draggingRegion.id);
         if (!element) return;
-        const deltaX = e.clientX - draggingRegion.initialX;
 
+        const regionToUpdate = allRegions.find(r => r.id === draggingRegion.id);
+        const isTrim = regionToUpdate?.type === 'cut' && ('trimType' in regionToUpdate);
+
+        const deltaX = e.clientX - draggingRegion.initialX;
         const deltaTime = pxToTime(deltaX);
 
         if (draggingRegion.type === 'move') {
@@ -202,24 +208,70 @@ export function Timeline({ videoRef }: TimelineProps) {
           element.style.transform = `translateX(${deltaX}px)`;
 
         } else if (draggingRegion.type === 'resize-right') {
-          const newDuration = Math.max(0.2, draggingRegion.initialDuration + deltaTime);
-          const newEndTime = draggingRegion.initialStartTime + newDuration;
+          const newDuration = draggingRegion.initialDuration + deltaTime;
+
+          // FIX: Kiểm tra và xóa ngay lập tức nếu region quá nhỏ
+          if (isTrim && newDuration < MINIMUM_REGION_DURATION) {
+            useEditorStore.getState().deleteRegion(draggingRegion.id);
+            setDraggingRegion(null); // Dừng việc kéo ngay lập tức
+            document.body.style.cursor = 'default';
+            return; // Thoát khỏi hàm xử lý
+          }
+
+          const safeDuration = Math.max(MINIMUM_REGION_DURATION, newDuration);
+          const newEndTime = draggingRegion.initialStartTime + safeDuration;
           updateVideoTime(newEndTime);
-          const newWidth = timeToPx(newDuration);
+          const newWidth = timeToPx(safeDuration);
           element.style.width = `${newWidth}px`;
 
         } else if (draggingRegion.type === 'resize-left') {
-          const newStartTime = Math.min(
-            draggingRegion.initialStartTime + draggingRegion.initialDuration - 0.2,
-            draggingRegion.initialStartTime + deltaTime
-          );
-          updateVideoTime(newStartTime);
+          // --- FIX START: Logic riêng cho Right Trim Region ---
+          const isEndTrim = isTrim && regionToUpdate?.trimType === 'end';
 
-          const initialWidthPx = timeToPx(draggingRegion.initialDuration);
-          const newWidth = Math.max(timeToPx(0.2), initialWidthPx - deltaX);
-          const newTranslateX = Math.min(deltaX, initialWidthPx - timeToPx(0.2));
-          element.style.transform = `translateX(${newTranslateX}px)`;
-          element.style.width = `${newWidth}px`;
+          if (isEndTrim) {
+            // BEHAVIOR: Kéo handle trái của right trim. Mép phải cố định ở cuối video.
+            const newStartTime = Math.max(0, draggingRegion.initialStartTime + deltaTime);
+            const newDuration = duration - newStartTime;
+
+            if (newDuration < MINIMUM_REGION_DURATION) {
+              useEditorStore.getState().deleteRegion(draggingRegion.id);
+              setDraggingRegion(null);
+              document.body.style.cursor = 'default';
+              return;
+            }
+
+            const safeStartTime = Math.min(duration - MINIMUM_REGION_DURATION, newStartTime);
+            const safeDuration = duration - safeStartTime;
+
+            updateVideoTime(safeStartTime);
+            // Cập nhật trực tiếp style left và width thay vì transform
+            element.style.left = `${timeToPx(safeStartTime)}px`;
+            element.style.width = `${timeToPx(safeDuration)}px`;
+            element.style.transform = 'translateX(0px)'; // Đảm bảo không có transform
+
+          } else {
+            // BEHAVIOR: Logic cũ cho cut region thông thường và left trim. Mép phải cố định.
+            const initialEndTime = draggingRegion.initialStartTime + draggingRegion.initialDuration;
+            const newStartTime = Math.max(0, draggingRegion.initialStartTime + deltaTime);
+            const newDuration = initialEndTime - newStartTime;
+
+            if (isTrim && newDuration < MINIMUM_REGION_DURATION) {
+              useEditorStore.getState().deleteRegion(draggingRegion.id);
+              setDraggingRegion(null);
+              document.body.style.cursor = 'default';
+              return;
+            }
+
+            const safeStartTime = Math.min(initialEndTime - MINIMUM_REGION_DURATION, newStartTime);
+            updateVideoTime(safeStartTime);
+
+            const newTranslateX = timeToPx(safeStartTime - draggingRegion.initialStartTime);
+            const newWidth = timeToPx(initialEndTime - safeStartTime);
+
+            element.style.transform = `translateX(${newTranslateX}px)`;
+            element.style.width = `${newWidth}px`;
+          }
+          // --- FIX END ---
         }
       }
 
@@ -231,31 +283,38 @@ export function Timeline({ videoRef }: TimelineProps) {
 
         let previewRegion: CutRegion | null = null;
         if (isDraggingLeftStrip) {
-            previewRegion = {
-                id: 'preview-cut-left',
-                type: 'cut',
-                startTime: 0,
-                duration: Math.min(timeAtMouse, duration),
-            };
+          previewRegion = {
+            id: 'preview-cut-left',
+            type: 'cut',
+            startTime: 0,
+            duration: Math.min(timeAtMouse, duration),
+          };
         } else if (isDraggingRightStrip) {
-            const startTime = Math.max(0, timeAtMouse);
-            previewRegion = {
-                id: 'preview-cut-right',
-                type: 'cut',
-                startTime: startTime,
-                duration: duration - startTime,
-            };
+          const startTime = Math.max(0, timeAtMouse);
+          previewRegion = {
+            id: 'preview-cut-right',
+            type: 'cut',
+            startTime: startTime,
+            duration: duration - startTime,
+          };
         }
-        setPreviewCutRegion(previewRegion);
+
+        // FIX: Chỉ hiển thị preview region nếu nó đủ lớn
+        if (previewRegion && previewRegion.duration >= MINIMUM_REGION_DURATION) {
+          setPreviewCutRegion(previewRegion);
+        } else {
+          setPreviewCutRegion(null); // Ẩn preview nếu quá nhỏ
+        }
       }
     };
+
     const handleMouseUp = (e: MouseEvent) => {
       document.body.style.cursor = 'default';
       if (isDraggingPlayhead) setIsDraggingPlayhead(false);
+
       if (draggingRegion) {
         const element = regionRefs.current.get(draggingRegion.id);
         if (element) {
-          // Reset visual transform after drag, the position is now controlled by state
           element.style.transform = 'translateX(0px)';
         }
 
@@ -266,21 +325,35 @@ export function Timeline({ videoRef }: TimelineProps) {
         if (draggingRegion.type === 'move') {
           finalUpdates.startTime = Math.max(0, draggingRegion.initialStartTime + deltaTime);
         } else if (draggingRegion.type === 'resize-right') {
-          finalUpdates.duration = Math.max(0.2, draggingRegion.initialDuration + deltaTime);
+          finalUpdates.duration = Math.max(MINIMUM_REGION_DURATION, draggingRegion.initialDuration + deltaTime);
         } else if (draggingRegion.type === 'resize-left') {
-          const newStartTime = Math.min(
-            draggingRegion.initialStartTime + draggingRegion.initialDuration - 0.2,
-            Math.max(0, draggingRegion.initialStartTime + deltaTime)
-          );
-          finalUpdates.duration = (draggingRegion.initialStartTime + draggingRegion.initialDuration) - newStartTime;
-          finalUpdates.startTime = newStartTime;
+          // --- FIX START: Logic lưu state riêng cho Right Trim Region ---
+          const regionToUpdate = allRegions.find(r => r.id === draggingRegion.id);
+          const isEndTrim = regionToUpdate?.type === 'cut' && regionToUpdate.trimType === 'end';
+          
+          if (isEndTrim) {
+            const newStartTime = Math.max(0, draggingRegion.initialStartTime + deltaTime);
+            finalUpdates.startTime = Math.min(duration - MINIMUM_REGION_DURATION, newStartTime);
+            finalUpdates.duration = duration - finalUpdates.startTime;
+          } else {
+            // Logic cũ cho các region khác
+            const newStartTime = Math.min(
+              draggingRegion.initialStartTime + draggingRegion.initialDuration - MINIMUM_REGION_DURATION,
+              Math.max(0, draggingRegion.initialStartTime + deltaTime)
+            );
+            finalUpdates.duration = (draggingRegion.initialStartTime + draggingRegion.initialDuration) - newStartTime;
+            finalUpdates.startTime = newStartTime;
+          }
+          // --- FIX END ---
         }
+        
         updateRegion(draggingRegion.id, finalUpdates);
         setDraggingRegion(null);
       }
 
+      // FIX: Cập nhật logic với hằng số mới
       if ((isDraggingLeftStrip || isDraggingRightStrip) && previewCutRegion) {
-        if (previewCutRegion.duration > 0.1) { // Chỉ thêm nếu vùng cắt đủ lớn
+        if (previewCutRegion.duration > MINIMUM_REGION_DURATION) {
           addCutRegion({
             startTime: previewCutRegion.startTime,
             duration: previewCutRegion.duration,
@@ -288,10 +361,10 @@ export function Timeline({ videoRef }: TimelineProps) {
           });
         }
       }
-      // Dọn dẹp sau khi nhả chuột
+
       if (isDraggingLeftStrip) setIsDraggingLeftStrip(false);
       if (isDraggingRightStrip) setIsDraggingRightStrip(false);
-      setPreviewCutRegion(null); // Luôn xóa preview region khi nhả chuột
+      setPreviewCutRegion(null);
     };
     window.addEventListener('mousemove', handleMouseMove);
     window.addEventListener('mouseup', handleMouseUp);
@@ -302,7 +375,7 @@ export function Timeline({ videoRef }: TimelineProps) {
 
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [draggingRegion, isDraggingPlayhead, isDraggingLeftStrip, isDraggingRightStrip,
-      pxToTime, timeToPx, updateVideoTime, updateRegion, duration, addCutRegion, setPreviewCutRegion, previewCutRegion]);
+    pxToTime, timeToPx, updateVideoTime, updateRegion, duration, addCutRegion, setPreviewCutRegion, previewCutRegion]);
 
   useEffect(() => {
     let animationFrameId: number;
@@ -422,8 +495,8 @@ export function Timeline({ videoRef }: TimelineProps) {
                     width={timeToPx(previewCutRegion.duration)}
                     isSelected={false}
                     isDraggable={false} // Quan trọng: Vô hiệu hóa kéo thả
-                    onMouseDown={() => {}} // No-op
-                    setRef={() => {}}     // No-op
+                    onMouseDown={() => { }} // No-op
+                    setRef={() => { }}     // No-op
                   />
                 )}
               </div>
