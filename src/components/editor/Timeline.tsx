@@ -144,6 +144,18 @@ export function Timeline({ videoRef }: TimelineProps) {
     document.body.style.cursor = 'grabbing';
   };
 
+  // Format time as MM:SS or MM:MM:SS
+  const formatTime = (seconds: number): string => {
+    const hrs = Math.floor(seconds / 3600);
+    const mins = Math.floor((seconds % 3600) / 60);
+    const secs = Math.floor(seconds % 60);
+
+    if (hrs > 0) {
+      return `${hrs}:${String(mins).padStart(2, '0')}:${String(secs).padStart(2, '0')}`;
+    }
+    return `${String(mins).padStart(2, '0')}:${String(secs).padStart(2, '0')}`;
+  };
+
   // Memoize ruler ticks for performance
   const rulerTicks = useMemo(() => {
     if (duration <= 0) return [];
@@ -316,36 +328,42 @@ export function Timeline({ videoRef }: TimelineProps) {
 
   return (
     <div className="h-full flex flex-col bg-background p-4">
-      <div className="h-full flex flex-row rounded-lg overflow-hidden shadow-sm">
-        {/* Left Strip */}
+      <div className="h-full flex flex-row rounded-xl overflow-hidden shadow-sm bg-card border border-border/80">
+        {/* Left Strip (Static) */}
         <div
           className={cn(
-            "w-12 h-full rounded-l-lg bg-card border border-border/80 flex items-center justify-center transition-all duration-150 cursor-grab select-none cursor-ew-resize",
-            isDraggingLeftStrip ? "bg-primary/10 border-primary/40 cursor-grabbing scale-105" : "hover:bg-accent/50 hover:border-accent-foreground/20"
+            "w-6 flex-shrink-0 h-full rounded-l-xl bg-card flex items-center justify-center transition-all duration-150 cursor-grab select-none",
+            isDraggingLeftStrip ? "bg-primary/10" : "hover:bg-accent/50"
           )}
           onMouseDown={handleLeftStripDrag}
         >
           <div className="flex flex-col items-center gap-1">
-            <Scissors size={20} className="text-muted-foreground" />
+            <Scissors size={16} className="text-muted-foreground" />
           </div>
         </div>
 
+        {/* Scrollable Timeline Container */}
         <div
           ref={containerRef}
-          className="flex-1 overflow-x-auto overflow-y-hidden border-y border-border/80 bg-card/50"
+          className="flex-1 overflow-x-auto overflow-y-hidden border-x border-border/80 bg-card/50"
           onMouseDown={handleTimelineClick}
         >
           <div
             ref={timelineRef}
             className="relative h-full min-w-full"
-            style={{ width: `${totalWidthPx}px` }}
+            style={{
+              width: `${totalWidthPx}px`,
+            }}
           >
             {/* Ruler */}
-            <div className="h-12 absolute top-0 left-0 right-0 border-b-2 border-border/60 bg-gradient-to-b from-muted/80 to-muted/40">
+            <div className="h-12 sticky top-0 left-0 right-0 z-10 border-b-2 border-border/60 bg-gradient-to-b from-muted/80 to-muted/40">
               {rulerTicks.map(({ time, type }) => (
                 <div
                   key={`tick-${time}`}
-                  className="absolute top-0 flex flex-col items-center group"
+                  className={cn(
+                    "absolute top-0 flex flex-col group",
+                    time === 0 ? 'items-start' : 'items-center'
+                  )}
                   style={{ left: `${timeToPx(time)}px` }}
                 >
                   {/* tick marks */}
@@ -358,9 +376,9 @@ export function Timeline({ videoRef }: TimelineProps) {
 
                   {/* time labels */}
                   {type === 'major' && (
-                    <div className="translate-x-1/2 -ml-0.5">
+                    <div className={cn(time > 0 && "translate-x-1/2 -ml-0.5")}>
                       <span className="text-xs text-foreground/90 font-mono font-medium tracking-wide">
-                        {time >= 60 ? `${Math.floor(time / 60)}:${String(time % 60).padStart(2, '0')}` : `${time}s`}
+                        {formatTime(time)}
                       </span>
                     </div>
                   )}
@@ -374,7 +392,7 @@ export function Timeline({ videoRef }: TimelineProps) {
             </div>
 
             {/* Tracks Area */}
-            <div className="absolute top-12 left-0 right-0 bottom-0 pt-6 space-y-4">
+            <div className="relative pt-6 space-y-4"> {/* Removed absolute positioning */}
               <div className="h-24 relative bg-gradient-to-b from-background/50 to-background/20">
                 {allRegions.map(region => (
                   region.type === 'zoom' ?
@@ -427,19 +445,43 @@ export function Timeline({ videoRef }: TimelineProps) {
           </div>
         </div>
 
-        {/* Right Strip */}
+        {/* Right Strip (Static) */}
         <div
           className={cn(
-            "w-12 h-full rounded-r-lg bg-card border border-border/80 flex items-center justify-center transition-all duration-150 cursor-grab select-none cursor-ew-resize",
-            isDraggingRightStrip ? "bg-primary/10 border-primary/40 cursor-grabbing scale-105" : "hover:bg-accent/50 hover:border-accent-foreground/20"
+            "w-6 flex-shrink-0 h-full rounded-r-xl bg-card flex items-center justify-center transition-all duration-150 cursor-grab select-none",
+            isDraggingRightStrip ? "bg-primary/10" : "hover:bg-accent/50"
           )}
           onMouseDown={handleRightStripDrag}
         >
           <div className="flex flex-col items-center gap-1">
-            <Scissors size={20} className="text-muted-foreground" />
+            <FlipScissorsIcon className="text-muted-foreground size-4" />
           </div>
         </div>
       </div>
     </div>
   );
 }
+
+const FlipScissorsIcon = (props: React.SVGProps<SVGSVGElement>) => (
+  <svg
+    xmlns="http://www.w3.org/2000/svg"
+    width={24}
+    height={24}
+    viewBox="0 0 24 24"
+    fill="none"
+    stroke="currentColor"
+    strokeWidth={2}
+    strokeLinecap="round"
+    strokeLinejoin="round"
+    className="lucide lucide-scissors-icon lucide-scissors"
+    {...props}
+  >
+    <g transform="translate(24,0) scale(-1,1)">
+      <circle cx={6} cy={6} r={3} />
+      <path d="M8.12 8.12 12 12" />
+      <path d="M20 4 8.12 15.88" />
+      <circle cx={6} cy={18} r={3} />
+      <path d="M14.8 14.8 20 20" />
+    </g>
+  </svg>
+);
