@@ -10,22 +10,23 @@ export function ExportProgressOverlay({ isExporting, progress }: ExportProgressO
   if (!isExporting) return null;
 
   return (
-    <div className="fixed inset-0 bg-background/80 backdrop-blur-sm z-50 flex items-center justify-center">
-      <div className="bg-card text-card-foreground rounded-lg shadow-xl p-8 w-full max-w-sm flex flex-col items-center border border-border">
-        
-        <Loader2 className="w-8 h-8 text-primary animate-spin mb-4" />
-        
-        <h2 className="text-xl font-semibold text-foreground mb-2">Exporting Video...</h2>
-        <p className="text-sm text-muted-foreground mb-6 text-center">Please wait, this may take a while.</p>
-
-        <div className="w-full bg-muted/50 rounded-full h-2">
-          <div
-            className="bg-primary h-2 rounded-full transition-all duration-300 ease-out"
-            style={{ width: `${progress}%` }}
-          ></div>
+    <div className="modal-backdrop z-50 flex items-center justify-center">
+      <div className="card-clean p-8 w-full max-w-sm flex flex-col items-center m-4">
+        <div className="w-12 h-12 rounded-full bg-primary/10 flex items-center justify-center mb-4">
+          <Loader2 className="w-6 h-6 text-primary animate-spin" />
         </div>
-        
-        <p className="mt-3 text-sm font-mono text-primary font-medium">{progress}%</p>
+
+        <h2 className="text-lg font-semibold text-foreground mb-1">Exporting</h2>
+        <p className="text-sm text-muted-foreground mb-6 text-center">Please wait while we process your video</p>
+
+        <div className="progress-bar w-full h-2 mb-3">
+          <div
+            className="progress-fill h-full"
+            style={{ width: `${progress}%` }}
+          />
+        </div>
+
+        <p className="text-sm font-medium text-primary">{progress}%</p>
       </div>
     </div>
   );

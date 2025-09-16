@@ -12,7 +12,7 @@ import { ControlGroup } from './ControlGroup';
 type BackgroundTab = 'color' | 'gradient' | 'image' | 'wallpaper';
 
 // Helper component for circular color picker
-const ColorPickerCircle = ({
+const ColorPickerRoundedRect = ({
   label,
   color,
   name,
@@ -43,8 +43,8 @@ const ColorPickerCircle = ({
         />
         <div
           className={cn(
-            "w-full h-full rounded-full border-2 border-sidebar-border transition-all duration-300",
-            "group-hover:border-primary ring-0 group-hover:ring-2 group-hover:ring-primary/20"
+            "w-full aspect-square rounded-lg border-2 transition-all duration-300",
+            "border-sidebar-border hover:border-primary/60"
           )}
           style={{ backgroundColor: color }}
         />
@@ -86,7 +86,7 @@ export function BackgroundSettings() {
   const handleColorPresetClick = (color: string) => {
     updateBackground({ type: 'color', color: color });
   };
-  
+
   const handleGradientPresetClick = (direction: string) => {
     updateBackground({ gradientDirection: direction });
   };
@@ -118,45 +118,48 @@ export function BackgroundSettings() {
     { id: 'gradient', name: 'Gradient' },
     { id: 'image', name: 'Image' },
   ];
-  
+
   return (
     <ControlGroup
       label="Background"
       icon={<Image className="w-4 h-4 text-primary" />}
       description="Choose how your video background looks"
     >
-      {/* Polished Tab Navigation */}
+      {/* Tab Navigation */}
       <div className="relative p-1 bg-sidebar-accent/50 rounded-full mb-6">
-        {/* Sliding background indicator */}
-        <div
-          className="absolute top-1 left-1 h-[calc(100%-8px)] w-1/4 bg-sidebar-primary rounded-full transition-all duration-300 ease-in-out shadow-sm"
-          style={{
-            transform: `translateX(${tabs.findIndex(tab => tab.id === activeTab) * 100}%)`
-          }}
-        />
         {/* Tab buttons */}
-        <div className="relative grid grid-cols-4">
-          {tabs.map((tab) => (
-            <button
-              key={tab.id}
-              onClick={() => selectTab(tab.id as BackgroundTab)}
-              className={cn(
-                "relative z-10 rounded-full py-2.5 text-sm font-semibold w-full",
-                "transition-colors duration-300 flex items-center justify-center",
-                activeTab === tab.id
-                  ? "text-sidebar-primary-foreground"
-                  : "text-muted-foreground hover:text-sidebar-foreground"
-              )}
-            >
-              {tab.name}
-            </button>
-          ))}
+        <div className="relative">
+          <div className="relative grid grid-cols-4 gap-1 p-1 bg-muted/50 rounded-full">
+            {/* Sliding indicator */}
+            <div
+              className="absolute top-1 left-1 right-1 bottom-1 bg-background rounded-full shadow-sm transition-all duration-300 ease-in-out"
+              style={{
+                width: `calc(25% - 0.25rem)`,
+                transform: `translateX(calc(${tabs.findIndex(tab => tab.id === activeTab) * 100}% + ${tabs.findIndex(tab => tab.id === activeTab) * 0.25}rem))`
+              }}
+            />
+
+            {tabs.map((tab) => (
+              <button
+                key={tab.id}
+                onClick={() => selectTab(tab.id as BackgroundTab)}
+                className={cn(
+                  "relative z-10 py-2 text-sm font-medium transition-colors duration-200",
+                  activeTab === tab.id
+                    ? "text-foreground"
+                    : "text-muted-foreground hover:text-foreground"
+                )}
+              >
+                {tab.name}
+              </button>
+            ))}
+          </div>
         </div>
       </div>
 
 
       {/* Tab Content */}
-      <div className="min-h-[280px]">
+      <div className="min-h-[240px]">
         {activeTab === 'wallpaper' && (
           <div className="space-y-4">
             <div className="grid grid-cols-6 gap-2">
@@ -227,13 +230,15 @@ export function BackgroundSettings() {
                   onChange={(e) => handleColorPresetClick(e.target.value)}
                   className="absolute inset-0 w-full h-full opacity-0 cursor-pointer"
                 />
-                <div className="absolute inset-0 w-full h-full bg-[conic-gradient(from_90deg_at_50%_50%,#ef4444_0%,#eab308_25%,#10b981_50%,#3b82f6_75%,#7c3aed_100%)] rounded-lg" />
                 <div 
-                  className="absolute inset-1 rounded-md"
-                  style={{ backgroundColor: frameStyles.background.color }}
+                  className="absolute inset-0 w-full h-full rounded-lg"
+                  style={{ 
+                    background: frameStyles.background.color || 'conic-gradient(from_90deg_at_50%_50%,#ef4444_0%,#eab308_25%,#10b981_50%,#3b82f6_75%,#7c3aed_100%)',
+                    opacity: 0.9
+                  }}
                 />
-                <div className="absolute inset-0 flex items-center justify-center">
-                  <Plus className="w-4 h-4 text-white/80 drop-shadow-sm" />
+                <div className="absolute inset-0 flex items-center justify-center bg-black/10 rounded-lg">
+                  <Plus className="w-4 h-4 text-white/90 drop-shadow-sm" />
                 </div>
               </label>
             </div>
@@ -241,55 +246,53 @@ export function BackgroundSettings() {
         )}
 
         {activeTab === 'gradient' && (
-          <div className="space-y-6">
-            <div className="flex items-center justify-center gap-8">
-              <ColorPickerCircle 
-                label="Start" 
-                color={frameStyles.background.gradientStart || '#6366f1'} 
-                name="gradientStart" 
-                onChange={handleBackgroundChange}
-                size="md"
-              />
-              <div className="flex-1 h-px bg-gradient-to-r from-sidebar-border via-primary/20 to-sidebar-border max-w-12" />
-              <ColorPickerCircle 
-                label="End" 
-                color={frameStyles.background.gradientEnd || '#9ca9ff'} 
-                name="gradientEnd" 
-                onChange={handleBackgroundChange}
-                size="md"
-              />
+          <div className="space-y-4">
+            {/* Color Selection Row */}
+            <div>
+              <h5 className="text-xs font-semibold text-muted-foreground mb-2 uppercase tracking-wider">Colors</h5>
+              <div className="flex items-center gap-4">
+                <ColorPickerRoundedRect
+                  label="Start"
+                  color={frameStyles.background.gradientStart || '#6366f1'}
+                  name="gradientStart"
+                  onChange={handleBackgroundChange}
+                  size="md"
+                />
+                <ColorPickerRoundedRect
+                  label="End"
+                  color={frameStyles.background.gradientEnd || '#9ca9ff'}
+                  name="gradientEnd"
+                  onChange={handleBackgroundChange}
+                  size="md"
+                />
+              </div>
             </div>
-            
-            <div className="space-y-3">
-              <h5 className="text-xs font-semibold text-muted-foreground text-center uppercase tracking-wider">Direction</h5>
+
+            {/* Gradient Styles Row */}
+            <div>
+              <h5 className="text-xs font-semibold text-muted-foreground mb-2 uppercase tracking-wider">Style</h5>
               <div className="grid grid-cols-4 gap-2">
                 {GRADIENT_PRESETS.map((preset, index) => {
-                  const startColor = frameStyles.background.gradientStart || '#6366f1';
-                  const endColor = frameStyles.background.gradientEnd || '#9ca9ff';
+                  const startColor = '#ffffff';
+                  const endColor = '#9b9b9b';
                   const gradientStyle = preset.direction === 'circle'
                     ? { background: `radial-gradient(circle, ${startColor}, ${endColor})` }
                     : { background: `linear-gradient(${preset.direction}, ${startColor}, ${endColor})` };
-                  
+
                   return (
                     <button
                       key={index}
                       className={cn(
-                        "relative aspect-square rounded-lg overflow-hidden border-2 transition-all duration-300",
+                        "relative w-16 h-10 rounded-lg overflow-hidden border-2 transition-all duration-200",
                         "flex items-center justify-center group",
-                        frameStyles.background.gradientDirection === preset.direction 
-                          ? "border-primary ring-2 ring-primary/20" 
+                        frameStyles.background.gradientDirection === preset.direction
+                          ? "border-primary ring-2 ring-primary/20"
                           : "border-sidebar-border hover:border-primary/60"
                       )}
                       style={gradientStyle}
                       onClick={() => handleGradientPresetClick(preset.direction)}
                       title={preset.name}
                     >
-                      <preset.icon className={cn(
-                        "w-4 h-4 transition-all duration-300",
-                        frameStyles.background.gradientDirection === preset.direction
-                          ? "text-white/90 drop-shadow-sm"
-                          : "text-white/60 group-hover:text-white/80 drop-shadow-sm"
-                      )} />
                       {frameStyles.background.gradientDirection === preset.direction && (
                         <div className="absolute inset-0 bg-black/10 flex items-center justify-center">
                           <div className="w-5 h-5 bg-white/90 rounded-full flex items-center justify-center shadow-sm">
@@ -317,13 +320,13 @@ export function BackgroundSettings() {
               )}>
                 {frameStyles.background.imageUrl ? (
                   <>
-                    <img 
-                      src={frameStyles.background.imageUrl} 
-                      alt="Background" 
-                      className="w-full h-full object-cover" 
+                    <img
+                      src={frameStyles.background.imageUrl}
+                      alt="Background"
+                      className="w-full h-full object-cover"
                     />
                     <div className="absolute inset-0 bg-black/40 opacity-0 group-hover:opacity-100 transition-all duration-300 flex items-center justify-center gap-3">
-                      <button 
+                      <button
                         onClick={(e) => {
                           e.preventDefault();
                           e.stopPropagation();
@@ -351,11 +354,11 @@ export function BackgroundSettings() {
                     </div>
                   </div>
                 )}
-                <input 
-                  type="file" 
-                  accept="image/*" 
-                  onChange={handleImageUpload} 
-                  className="hidden" 
+                <input
+                  type="file"
+                  accept="image/*"
+                  onChange={handleImageUpload}
+                  className="hidden"
                 />
               </label>
             </div>

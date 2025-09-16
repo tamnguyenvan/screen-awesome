@@ -30,15 +30,15 @@ export function ExportModal({ isOpen, onClose, onStartExport }: ExportModalProps
   const handleValueChange = (key: keyof ExportSettings, value: string) => {
     setSettings(prev => ({ ...prev, [key]: value }));
   };
-  
+
   const handleStart = () => {
     onStartExport(settings);
   };
 
   return (
-    <div className="fixed inset-0 bg-background/20 backdrop-blur-sm z-50 flex items-center justify-center" onClick={onClose}>
-      <div 
-        className="bg-card text-card-foreground rounded-lg shadow-xl p-6 w-full max-w-md border border-border"
+    <div className="modal-backdrop z-50 flex items-center justify-center" onClick={onClose}>
+      <div
+        className="card-clean p-6 w-full max-w-md m-4"
         onClick={(e) => e.stopPropagation()}
       >
         <div className="flex items-center gap-3 mb-6">
@@ -47,10 +47,10 @@ export function ExportModal({ isOpen, onClose, onStartExport }: ExportModalProps
           </div>
           <div>
             <h2 className="text-lg font-semibold text-foreground">Export Settings</h2>
-            <p className="text-sm text-muted-foreground">Choose your final video format and quality</p>
+            <p className="text-sm text-muted-foreground">Configure your export options</p>
           </div>
         </div>
-        
+
         <div className="space-y-4">
           <SettingRow label="Format">
             <Select value={settings.format} onValueChange={(value) => handleValueChange('format', value)}>
@@ -76,7 +76,7 @@ export function ExportModal({ isOpen, onClose, onStartExport }: ExportModalProps
               </SelectContent>
             </Select>
           </SettingRow>
-          
+
           <SettingRow label="Quality">
             <Select value={settings.quality} onValueChange={(value) => handleValueChange('quality', value)}>
               <SelectTrigger>
@@ -89,7 +89,7 @@ export function ExportModal({ isOpen, onClose, onStartExport }: ExportModalProps
               </SelectContent>
             </Select>
           </SettingRow>
-          
+
           <SettingRow label="FPS">
             <Select value={String(settings.fps)} disabled>
               <SelectTrigger>
@@ -102,9 +102,13 @@ export function ExportModal({ isOpen, onClose, onStartExport }: ExportModalProps
           </SettingRow>
         </div>
 
-        <div className="mt-8 flex justify-end gap-2">
-          <Button variant="outline" onClick={onClose}>Cancel</Button>
-          <Button onClick={handleStart}>Start Export</Button>
+        <div className="mt-6 flex justify-end gap-3">
+          <Button variant="outline" onClick={onClose} className="btn-clean">
+            Cancel
+          </Button>
+          <Button onClick={handleStart} className="btn-clean">
+            Start Export
+          </Button>
         </div>
       </div>
     </div>

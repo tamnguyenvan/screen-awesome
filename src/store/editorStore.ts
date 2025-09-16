@@ -122,7 +122,7 @@ const initialState: Omit<EditorState, 'frameStyles'> = {
 };
 
 const initialFrameStyles: FrameStyles = {
-  padding: 5,
+  padding: 2,
   background: {
     type: 'wallpaper',
     thumbnailUrl: WALLPAPERS[0].thumbnailUrl,
