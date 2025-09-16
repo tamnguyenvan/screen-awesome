@@ -330,7 +330,7 @@ export function Timeline({ videoRef }: TimelineProps) {
         {/* Left Strip (Static) */}
         <div
           className={cn(
-            "w-6 flex-shrink-0 h-full rounded-l-xl bg-card flex items-center justify-center transition-all duration-150 cursor-ew-resize select-none",
+            "w-6 flex-shrink-0 h-full rounded-l-xl bg-card flex items-center justify-center transition-all duration-150 cursor-ew-resize select-none border-r border-border/80",
             isDraggingLeftStrip ? "bg-primary/10" : "hover:bg-accent/50"
           )}
           onMouseDown={handleLeftStripDrag}
@@ -343,7 +343,7 @@ export function Timeline({ videoRef }: TimelineProps) {
         {/* Scrollable Timeline Container */}
         <div
           ref={containerRef}
-          className="flex-1 overflow-x-auto overflow-y-hidden border-x border-border/80 bg-card/50"
+          className="flex-1 overflow-x-auto overflow-y-hidden bg-card/50"
           onMouseDown={handleTimelineClick}
         >
           <div
@@ -449,7 +449,7 @@ export function Timeline({ videoRef }: TimelineProps) {
         {/* Right Strip (Static) */}
         <div
           className={cn(
-            "w-6 flex-shrink-0 h-full rounded-r-xl bg-card flex items-center justify-center transition-all duration-150 cursor-ew-resize select-none",
+            "w-6 flex-shrink-0 h-full rounded-r-xl bg-card flex items-center justify-center transition-all duration-150 cursor-ew-resize select-none border-l border-border/80",
             isDraggingRightStrip ? "bg-primary/10" : "hover:bg-accent/50"
           )}
           onMouseDown={handleRightStripDrag}
