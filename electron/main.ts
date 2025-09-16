@@ -24,11 +24,11 @@ process.on('unhandledRejection', (reason, promise) => {
 
 import {
   app, BrowserWindow, ipcMain, Tray, Menu,
-  nativeImage, protocol, IpcMainInvokeEvent, dialog
+  nativeImage, protocol, IpcMainInvokeEvent, dialog, desktopCapturer, screen
 } from 'electron'
 import { fileURLToPath, format as formatUrl } from 'node:url'
 import path from 'node:path'
-import { spawn, ChildProcessWithoutNullStreams } from 'node:child_process'
+import { spawn, ChildProcessWithoutNullStreams, exec } from 'node:child_process'
 import fs from 'node:fs/promises'
 import fsSync from 'node:fs'
 
@@ -374,9 +374,198 @@ async function startActualRecording(ffmpegArgs: string[]) {
   return { canceled: false, filePath: videoPath }
 }
 
-async function handleStartRecording(_event: IpcMainInvokeEvent, options: { source: 'fullscreen' | 'area' }) {
-  const { source } = options;
+async function checkLinuxTools(): Promise<{ [key: string]: boolean }> {
+  log.info('Checking Linux tools...');
+  if (process.platform !== 'linux') {
+    log.info(`Linux tools check skipped for platform ${process.platform}`);
+    return { wmctrl: true, xwininfo: true, import: true }; // Mặc định là true cho các OS khác
+  }
+  log.info(`Checking Linux tools: ${['wmctrl', 'xwininfo', 'import'].join(', ')}`);
+  const tools = ['wmctrl', 'xwininfo', 'import'];
+  const results: { [key: string]: boolean } = {};
+  for (const tool of tools) {
+    results[tool] = await new Promise((resolve) => {
+      exec(`command -v ${tool}`, (error) => {
+        if (error) {
+          log.warn(`Linux tool not found: ${tool}`);
+          resolve(false);
+        } else {
+          resolve(true);
+        }
+      });
+    });
+  }
+  log.info('Linux tools check results:', results);
+  return results;
+}
+
+const GRAY_PLACEHOLDER_URL = 'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mN88A8AAsUB4/Yo4OQAAAAASUVORK5CYII=';
+const EXCLUDED_WINDOW_NAMES = ['Screen Awesome'];
+
+async function handleGetDesktopSources() {
+  if (process.platform === 'linux') {
+    return new Promise((resolve, reject) => {
+      // Dùng -lG để lấy ID, geometry và title cùng lúc
+      log.info('Executing wmctrl -lG');
+      exec('wmctrl -lG', (error, stdout) => {
+        if (error) {
+          log.error('Failed to execute wmctrl:', error);
+          return reject(error);
+        }
+
+        const lines = stdout.trim().split('\n');
+        log.info('wmctrl -lG output:', lines);
+
+        const sourcesPromises = lines
+          .map(line => {
+            const match = line.match(/^(0x[0-9a-f]+)\s+[\d-]+\s+(\d+)\s+(\d+)\s+(\d+)\s+(\d+)\s+[\w-]+\s+(.*)$/);
+            if (!match) return null;
+
+            const [, id, x, y, width, height, name] = match;
+
+            // Lọc các cửa sổ không phù hợp (VD: panels, docks, chính app)
+            if (!name || EXCLUDED_WINDOW_NAMES.some(excludedName => name.includes(excludedName)) ||
+              parseInt(width) < 50 || parseInt(height) < 50) {
+              return null;
+            }
+
+            return new Promise(resolveSource => {
+              const geometry = {
+                x: parseInt(x),
+                y: parseInt(y),
+                width: parseInt(width),
+                height: parseInt(height)
+              };
+
+              // Thêm -resize 320x180! vào lệnh. 
+              // Dấu '!' buộc resize chính xác kích thước, không giữ tỷ lệ gốc,
+              // phù hợp cho thumbnail.
+              const command = `import -window ${id} -resize 320x180! png:-`;
+
+              console.log(`window ${id} ${name} command: ${command}`);
+
+              exec(command, { encoding: 'binary', maxBuffer: 10 * 1024 * 1024 }, (err, stdout) => {
+                let thumbnailUrl = GRAY_PLACEHOLDER_URL; // Mặc định là ảnh placeholder
+
+                if (err) {
+                  log.warn(`Failed to capture thumbnail for window ${id} (${name}), using placeholder. Error:`, err.message);
+                  // Không return null nữa, vẫn resolve để cửa sổ hiện ra
+                } else {
+                  const buffer = Buffer.from(stdout, 'binary');
+                  thumbnailUrl = `data:image/png;base64,${buffer.toString('base64')}`;
+                  log.info(`Captured thumbnail for window ${id} (${name})`);
+                }
+
+                resolveSource({
+                  id,
+                  name,
+                  thumbnailUrl,
+                  geometry,
+                });
+              });
+            });
+          })
+          .filter(p => p !== null);
+
+        Promise.all(sourcesPromises).then(sources => {
+          // Không cần lọc null nữa vì chúng ta luôn resolve một object
+          resolve(sources);
+        });
+      });
+    });
+  }
+
+  // Logic cũ cho Windows/macOS không đổi
+  const sources = await desktopCapturer.getSources({
+    types: ['window'],
+    thumbnailSize: { width: 320, height: 180 }
+  });
+
+  return sources
+    .filter(source => source.name && source.name !== 'ScreenAwesome')
+    .map(source => ({
+      id: source.id,
+      name: source.name,
+      thumbnailUrl: source.thumbnail.toDataURL(),
+    }));
+}
+
+async function handleStartRecording(_event: IpcMainInvokeEvent, options: {
+  source: 'fullscreen' | 'area' | 'window',
+  geometry?: { x: number, y: number, width: number, height: number }; // Thêm geometry
+  windowTitle?: string;
+}) {
+  const { source, geometry, windowTitle } = options;
   const display = process.env.DISPLAY || ':0.0';
+
+  if (source === 'window') {
+    if (process.platform === 'linux') {
+      if (!geometry) {
+        log.error('Window recording on Linux started without geometry.');
+        dialog.showErrorBox('Recording Error', 'No window geometry was provided for recording.');
+        return { canceled: true, filePath: undefined };
+      }
+
+      const primaryDisplay = screen.getPrimaryDisplay();
+      const { width: screenWidth, height: screenHeight } = primaryDisplay.size;
+
+      // Ensure all geometry values are integers
+      const intX = Math.round(geometry.x);
+      const intY = Math.round(geometry.y);
+      let finalWidth = Math.round(geometry.width);
+      let finalHeight = Math.round(geometry.height);
+
+      // Clamp dimensions to ensure the capture area is within screen bounds
+      if (intX + finalWidth > screenWidth) {
+        finalWidth = screenWidth - intX;
+      }
+      if (intY + finalHeight > screenHeight) {
+        finalHeight = screenHeight - intY;
+      }
+
+      // Ensure width/height are even numbers for libx264 compatibility
+      const safeWidth = Math.floor(finalWidth / 2) * 2;
+      const safeHeight = Math.floor(finalHeight / 2) * 2;
+
+      if (safeWidth < 10 || safeHeight < 10) {
+        log.error('Selected window is too small to record.');
+        dialog.showErrorBox('Recording Error', 'The selected window is too small to record.');
+        return { canceled: true, filePath: undefined };
+      }
+
+      const ffmpegArgs = [
+        '-f', 'x11grab',
+        '-video_size', `${safeWidth}x${safeHeight}`,
+        '-i', `${display}+${intX},${intY}`,
+        '-c:v', 'libx264',
+        '-preset', 'ultrafast',
+        '-pix_fmt', 'yuv420p',
+      ];
+
+      log.info(`Starting WINDOW recording for geometry: ${safeWidth}x${safeHeight}+${intX},${intY}`);
+      return startActualRecording(ffmpegArgs);
+    }
+    else if (process.platform === 'win32') {
+      if (!windowTitle) {
+        log.error('Window recording started without a window title.');
+        dialog.showErrorBox('Recording Error', 'No window was selected for recording.');
+        return { canceled: true, filePath: undefined };
+      }
+      const ffmpegArgs = [
+        '-f', 'gdigrab',
+        '-i', `title=${windowTitle}`,
+        '-c:v', 'libx264',
+        '-preset', 'ultrafast',
+        '-pix_fmt', 'yuv420p',
+      ];
+      log.info(`Starting WINDOW recording for title: "${windowTitle}"`);
+      return startActualRecording(ffmpegArgs);
+    } else {
+      log.error('Window recording is not yet supported on this platform.');
+      dialog.showErrorBox('Feature Not Supported', 'Window recording is not yet implemented for this OS.');
+      return { canceled: true, filePath: undefined };
+    }
+  }
 
   if (source === 'area') {
     // Hide the recorder and open selection window
@@ -387,23 +576,21 @@ async function handleStartRecording(_event: IpcMainInvokeEvent, options: { sourc
     return new Promise((resolve) => {
       ipcMain.once('selection:complete', (_event, geometry: { x: number; y: number; width: number; height: number }) => {
         selectionWin?.close();
-        
-        // --- START OF FIX ---
+
         // Ensure width and height are even numbers for libx264 compatibility
         const safeWidth = Math.floor(geometry.width / 2) * 2;
         const safeHeight = Math.floor(geometry.height / 2) * 2;
-        
+
         // Check if the resulting size is too small to record
         if (safeWidth < 10 || safeHeight < 10) {
-            log.error('Selected area is too small to record after adjustment.');
-            recorderWin?.show(); // Show recorder again
-            dialog.showErrorBox('Recording Error', 'The selected area is too small to record. Please select a larger area.');
-            resolve({ canceled: true, filePath: undefined });
-            return;
+          log.error('Selected area is too small to record after adjustment.');
+          recorderWin?.show(); // Show recorder again
+          dialog.showErrorBox('Recording Error', 'The selected area is too small to record. Please select a larger area.');
+          resolve({ canceled: true, filePath: undefined });
+          return;
         }
-        
+
         log.info(`Received selection geometry: ${JSON.stringify(geometry)}. Adjusted to: ${safeWidth}x${safeHeight}`);
-        // --- END OF FIX ---
 
         const ffmpegArgs = [
           '-f', 'x11grab',
@@ -530,6 +717,11 @@ function createRecorderWindow() {
 
   if (VITE_DEV_SERVER_URL) {
     recorderWin.loadURL(VITE_DEV_SERVER_URL)
+
+    // Open devtools when in development in detached mode
+    // recorderWin.webContents.openDevTools(
+    //   { mode: 'detach' }
+    // );
   } else {
     recorderWin.loadFile(path.join(RENDERER_DIST, 'index.html'))
   }
@@ -709,6 +901,17 @@ app.whenReady().then(() => {
     }
   });
 
+  // --- IPC Handlers for Recorder Window ---
+  ipcMain.on('recorder:set-size', (_event, { width, height, center }: { width: number, height: number, center: boolean }) => {
+    if (recorderWin) {
+      log.info(`Resizing recorder window to ${width}x${height}`);
+      recorderWin.setSize(width, height, true); // true = animate
+      if (center) {
+        recorderWin.center();
+      }
+    }
+  });
+
   // --- IPC Handlers for Window Controls ---
   ipcMain.on('window:minimize', (event) => {
     const window = BrowserWindow.fromWebContents(event.sender);
@@ -730,6 +933,8 @@ app.whenReady().then(() => {
     return process.platform;
   });
 
+  ipcMain.handle('linux:check-tools', checkLinuxTools);
+  ipcMain.handle('desktop:get-sources', handleGetDesktopSources);
   ipcMain.handle('recording:start', handleStartRecording)
   ipcMain.handle('fs:readFile', handleReadFile);
   ipcMain.handle('export:start', handleExportStart);

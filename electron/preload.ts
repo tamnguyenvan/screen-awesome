@@ -39,10 +39,33 @@ type RenderStartPayload = {
   exportSettings: any;
 }
 
+type WindowSource = {
+  id: string;
+  name: string;
+  thumbnailUrl: string;
+  geometry?: {
+    x: number;
+    y: number;
+    width: number;
+    height: number;
+  };
+}
+
 // Define API to be exposed to window object
 export const electronAPI = {
   // --- Recording ---
-  startRecording: (options: { source: 'area' | 'fullscreen' | 'window' }): Promise<RecordingResult> => ipcRenderer.invoke('recording:start', options),
+  startRecording: (options: { 
+    source: 'area' | 'fullscreen' | 'window', 
+    geometry?: WindowSource['geometry'];
+    windowTitle?: string 
+  }): Promise<RecordingResult> => ipcRenderer.invoke('recording:start', options),
+
+  getDesktopSources: (): Promise<WindowSource[]> => ipcRenderer.invoke('desktop:get-sources'),
+  linuxCheckTools: (): Promise<{ [key: string]: boolean }> => ipcRenderer.invoke('linux:check-tools'),
+
+  setRecorderSize: (options: { width: number, height: number, center?: boolean }) => {
+    ipcRenderer.send('recorder:set-size', options);
+  },
 
   onRecordingFinished: (callback: (result: RecordingResult) => void) => {
     const listener = (_event: IpcRendererEvent, result: RecordingResult) => callback(result);
