@@ -3,7 +3,7 @@
   "description": "Screen recording and editing app",
   "author": "Tam Nguyen",
   "private": true,
-  "version": "0.0.0",
+  "version": "0.1.0",
   "type": "module",
   "scripts": {
     "dev": "vite",
@@ -47,34 +47,45 @@
   },
   "main": "dist-electron/main.js",
   "build": {
-    "appId": "com.screenawesome.app",
-    "productName": "ScreenAwesome",
-    "files": [
-      "dist/",
-      "dist-electron/",
-      "python/dist/",
-      "binaries/"
+  "appId": "com.screenawesome.app",
+  "productName": "ScreenAwesome",
+  "files": [
+    "dist/",
+    "dist-electron/",
+    "python/dist/",
+    "binaries/"
+  ],
+  "asarUnpack": [
+    "python/dist/**",
+    "binaries/**"
+  ],
+  "win": {
+    "target": [
+      "nsis"
     ],
-    "asarUnpack": [
-      "python/dist/**",
-      "binaries/**"
+    "icon": "public/screenawesome-appicon.ico"
+  },
+  "mac": {
+    "target": [
+      "dmg",
+      "zip"
     ],
-    "linux": {
-      "target": [
-        "AppImage"
-      ],
-      "icon": "public/screenawesome-appicon.png",
-      "category": "Utility"
-    },
-    "win": {
-      "target": [
-        "nsis"
-      ],
-      "icon": "public/screenawesome-appicon.png"
-    },
-    "nsis": {
-      "oneClick": false,
-      "allowToChangeInstallationDirectory": true
-    }
+    "icon": "public/screenawesome-appicon.icns"
+  },
+  "linux": {
+    "target": [
+      "AppImage"
+    ],
+    "icon": "public/screenawesome-appicon.png",
+    "category": "Utility"
+  },
+  "nsis": {
+    "oneClick": false,
+    "allowToChangeInstallationDirectory": true
+  },
+  "directories": {
+    "buildResources": "public"
   }
+}
+
 }

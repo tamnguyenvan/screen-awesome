@@ -353,7 +353,7 @@ async function startActualRecording(ffmpegArgs: string[]) {
     })
 
     // 5. Create Tray Icon
-    const icon = nativeImage.createFromPath(path.join(process.env.VITE_PUBLIC, 'screenawesome-appicon.png'))
+    const icon = nativeImage.createFromPath(path.join(process.env.VITE_PUBLIC, 'screenawesome-appicon-tray.png'))
     tray = new Tray(icon)
     const contextMenu = Menu.buildFromTemplate([
       {
