@@ -9,9 +9,11 @@ import { ExportButton } from '../components/editor/ExportButton';
 import { ExportModal, ExportSettings } from '../components/editor/ExportModal';
 import { ExportProgressOverlay } from '../components/editor/ExportProgressOverlay';
 import { WindowControls } from '../components/editor/WindowControls';
+import { Moon, Sun } from 'lucide-react';
+import { cn } from '../lib/utils';
 
 export function EditorPage() {
-  const loadProject = useEditorStore((state) => state.loadProject);
+  const { loadProject, theme, toggleTheme } = useEditorStore((state) => state);
   const videoRef = useRef<HTMLVideoElement>(null);
   const [isExportModalOpen, setExportModalOpen] = useState(false);
   const [isExporting, setIsExporting] = useState(false);
@@ -114,7 +116,27 @@ export function EditorPage() {
         </div>
 
         {/* Right Side: Export Button */}
-        <div className="absolute right-4 top-1/2 -translate-y-1/2" style={{ WebkitAppRegion: 'no-drag' }}>
+        <div className="absolute right-4 top-1/2 -translate-y-1/2 flex items-center gap-2" style={{ WebkitAppRegion: 'no-drag' }}>
+          <button
+            onClick={toggleTheme}
+            aria-label="Toggle theme"
+            className={cn(
+              'h-9 w-9 rounded-full',
+              'flex items-center justify-center',
+              'text-muted-foreground hover:text-foreground',
+              'hover:bg-accent/50 transition-colors',
+              'focus-visible:outline-none focus-visible:ring-2',
+              'focus-visible:ring-ring focus-visible:ring-offset-2',
+              'ring-offset-background'
+            )}
+          >
+            {theme === 'dark' ? (
+              <Sun className="w-4 h-4" />
+            ) : (
+              <Moon className="w-4 h-4" />
+            )}
+          </button>
+
           <ExportButton
             isExporting={isExporting}
             onClick={() => setExportModalOpen(true)}

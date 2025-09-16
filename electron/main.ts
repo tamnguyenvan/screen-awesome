@@ -216,8 +216,8 @@ function cleanupAndSave(): Promise<void> {
 
 function createCountdownWindow() {
   countdownWin = new BrowserWindow({
-    width: 300,
-    height: 300,
+    width: 380,
+    height: 380,
     transparent: true,
     frame: false,
     alwaysOnTop: true,

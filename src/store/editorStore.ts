@@ -75,6 +75,7 @@ interface EditorState {
   selectedRegionId: string | null;
   activeZoomRegionId: string | null;
   isCurrentlyCut: boolean;
+  theme: 'light' | 'dark';
   timelineZoom: number;
 }
 
@@ -95,6 +96,7 @@ interface EditorActions {
   updateRegion: (id: string, updates: Partial<TimelineRegion>) => void;
   deleteRegion: (id: string) => void;
   setSelectedRegionId: (id: string | null) => void;
+  toggleTheme: () => void;
   setTimelineZoom: (zoom: number) => void;
   reset: () => void;
 }
@@ -115,6 +117,7 @@ const initialState: Omit<EditorState, 'frameStyles'> = {
   selectedRegionId: null,
   activeZoomRegionId: null,
   isCurrentlyCut: false,
+  theme: 'dark',
   timelineZoom: 1,
 };
 
@@ -338,6 +341,9 @@ export const useEditorStore = create(
     }),
 
     setSelectedRegionId: (id) => set(state => { state.selectedRegionId = id; }),
+    toggleTheme: () => set(state => {
+      state.theme = state.theme === 'dark' ? 'light' : 'dark';
+    }),
     setTimelineZoom: (zoom) => set(state => { state.timelineZoom = zoom; }),
 
     reset: () => set(state => {
