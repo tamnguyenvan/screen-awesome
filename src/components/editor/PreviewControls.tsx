@@ -44,7 +44,7 @@ export function PreviewControls({ videoRef }: PreviewControlsProps) {
         <Button
           variant="outline"
           size="sm"
-          onClick={addZoomRegion}
+          onClick={() => addZoomRegion()}
           className="bg-background/50 hover:bg-accent/80 border-border/50 text-foreground font-medium px-4 py-2 rounded-lg transition-all duration-200"
         >
           <Plus className="w-4 h-4 mr-2" />
@@ -53,7 +53,7 @@ export function PreviewControls({ videoRef }: PreviewControlsProps) {
         <Button
           variant="outline"
           size="sm"
-          onClick={addCutRegion}
+          onClick={() => addCutRegion()}
           className="bg-background/50 hover:bg-accent/80 border-border/50 text-foreground font-medium px-4 py-2 rounded-lg transition-all duration-200"
         >
           <Scissors className="w-4 h-4 mr-2" />
