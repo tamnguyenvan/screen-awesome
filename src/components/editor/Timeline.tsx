@@ -6,6 +6,7 @@ import React, {
 import { useEditorStore, TimelineRegion } from '../../store/editorStore';
 import { ZoomRegionBlock } from './timeline/ZooomRegionBlock';
 import { CutRegionBlock } from './timeline/CutRegionBlock';
+import { Playhead } from './timeline/Playhead';
 
 import { cn } from '../../lib/utils';
 import { Scissors } from 'lucide-react';
@@ -289,7 +290,7 @@ export function Timeline({ videoRef }: TimelineProps) {
       window.removeEventListener('mouseup', handleMouseUp);
     };
 
-  // eslint-disable-next-line react-hooks/exhaustive-deps
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [draggingRegion, isDraggingPlayhead, isDraggingLeftStrip, isDraggingRightStrip,
     pxToTime, timeToPx, updateVideoTime, updateRegion, duration]);
 
@@ -357,7 +358,7 @@ export function Timeline({ videoRef }: TimelineProps) {
 
                   {/* time labels */}
                   {type === 'major' && (
-                    <div className="mt-1 px-2 py-0.5 rounded-md bg-background/80 backdrop-blur-sm border border-border/50 shadow-xs">
+                    <div className="translate-x-1/2 -ml-0.5">
                       <span className="text-xs text-foreground/90 font-mono font-medium tracking-wide">
                         {time >= 60 ? `${Math.floor(time / 60)}:${String(time % 60).padStart(2, '0')}` : `${time}s`}
                       </span>
@@ -402,31 +403,16 @@ export function Timeline({ videoRef }: TimelineProps) {
 
             {/* Playhead */}
             {duration > 0 && (
-              <div ref={playheadRef} className="absolute top-0 bottom-0 z-30 pointer-events-none">
-                {/* vertical line with gradient */}
-                <div className="w-0.5 h-full bg-gradient-to-b from-primary via-primary to-primary/60 shadow-lg"></div>
-
-                {/* triangle handle */}
-                <div
-                  data-playhead-handle
-                  className={cn(
-                    "absolute top-0 pointer-events-auto transition-all duration-150",
-                    isDraggingPlayhead
-                      ? "cursor-grabbing scale-125 drop-shadow-lg"
-                      : "cursor-grab hover:scale-110 drop-shadow-md"
-                  )}
-                  style={{
-                    transform: 'translateX(-50%)',
-                    left: '1px'
-                  }}
+              <div
+                ref={playheadRef}
+                className="absolute top-0 bottom-0 z-30"
+                style={{ pointerEvents: "none" }}
+              >
+                <Playhead
+                  height={timelineRef.current?.clientHeight ?? 200}
+                  isDragging={isDraggingPlayhead}
                   onMouseDown={handlePlayheadMouseDown}
-                >
-                  {/* inverted triangle with glow */}
-                  <div className="relative">
-                    <div className="w-0 h-0 border-l-[10px] border-r-[10px] border-t-[16px] border-l-transparent border-r-transparent border-t-primary shadow-xl drop-shadow-lg" />
-                    <div className="absolute inset-0 w-0 h-0 border-l-[8px] border-r-[8px] border-t-[12px] border-l-transparent border-r-transparent border-t-primary/80 translate-x-[2px] translate-y-[2px]" />
-                  </div>
-                </div>
+                />
               </div>
             )}
 
