@@ -130,11 +130,16 @@ function createEditorWindow(videoPath: string, metadataPath: string) {
     minHeight: 768,
     frame: false, // Frameless on Win/Linux
     titleBarStyle: 'hidden', // Keep traffic lights on macOS
+    show: false, // Don't show the window until it's ready
     webPreferences: {
       preload: path.join(__dirname, 'preload.mjs'),
       webSecurity: VITE_DEV_SERVER_URL ? false : true,
     },
   })
+  
+  // Maximize the window and show it when it's ready
+  editorWin.maximize()
+  editorWin.show()
 
   let editorUrl: string;
   if (VITE_DEV_SERVER_URL) {
