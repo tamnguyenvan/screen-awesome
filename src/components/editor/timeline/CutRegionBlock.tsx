@@ -55,7 +55,18 @@ export const CutRegionBlock = memo(function CutRegionBlock({
           : "bg-muted/60 border-border/40 hover:bg-muted/80 hover:border-border/60"),
         // Thay đổi con trỏ dựa trên loại region
         isDraggable && (isTrimRegion ? "cursor-default" : "cursor-pointer"),
-        !isDraggable && "bg-foreground/20 backdrop-blur-sm cursor-default pointer-events-none",
+        isDraggable
+          ? [ // Styles cho region tương tác được
+            "border shadow-xs",
+            isSelected
+              ? "bg-destructive/10 border-destructive/30"
+              : "bg-muted/60 border-border/40 hover:bg-muted/80 hover:border-border/60",
+            isTrimRegion ? "cursor-default" : "cursor-pointer"
+          ]
+          : [ // Styles cho PREVIEW region (không tương tác được)
+            "bg-destructive/10 border-2 border-dashed border-destructive/20 backdrop-blur-sm",
+            "cursor-default pointer-events-none"
+          ],
       )}
       style={{ left: `${left}px`, width: `${width}px` }}
       onMouseDown={(e) => handleMouseDown(e, 'move')}
@@ -85,11 +96,9 @@ export const CutRegionBlock = memo(function CutRegionBlock({
       )}
 
       {/* Content area */}
-      <div className="w-full flex items-center justify-center gap-2 px-3 pointer-events-none"> {/* Thêm pointer-events-none để không cản trở sự kiện onMouseDown của div cha */}
-        <Scissors className={cn("w-3.5 h-3.5", isDraggable ? "text-destructive/80" : "text-white/80")} />
-        <span className={cn("text-xs font-medium", isDraggable ? "text-destructive/80" : "text-white/80")}>
-          Trim
-        </span>
+      <div className="w-full flex items-center justify-center gap-2 px-3 pointer-events-none">
+        <Scissors className={cn("w-3.5 h-3.5", isDraggable ? "text-destructive/80" : "text-destructive/60")} />
+        <span className={cn("text-xs font-medium", isDraggable ? "text-destructive/80" : "text-destructive/60")}></span>
       </div>
 
       {/* Hiển thị handle resize bên phải có điều kiện */}

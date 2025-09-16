@@ -330,7 +330,7 @@ export function Timeline({ videoRef }: TimelineProps) {
           // --- FIX START: Logic lưu state riêng cho Right Trim Region ---
           const regionToUpdate = allRegions.find(r => r.id === draggingRegion.id);
           const isEndTrim = regionToUpdate?.type === 'cut' && regionToUpdate.trimType === 'end';
-          
+
           if (isEndTrim) {
             const newStartTime = Math.max(0, draggingRegion.initialStartTime + deltaTime);
             finalUpdates.startTime = Math.min(duration - MINIMUM_REGION_DURATION, newStartTime);
@@ -346,7 +346,7 @@ export function Timeline({ videoRef }: TimelineProps) {
           }
           // --- FIX END ---
         }
-        
+
         updateRegion(draggingRegion.id, finalUpdates);
         setDraggingRegion(null);
       }
@@ -396,6 +396,11 @@ export function Timeline({ videoRef }: TimelineProps) {
   }, [currentTime, isPlaying, duration, timeToPx]);
 
   const allRegions = [...zoomRegions, ...cutRegions];
+
+  const trimOverlayRegions = useMemo(() => {
+    const existingTrims = cutRegions.filter(r => r.trimType);
+    return previewCutRegion ? [...existingTrims, previewCutRegion] : existingTrims;
+  }, [cutRegions, previewCutRegion]);
 
   return (
     <div className="h-full flex flex-col bg-background p-4">
@@ -501,6 +506,17 @@ export function Timeline({ videoRef }: TimelineProps) {
                 )}
               </div>
             </div>
+
+            {trimOverlayRegions.map(region => (
+              <div
+                key={`overlay-${region.id}`}
+                className="absolute top-0 h-full bg-gray-400/20 z-20 pointer-events-none"
+                style={{
+                  left: `${timeToPx(region.startTime)}px`,
+                  width: `${timeToPx(region.duration)}px`,
+                }}
+              />
+            ))}
 
             {/* Playhead */}
             {duration > 0 && (
