@@ -140,6 +140,7 @@ const initialFrameStyles: FrameStyles = {
   borderColor: '#ffffff',
 }
 
+const MINIMUM_REGION_DURATION = 0.1;
 
 // --- Store Implementation ---
 export const useEditorStore = create(
@@ -214,7 +215,29 @@ export const useEditorStore = create(
 
     setVideoDimensions: (dims) => set(state => { state.videoDimensions = dims }),
 
-    setDuration: (duration) => set(state => { state.duration = duration; }),
+    setDuration: (duration) => set(state => {
+      state.duration = duration;
+      
+      // FIX: After setting duration, iterate through existing regions
+      // and clamp any that might now be out of bounds. This is crucial
+      // for auto-generated regions created before duration was known.
+      if (duration > 0) {
+        Object.values(state.zoomRegions).forEach(region => {
+          const regionEndTime = region.startTime + region.duration;
+          if (regionEndTime > duration) {
+            const newDuration = duration - region.startTime;
+            region.duration = Math.max(MINIMUM_REGION_DURATION, newDuration);
+          }
+        });
+        Object.values(state.cutRegions).forEach(region => {
+          const regionEndTime = region.startTime + region.duration;
+          if (regionEndTime > duration) {
+            const newDuration = duration - region.startTime;
+            region.duration = Math.max(MINIMUM_REGION_DURATION, newDuration);
+          }
+        });
+      }
+    }),
 
     setCurrentTime: (time) => set(state => {
       state.currentTime = time;
@@ -259,48 +282,80 @@ export const useEditorStore = create(
     setAspectRatio: (ratio) => set(state => { state.aspectRatio = ratio; }),
 
     addZoomRegion: () => {
-      const lastMousePos = get().metadata.find(m => m.timestamp <= get().currentTime);
+      const { metadata, currentTime, videoDimensions, duration, nextZIndex } = get();
+      if (duration === 0) return;
+
+      const lastMousePos = metadata.find(m => m.timestamp <= currentTime);
       const id = `zoom-${Date.now()}`;
-      const zIndex = get().nextZIndex; // GET CURRENT Z-INDEX
+      
       const newRegion: ZoomRegion = {
         id,
         type: 'zoom',
-        startTime: get().currentTime,
+        startTime: currentTime,
         duration: 3,
         zoomLevel: 2,
         easing: 'ease-in-out',
-        targetX: lastMousePos?.x || get().videoDimensions.width / 2,
-        targetY: lastMousePos?.y || get().videoDimensions.height / 2,
-        zIndex, // ASSIGN Z-INDEX
+        targetX: lastMousePos?.x || videoDimensions.width / 2,
+        targetY: lastMousePos?.y || videoDimensions.height / 2,
+        zIndex: nextZIndex,
       };
+
+      // Clamp duration to video length
+      if (newRegion.startTime + newRegion.duration > duration) {
+        newRegion.duration = Math.max(MINIMUM_REGION_DURATION, duration - newRegion.startTime);
+      }
+
       set(state => {
         state.zoomRegions[id] = newRegion;
-        state.nextZIndex++; // INCREMENT FOR NEXT REGION
+        state.nextZIndex++;
       });
     },
 
     addCutRegion: (regionData) => {
+      const { currentTime, duration, nextZIndex } = get();
+      if (duration === 0) return;
+
       const id = `cut-${Date.now()}`;
-      const zIndex = get().nextZIndex; // GET CURRENT Z-INDEX
+      
       const newRegion: CutRegion = {
         id,
         type: 'cut',
-        startTime: get().currentTime,
+        startTime: currentTime,
         duration: 2,
-        zIndex, // ASSIGN Z-INDEX
+        zIndex: nextZIndex,
         ...regionData,
       };
+
+      // Clamp duration to video length
+      if (newRegion.startTime + newRegion.duration > duration) {
+        newRegion.duration = Math.max(MINIMUM_REGION_DURATION, duration - newRegion.startTime);
+      }
+
       set(state => {
         state.cutRegions[id] = newRegion;
-        if (!regionData?.trimType) { // Don't increment zIndex for trim regions
-          state.nextZIndex++; // INCREMENT FOR NEXT REGION
+        if (!regionData?.trimType) {
+          state.nextZIndex++;
         }
       });
     },
 
     updateRegion: (id, updates) => set(state => {
       const region = state.zoomRegions[id] || state.cutRegions[id];
-      if (region) { Object.assign(region, updates); }
+      if (region) {
+        // Apply updates first to get the intended new values
+        Object.assign(region, updates);
+        
+        const videoDuration = state.duration;
+        if (videoDuration > 0) {
+          // Now, clamp the values to be within bounds
+          // 1. Clamp startTime to be within [0, videoDuration - MIN_DURATION]
+          region.startTime = Math.max(0, Math.min(region.startTime, videoDuration - MINIMUM_REGION_DURATION));
+
+          // 2. Clamp duration based on the new startTime
+          const maxPossibleDuration = videoDuration - region.startTime;
+          region.duration = Math.max(MINIMUM_REGION_DURATION, Math.min(region.duration, maxPossibleDuration));
+        }
+      }
     }),
 
     deleteRegion: (id) => set(state => {

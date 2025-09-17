@@ -355,8 +355,13 @@ export function Timeline({ videoRef }: { videoRef: React.RefObject<HTMLVideoElem
             if (target.closest('[data-region-id]')) {
               return;
             }
-            const rect = (e.currentTarget as HTMLDivElement).getBoundingClientRect();
-            updateVideoTime(pxToTime(e.clientX - rect.left));
+            const scrollableContainer = e.currentTarget as HTMLDivElement;
+            const rect = scrollableContainer.getBoundingClientRect();
+            
+            // This ensures clicks work correctly on a zoomed timeline
+            const clickX = e.clientX - rect.left + scrollableContainer.scrollLeft;
+            
+            updateVideoTime(pxToTime(clickX));
             setSelectedRegionId(null);
           }}>
           <div ref={timelineRef} className="relative h-full min-w-full" style={{ width: `${timeToPx(duration)}px` }}>
