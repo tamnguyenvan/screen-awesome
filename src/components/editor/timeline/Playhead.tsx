@@ -61,18 +61,33 @@ export const Playhead: React.FC<PlayheadProps> = React.memo(
           width: '20px',
           height: '100%',
           marginLeft: '-10px',
-          pointerEvents: 'auto',
-          cursor: isDragging ? 'grabbing' : 'grab'
+          pointerEvents: 'none'
         }}
-        onMouseDown={onMouseDown}
       >
+        {/* Clickable triangle area */}
+        <div 
+          style={{
+            position: 'absolute',
+            top: 0,
+            left: '50%',
+            transform: 'translateX(-50%)',
+            width: triangleSize.base * 2,
+            height: triangleSize.height,
+            cursor: isDragging ? 'grabbing' : 'grab',
+            pointerEvents: 'auto',
+            zIndex: 10
+          }}
+          onMouseDown={onMouseDown}
+        />
         <canvas
           ref={canvasRef}
           width={20}
           height={height}
           style={{
             display: 'block',
-            pointerEvents: 'none'
+            pointerEvents: 'none',
+            position: 'relative',
+            zIndex: 1
           }}
         />
       </div>
