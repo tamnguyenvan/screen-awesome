@@ -30,16 +30,16 @@ const Ruler = memo(({ ticks, timeToPx, formatTime }: {
   timeToPx: (time: number) => number;
   formatTime: (seconds: number) => string;
 }) => (
-  <div className="h-12 sticky top-0 left-0 right-0 z-10 border-b-2 border-border/60 bg-gradient-to-b from-muted/80 to-muted/40">
+  <div className="h-12 sticky overflow-hidden top-0 left-0 right-0 z-10 border-b-2 border-border/60 bg-gradient-to-b from-muted/80 to-muted/40">
     {ticks.map(({ time, type }) => (
       <div
         key={`tick-${time}`}
-        className="absolute top-0 flex flex-col items-center group"
-        style={{ left: `${timeToPx(time)}px` }}
+        className="absolute top-0 flex flex-col items-center"
+        style={{ left: `${timeToPx(time)}px`, transform: 'translateX(-50%)' }}
       >
         <div className={cn("bg-foreground/70 transition-all", type === 'major' ? 'w-0.5 h-6' : 'w-px h-3')} />
         {type === 'major' && (
-          <span className="text-xs text-foreground/90 font-mono font-medium -translate-x-1/2">
+          <span className="text-xs text-foreground/90 font-mono font-medium translate-x-1/2">
             {formatTime(time)}
           </span>
         )}
