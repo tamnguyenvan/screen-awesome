@@ -22,7 +22,7 @@ export const ZoomRegionBlock = memo(({
     data-region-id={region.id}
     className={cn(
       'w-full h-full flex items-center justify-center rounded-lg overflow-hidden relative', // Take full space
-      'cursor-move border-2 border-border',
+      'cursor-grab border-2 border-border',
       'bg-muted/80' // Base gray background
     )}
     onMouseDown={(e) => onMouseDown(e, region, 'move')}

@@ -44,7 +44,7 @@ export const CutRegionBlock = memo(({
         className={cn(
           'relative w-full h-14 mt-[72px] flex items-center justify-center rounded-lg',
           'border border-destructive',
-          canMove ? 'cursor-move' : 'cursor-default'
+          canMove ? 'cursor-grab' : 'cursor-default'
         )}
         onMouseDown={(e) => handleMouseDown(e, 'move')}
       >
