@@ -36,7 +36,7 @@ const generateBackgroundStyle = (backgroundState: ReturnType<typeof useEditorSto
 
 export function Preview({ videoRef }: PreviewProps) {
   const {
-    frameStyles, videoUrl, isPlaying, setPlaying,
+    frameStyles, videoUrl, isPlaying, cutRegions, setPlaying,
     setCurrentTime, setDuration, aspectRatio, setVideoDimensions,
     videoDimensions, isCurrentlyCut
   } = useEditorStore();
@@ -80,18 +80,18 @@ export function Preview({ videoRef }: PreviewProps) {
   useEffect(() => {
     const video = videoRef.current;
     if (!video) return;
-    
+
     if (isPlaying && isCurrentlyCut) {
       const { cutRegions } = useEditorStore.getState();
-      
+
       const activeCutRegion = cutRegions.find(
-         r => video.currentTime >= r.startTime && video.currentTime < (r.startTime + r.duration)
+        r => video.currentTime >= r.startTime && video.currentTime < (r.startTime + r.duration)
       );
 
       if (activeCutRegion) {
-         console.log(`Skipping cut region, jumping to ${activeCutRegion.startTime + activeCutRegion.duration}`);
-         video.currentTime = activeCutRegion.startTime + activeCutRegion.duration;
-         setCurrentTime(video.currentTime); 
+        console.log(`Skipping cut region, jumping to ${activeCutRegion.startTime + activeCutRegion.duration}`);
+        video.currentTime = activeCutRegion.startTime + activeCutRegion.duration;
+        setCurrentTime(video.currentTime);
       }
     }
   }, [isCurrentlyCut, isPlaying, videoRef, setCurrentTime]);
@@ -106,6 +106,19 @@ export function Preview({ videoRef }: PreviewProps) {
 
   const handleTimeUpdate = () => {
     if (videoRef.current) {
+      // Tìm end trim region, nếu có
+      const endTrimRegion = cutRegions.find(r => r.trimType === 'end');
+
+      if (endTrimRegion && videoRef.current.currentTime >= endTrimRegion.startTime) {
+        // Đã đến điểm cần dừng phát
+        // Giới hạn thời gian của video đúng bằng điểm bắt đầu của trim region
+        videoRef.current.currentTime = endTrimRegion.startTime;
+
+        // Dừng video. Trình xử lý onPause trên thẻ <video>
+        // sẽ tự động cập nhật trạng thái isPlaying trong store.
+        videoRef.current.pause();
+      }
+
       setCurrentTime(videoRef.current.currentTime);
     }
   };
@@ -147,10 +160,10 @@ export function Preview({ videoRef }: PreviewProps) {
             style={{
               aspectRatio: videoAspectRatio,
               borderRadius: `${frameStyles.borderRadius}px`,
-              boxShadow: frameStyles.shadow > 0 
+              boxShadow: frameStyles.shadow > 0
                 ? `0 ${frameStyles.shadow}px ${frameStyles.shadow * 2}px rgba(0,0,0,0.${Math.min(frameStyles.shadow * 2, 50)})`
                 : 'none',
-              border: frameStyles.borderWidth > 0 
+              border: frameStyles.borderWidth > 0
                 ? `${frameStyles.borderWidth}px solid ${frameStyles.borderColor}`
                 : 'none',
               overflow: 'hidden',
@@ -170,7 +183,7 @@ export function Preview({ videoRef }: PreviewProps) {
         ) : (
           <div className="w-full h-full bg-muted/10 border-2 border-dashed border-border/50 rounded-xl flex flex-col items-center justify-center text-muted-foreground gap-4 transition-all duration-200 hover:border-border/80">
             <div className="w-16 h-16 rounded-full bg-primary/10 flex items-center justify-center">
-              <Film className="w-8 h-8 text-primary/70"/>
+              <Film className="w-8 h-8 text-primary/70" />
             </div>
             <div className="text-center">
               <p className="text-lg font-medium mb-1">No project loaded</p>

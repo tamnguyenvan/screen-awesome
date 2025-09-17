@@ -11,7 +11,6 @@ interface CutRegionBlockProps {
   isDraggable?: boolean;
   onMouseDown: (e: ReactMouseEvent<HTMLDivElement>, region: TimelineRegion, type: 'move' | 'resize-left' | 'resize-right') => void;
   setRef: (el: HTMLDivElement | null) => void;
-
 }
 
 export const CutRegionBlock = memo(function CutRegionBlock({
@@ -20,7 +19,6 @@ export const CutRegionBlock = memo(function CutRegionBlock({
   width,
   isSelected,
   isDraggable = true,
-
   onMouseDown,
   setRef
 }: CutRegionBlockProps) {
@@ -42,29 +40,25 @@ export const CutRegionBlock = memo(function CutRegionBlock({
       ref={setRef}
       data-region-id={region.id}
       className={cn(
-        "absolute h-12 flex items-center transition-all duration-75",
+        "absolute h-14 flex items-center transition-all duration-75",
         // Apply border radius based on trim type and resize handles
-        isTrimRegion
-          ? region.trimType === 'start'
-            ? 'rounded-r-lg' // Only round right side for start trim
-            : 'rounded-l-lg' // Only round left side for end trim
-          : 'rounded-lg', // Default rounded corners for non-trim regions
+        'rounded-lg', // Default rounded corners for non-trim regions
         isDraggable && "border shadow-xs",
         isDraggable && (isSelected
-          ? "bg-destructive/10 border-destructive/30"
-          : "bg-muted/60 border-border/40 hover:bg-muted/80 hover:border-border/60"),
+          ? "bg-destructive/10 border-2 border-destructive/60"
+          : "bg-muted/60 border-2 border-border/60 hover:bg-muted/80 hover:border-border/80"),
         // Thay đổi con trỏ dựa trên loại region
         isDraggable && (isTrimRegion ? "cursor-default" : "cursor-pointer"),
         isDraggable
           ? [ // Styles cho region tương tác được
-            "border shadow-xs",
+            "border-2 shadow-xs",
             isSelected
-              ? "bg-destructive/10 border-destructive/30"
-              : "bg-muted/60 border-border/40 hover:bg-muted/80 hover:border-border/60",
+              ? "bg-destructive/10 border-2 border-destructive/60"
+              : "bg-muted/60 border-2 border-border/60 hover:bg-muted/80 hover:border-border/80",
             isTrimRegion ? "cursor-default" : "cursor-pointer"
           ]
           : [ // Styles cho PREVIEW region (không tương tác được)
-            "bg-destructive/10 border-2 border-dashed border-destructive/20 backdrop-blur-sm",
+            "bg-destructive/10 border-2 border-dashed border-destructive/40 backdrop-blur-sm",
             "cursor-default pointer-events-none"
           ],
       )}
@@ -97,8 +91,8 @@ export const CutRegionBlock = memo(function CutRegionBlock({
 
       {/* Content area */}
       <div className="w-full flex items-center justify-center gap-2 px-3 pointer-events-none">
-        <Scissors className={cn("w-3.5 h-3.5", isDraggable ? "text-destructive/80" : "text-destructive/60")} />
-        <span className={cn("text-xs font-medium", isDraggable ? "text-destructive/80" : "text-destructive/60")}></span>
+        <Scissors className={cn("w-4 h-4", isDraggable ? "text-destructive/80" : "text-destructive/60")} />
+        <span className={cn("text-sm font-medium", isDraggable ? "text-destructive/80" : "text-destructive/60")}>Trim</span>
       </div>
 
       {/* Hiển thị handle resize bên phải có điều kiện */}

@@ -120,7 +120,7 @@ const initialState: Omit<EditorState, 'frameStyles'> = {
   selectedRegionId: null,
   activeZoomRegionId: null,
   isCurrentlyCut: false,
-  theme: 'dark',
+  theme: 'light',
   timelineZoom: 1,
 };
 

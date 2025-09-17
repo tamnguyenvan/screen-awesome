@@ -44,6 +44,7 @@ export function Timeline({ videoRef }: TimelineProps) {
     previewCutRegion,
     selectedRegionId,
     addCutRegion,
+    deleteRegion,
     setPreviewCutRegion,
     updateRegion,
     setCurrentTime,
@@ -69,15 +70,23 @@ export function Timeline({ videoRef }: TimelineProps) {
 
   const handleLeftStripDrag = useCallback((e: ReactMouseEvent<HTMLDivElement>) => {
     e.stopPropagation();
+    const existingStartTrim = cutRegions.find(r => r.trimType === 'start');
+    if (existingStartTrim) {
+      deleteRegion(existingStartTrim.id);
+    }
     setIsDraggingLeftStrip(true);
     document.body.style.cursor = 'grab';
-  }, []);
+  }, [cutRegions, deleteRegion]);
 
   const handleRightStripDrag = useCallback((e: ReactMouseEvent<HTMLDivElement>) => {
     e.stopPropagation();
+    const existingEndTrim = cutRegions.find(r => r.trimType === 'end');
+    if (existingEndTrim) {
+      deleteRegion(existingEndTrim.id);
+    }
     setIsDraggingRightStrip(true);
     document.body.style.cursor = 'grab';
-  }, []);
+  }, [cutRegions, deleteRegion]);
 
   useEffect(() => {
     if (containerRef.current) setContainerWidth(containerRef.current.clientWidth);
@@ -351,9 +360,9 @@ export function Timeline({ videoRef }: TimelineProps) {
         setDraggingRegion(null);
       }
 
-      // FIX: Cập nhật logic với hằng số mới
       if ((isDraggingLeftStrip || isDraggingRightStrip) && previewCutRegion) {
         if (previewCutRegion.duration > MINIMUM_REGION_DURATION) {
+          // Logic bây giờ luôn là thêm mới, vì cái cũ (nếu có) đã bị xóa khi mousedown.
           addCutRegion({
             startTime: previewCutRegion.startTime,
             duration: previewCutRegion.duration,
@@ -375,7 +384,8 @@ export function Timeline({ videoRef }: TimelineProps) {
 
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [draggingRegion, isDraggingPlayhead, isDraggingLeftStrip, isDraggingRightStrip,
-    pxToTime, timeToPx, updateVideoTime, updateRegion, duration, addCutRegion, setPreviewCutRegion, previewCutRegion]);
+    pxToTime, timeToPx, updateVideoTime, updateRegion, duration, addCutRegion, 
+    setPreviewCutRegion, previewCutRegion, cutRegions, deleteRegion]);
 
   useEffect(() => {
     let animationFrameId: number;
@@ -410,7 +420,9 @@ export function Timeline({ videoRef }: TimelineProps) {
           className={cn(
             "w-6 flex-shrink-0 h-full rounded-l-xl bg-card flex items-center justify-center transition-all duration-150 cursor-ew-resize select-none border-r border-border/80",
             isDraggingLeftStrip ? "bg-primary/10" : "hover:bg-accent/50"
+            // Xóa dòng kiểm tra hasStartTrim ở đây
           )}
+          // Xóa điều kiện và luôn gán sự kiện
           onMouseDown={handleLeftStripDrag}
         >
           <div className="flex flex-col items-center gap-1">
@@ -498,7 +510,7 @@ export function Timeline({ videoRef }: TimelineProps) {
                     region={previewCutRegion}
                     left={timeToPx(previewCutRegion.startTime)}
                     width={timeToPx(previewCutRegion.duration)}
-                    isSelected={false}
+                    isSelected={selectedRegionId === previewCutRegion.id}
                     isDraggable={false} // Quan trọng: Vô hiệu hóa kéo thả
                     onMouseDown={() => { }} // No-op
                     setRef={() => { }}     // No-op
@@ -540,7 +552,9 @@ export function Timeline({ videoRef }: TimelineProps) {
           className={cn(
             "w-6 flex-shrink-0 h-full rounded-r-xl bg-card flex items-center justify-center transition-all duration-150 cursor-ew-resize select-none border-l border-border/80",
             isDraggingRightStrip ? "bg-primary/10" : "hover:bg-accent/50"
+            // Xóa dòng kiểm tra hasEndTrim ở đây
           )}
+          // Xóa điều kiện và luôn gán sự kiện
           onMouseDown={handleRightStripDrag}
         >
           <div className="flex flex-col items-center gap-1">
