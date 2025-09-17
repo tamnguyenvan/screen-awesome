@@ -94,6 +94,8 @@ export function Timeline({ videoRef }: { videoRef: React.RefObject<HTMLVideoElem
   const playheadRef = useRef<HTMLDivElement>(null);
   const regionRefs = useRef<Map<string, HTMLDivElement | null>>(new Map());
   const animationFrameRef = useRef<number>();
+  const { setPlaying } = useEditorStore();
+  const wasPlayingRef = useRef(false);
 
   const [draggingRegion, setDraggingRegion] = useState<{ id: string; type: 'move' | 'resize-left' | 'resize-right'; initialX: number; initialStartTime: number; initialDuration: number; } | null>(null);
   const [isDraggingPlayhead, setIsDraggingPlayhead] = useState(false);
@@ -124,24 +126,30 @@ export function Timeline({ videoRef }: { videoRef: React.RefObject<HTMLVideoElem
 
   const handleRegionMouseDown = useCallback((e: ReactMouseEvent<HTMLDivElement>, region: TimelineRegion, type: 'move' | 'resize-left' | 'resize-right') => {
     e.stopPropagation();
-    // Action 1: Always select the region on any mousedown
-    setSelectedRegionId(region.id);
 
-    // Action 2: Conditionally start the drag operation
-    const isTrimRegion = (region as CutRegion).trimType !== undefined;
-    if (isTrimRegion && type === 'move') {
-      // If it's a trim region and the user tries to drag its body,
-      // we just select it (done above) and do nothing else.
-      return;
+    // Pause playback on drag/resize start
+    wasPlayingRef.current = useEditorStore.getState().isPlaying;
+    if (wasPlayingRef.current) {
+      setPlaying(false);
     }
 
-    // For all other cases (moving a normal region, resizing any region), proceed to set up the drag.
-    if (type === 'move' || type === 'resize-left') updateVideoTime(region.startTime);
-    else if (type === 'resize-right') updateVideoTime(region.startTime + region.duration);
+    setSelectedRegionId(region.id);
+
+    // Move playhead on any click, even for trim regions
+    if (type === 'move' || type === 'resize-left') {
+      updateVideoTime(region.startTime);
+    } else if (type === 'resize-right') {
+      updateVideoTime(region.startTime + region.duration);
+    }
+
+    const isTrimRegion = (region as CutRegion).trimType !== undefined;
+    if (isTrimRegion && type === 'move') {
+      return; // We've moved the playhead, but we prevent dragging the body of a trim region.
+    }
 
     document.body.style.cursor = type === 'move' ? 'grabbing' : 'ew-resize';
     setDraggingRegion({ id: region.id, type, initialX: e.clientX, initialStartTime: region.startTime, initialDuration: region.duration });
-  }, [setSelectedRegionId, updateVideoTime]);
+  }, [setSelectedRegionId, updateVideoTime, setPlaying]);
 
   const formatTime = useCallback((seconds: number): string => {
     const hrs = Math.floor(seconds / 3600);
@@ -178,19 +186,19 @@ export function Timeline({ videoRef }: { videoRef: React.RefObject<HTMLVideoElem
         const deltaTime = pxToTime(e.clientX - draggingRegion.initialX);
 
         if (draggingRegion.type === 'move') {
-            const maxStartTime = duration - draggingRegion.initialDuration;
-            const intendedStartTime = draggingRegion.initialStartTime + deltaTime;
-            const newStartTime = Math.max(0, Math.min(intendedStartTime, maxStartTime));
-            
-            updateVideoTime(newStartTime);
-            element.style.transform = `translateX(${timeToPx(newStartTime - draggingRegion.initialStartTime)}px)`;
-        } else if (draggingRegion.type === 'resize-right') {
-            const maxDuration = duration - draggingRegion.initialStartTime;
-            const intendedDuration = draggingRegion.initialDuration + deltaTime;
-            const newDuration = Math.max(MINIMUM_REGION_DURATION, Math.min(intendedDuration, maxDuration));
+          const maxStartTime = duration - draggingRegion.initialDuration;
+          const intendedStartTime = draggingRegion.initialStartTime + deltaTime;
+          const newStartTime = Math.max(0, Math.min(intendedStartTime, maxStartTime));
 
-            updateVideoTime(draggingRegion.initialStartTime + newDuration);
-            element.style.width = `${timeToPx(newDuration)}px`;
+          updateVideoTime(newStartTime);
+          element.style.transform = `translateX(${timeToPx(newStartTime - draggingRegion.initialStartTime)}px)`;
+        } else if (draggingRegion.type === 'resize-right') {
+          const maxDuration = duration - draggingRegion.initialStartTime;
+          const intendedDuration = draggingRegion.initialDuration + deltaTime;
+          const newDuration = Math.max(MINIMUM_REGION_DURATION, Math.min(intendedDuration, maxDuration));
+
+          updateVideoTime(draggingRegion.initialStartTime + newDuration);
+          element.style.width = `${timeToPx(newDuration)}px`;
         } else if (draggingRegion.type === 'resize-left') {
           const initialEndTime = draggingRegion.initialStartTime + draggingRegion.initialDuration;
           const newStartTime = Math.min(initialEndTime - MINIMUM_REGION_DURATION, Math.max(0, draggingRegion.initialStartTime + deltaTime));
@@ -288,6 +296,11 @@ export function Timeline({ videoRef }: { videoRef: React.RefObject<HTMLVideoElem
         }
       }
 
+      if (wasPlayingRef.current) {
+        setPlaying(true);
+      }
+      wasPlayingRef.current = false;
+
       setIsDraggingLeftStrip(false);
       setIsDraggingRightStrip(false);
       setPreviewCutRegion(null);
@@ -302,7 +315,7 @@ export function Timeline({ videoRef }: { videoRef: React.RefObject<HTMLVideoElem
   }, [
     draggingRegion, isDraggingPlayhead, isDraggingLeftStrip, isDraggingRightStrip,
     pxToTime, timeToPx, updateVideoTime, updateRegion, addCutRegion,
-    setPreviewCutRegion, deleteRegion, setCurrentTime, videoRef, duration
+    setPreviewCutRegion, deleteRegion, setCurrentTime, videoRef, duration, setPlaying
   ]);
 
   useEffect(() => {
@@ -344,7 +357,12 @@ export function Timeline({ videoRef }: { videoRef: React.RefObject<HTMLVideoElem
     <div className="h-full flex flex-col bg-background p-4">
       <div className="h-full flex flex-row rounded-xl overflow-hidden shadow-sm bg-card border border-border/80">
         {/* Left trim handle */}
-        <div className="w-6 shrink-0 h-full bg-card flex items-center justify-center transition-colors cursor-ew-resize select-none border-r border-border/80 hover:bg-accent/50" onMouseDown={() => setIsDraggingLeftStrip(true)}>
+        <div className="w-8 shrink-0 h-full bg-card flex items-center justify-center transition-colors cursor-ew-resize select-none border-r border-border/80 hover:bg-accent/50"
+          onMouseDown={() => {
+            wasPlayingRef.current = useEditorStore.getState().isPlaying;
+            if (wasPlayingRef.current) setPlaying(false);
+            setIsDraggingLeftStrip(true)
+          }}>
           <Scissors size={16} className="text-muted-foreground" />
         </div>
 
@@ -358,12 +376,14 @@ export function Timeline({ videoRef }: { videoRef: React.RefObject<HTMLVideoElem
             if (target.closest('[data-region-id]')) {
               return;
             }
+
+            // Pause playback when dragging playhead
+            wasPlayingRef.current = useEditorStore.getState().isPlaying;
+            if (wasPlayingRef.current) setPlaying(false);
+
             const scrollableContainer = e.currentTarget as HTMLDivElement;
             const rect = scrollableContainer.getBoundingClientRect();
-
-            // This ensures clicks work correctly on a zoomed timeline
             const clickX = e.clientX - rect.left + scrollableContainer.scrollLeft;
-
             updateVideoTime(pxToTime(clickX));
             setSelectedRegionId(null);
           }}>
@@ -430,7 +450,12 @@ export function Timeline({ videoRef }: { videoRef: React.RefObject<HTMLVideoElem
         </div>
 
         {/* Right trim handle */}
-        <div className="w-6 shrink-0 h-full bg-card flex items-center justify-center transition-colors cursor-ew-resize select-none border-l border-border/80 hover:bg-accent/50" onMouseDown={() => setIsDraggingRightStrip(true)}>
+        <div className="w-8 shrink-0 h-full bg-card flex items-center justify-center transition-colors cursor-ew-resize select-none border-l border-border/80 hover:bg-accent/50"
+          onMouseDown={() => {
+            wasPlayingRef.current = useEditorStore.getState().isPlaying;
+            if (wasPlayingRef.current) setPlaying(false);
+            setIsDraggingRightStrip(true);
+          }}>
           <FlipScissorsIcon className="text-muted-foreground size-4" />
         </div>
       </div>
