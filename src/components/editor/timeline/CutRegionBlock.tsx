@@ -1,4 +1,5 @@
 // src/components/editor/timeline/CutRegionBlock.tsx
+
 import { memo } from 'react';
 import { TimelineRegion, CutRegion } from '../../../store/editorStore';
 import { cn } from '../../../lib/utils';
@@ -24,19 +25,13 @@ export const CutRegionBlock = memo(({
   setRef
 }: CutRegionBlockProps) => {
   const isTrimRegion = !!region.trimType;
-  // A trim region cannot be moved, only resized from the inner handle.
   const canMove = isDraggable && !isTrimRegion;
-  // The left handle is disabled for the start trim, right handle for the end trim.
   const canResizeLeft = isDraggable && region.trimType !== 'start';
   const canResizeRight = isDraggable && region.trimType !== 'end';
 
   const handleMouseDown = (e: React.MouseEvent<HTMLDivElement>, type: 'move' | 'resize-left' | 'resize-right') => {
     e.stopPropagation();
     if (!isDraggable) return;
-
-    // Prevent moving trim regions
-    if (type === 'move' && !canMove) return;
-
     onMouseDown(e, region, type);
   };
 
@@ -45,42 +40,49 @@ export const CutRegionBlock = memo(({
       ref={setRef}
       data-region-id={region.id}
       className={cn(
-        'absolute h-14 flex items-center justify-center rounded-lg overflow-hidden',
-        'border-2 backdrop-blur-sm', // Add backdrop-blur for a nicer effect
-        canMove ? 'cursor-move' : 'cursor-default',
-        isSelected 
-          ? 'bg-destructive/20 border-destructive z-10' // Selected state: darker bg, solid border, higher z-index
-          : 'bg-destructive/10 border-destructive/30'  // Default state: semi-transparent bg and border
+        'absolute top-0 h-[90%]', // CHANGED: Fills the entire height of the timeline container
+        'bg-foreground/40 border-border/50',
+        isSelected
+          ? 'border-2 border-destructive z-10'
+          : 'border-transparent' // Use transparent border to avoid layout shift on selection
       )}
       style={{ left: `${left}px`, width: `${width}px` }}
-      onMouseDown={(e) => handleMouseDown(e, 'move')}
     >
-      {canResizeLeft && (
-        <div
-          className="absolute left-0 top-0 w-2 h-full cursor-ew-resize rounded-l-md flex items-center justify-center z-20"
-          onMouseDown={(e) => handleMouseDown(e, 'resize-left')}
-        >
-          <div className="w-0.5 h-1/2 bg-destructive/80 rounded-full" />
-        </div>
-      )}
+      {/* NEW: Inner container to vertically center the content in the original position */}
+      <div 
+        className={cn(
+          'relative w-full h-14 mt-[72px] flex items-center justify-center rounded-lg', // 72px = ruler height (48px) + top padding (24px)
+          canMove ? 'cursor-move' : 'cursor-default'
+        )}
+        onMouseDown={(e) => handleMouseDown(e, 'move')}
+      >
+        {canResizeLeft && (
+          <div
+            className="absolute left-0 top-0 w-2 h-full cursor-ew-resize rounded-l-md flex items-center justify-center z-20"
+            onMouseDown={(e) => handleMouseDown(e, 'resize-left')}
+          >
+            <div className="w-0.5 h-1/2 bg-destructive/80 rounded-full" />
+          </div>
+        )}
 
-      <div className="pointer-events-none flex items-center gap-2 px-2">
-        <Scissors className="w-4 h-4 text-destructive/80" />
-        {width > 80 && (
-          <span className="text-xs font-medium text-destructive/90 select-none">
-            {region.trimType ? `${region.trimType.charAt(0).toUpperCase() + region.trimType.slice(1)} Trim` : 'Cut'}
-          </span>
+        <div className="pointer-events-none flex items-center gap-2 px-2">
+          <Scissors className="w-4 h-4 text-white/70" />
+          {width > 80 && (
+            <span className="text-xs font-medium text-white/80 select-none">
+              {region.trimType ? `${region.trimType.charAt(0).toUpperCase() + region.trimType.slice(1)} Trim` : 'Cut'}
+            </span>
+          )}
+        </div>
+
+        {canResizeRight && (
+          <div
+            className="absolute right-0 top-0 w-2 h-full cursor-ew-resize rounded-r-md flex items-center justify-center z-20"
+            onMouseDown={(e) => handleMouseDown(e, 'resize-right')}
+          >
+            <div className="w-0.5 h-1/2 bg-destructive/80 rounded-full" />
+          </div>
         )}
       </div>
-
-      {canResizeRight && (
-        <div
-          className="absolute right-0 top-0 w-2 h-full cursor-ew-resize rounded-r-md flex items-center justify-center z-20"
-          onMouseDown={(e) => handleMouseDown(e, 'resize-right')}
-        >
-          <div className="w-0.5 h-1/2 bg-destructive/80 rounded-full" />
-        </div>
-      )}
     </div>
   );
 });

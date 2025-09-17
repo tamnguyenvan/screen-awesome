@@ -126,6 +126,12 @@ export function Timeline({ videoRef }: { videoRef: React.RefObject<HTMLVideoElem
     e.stopPropagation();
     setSelectedRegionId(region.id);
 
+    // Allow selection but prevent dragging the body of a trim region.
+    const isTrimRegion = (region as CutRegion).trimType !== undefined;
+    if (isTrimRegion && type === 'move') {
+      return;
+    }
+
     if (type === 'move' || type === 'resize-left') updateVideoTime(region.startTime);
     else if (type === 'resize-right') updateVideoTime(region.startTime + region.duration);
 
@@ -189,7 +195,7 @@ export function Timeline({ videoRef }: { videoRef: React.RefObject<HTMLVideoElem
         const rect = timelineRef.current.getBoundingClientRect();
         const timeAtMouse = pxToTime(Math.max(0, e.clientX - rect.left));
         let newPreview: CutRegion | null = null;
-        
+
         // FIX: Get latest duration directly from store to avoid stale state
         const currentDuration = useEditorStore.getState().duration;
 
@@ -281,8 +287,8 @@ export function Timeline({ videoRef }: { videoRef: React.RefObject<HTMLVideoElem
     };
   }, [
     // Dependencies remain mostly the same, as the logic inside now gets fresh state
-    draggingRegion, isDraggingPlayhead, isDraggingLeftStrip, isDraggingRightStrip, 
-    pxToTime, timeToPx, updateVideoTime, updateRegion, addCutRegion, 
+    draggingRegion, isDraggingPlayhead, isDraggingLeftStrip, isDraggingRightStrip,
+    pxToTime, timeToPx, updateVideoTime, updateRegion, addCutRegion,
     setPreviewCutRegion, deleteRegion, setCurrentTime, videoRef
   ]);
 
@@ -324,9 +330,12 @@ export function Timeline({ videoRef }: { videoRef: React.RefObject<HTMLVideoElem
   return (
     <div className="h-full flex flex-col bg-background p-4">
       <div className="h-full flex flex-row rounded-xl overflow-hidden shadow-sm bg-card border border-border/80">
+        {/* Left trim handle */}
         <div className="w-6 shrink-0 h-full bg-card flex items-center justify-center transition-colors cursor-ew-resize select-none border-r border-border/80 hover:bg-accent/50" onMouseDown={() => setIsDraggingLeftStrip(true)}>
           <Scissors size={16} className="text-muted-foreground" />
         </div>
+
+        {/* Main timeline area */}
         <div
           ref={containerRef}
           className="flex-1 overflow-x-auto overflow-y-hidden bg-card/50"
@@ -341,30 +350,47 @@ export function Timeline({ videoRef }: { videoRef: React.RefObject<HTMLVideoElem
             setSelectedRegionId(null);
           }}>
           <div ref={timelineRef} className="relative h-full min-w-full" style={{ width: `${timeToPx(duration)}px` }}>
+            {/* Layer 1: Ruler (Top, sticky) */}
+            {/* We render the ruler first, but its high z-index will keep it on top */}
             <Ruler ticks={rulerTicks} timeToPx={timeToPx} formatTime={formatTime} />
-            <div className="relative pt-6 space-y-4">
-              <div className="h-24 relative bg-gradient-to-b from-background/50 to-background/20">
-                {zoomRegions.map(region => (
-                  <ZoomRegionBlock key={region.id} region={region} left={timeToPx(region.startTime)} width={timeToPx(region.duration)} isSelected={selectedRegionId === region.id} onMouseDown={handleRegionMouseDown} setRef={el => regionRefs.current.set(region.id, el)} />
-                ))}
-                {allCutRegionsToRender.map(region => (
+
+            {/* Layer 2: Cut Regions (Full height overlays) */}
+            {/* These are rendered here to be positioned relative to timelineRef */}
+            <div className="absolute top-0 left-0 right-0 bottom-0 z-10 pointer-events-none">
+              {allCutRegionsToRender.map(region => (
+                <div key={region.id} className="pointer-events-auto">
                   <CutRegionBlock
-                    key={region.id}
                     region={region}
                     left={timeToPx(region.startTime)}
                     width={timeToPx(region.duration)}
                     isSelected={selectedRegionId === region.id}
-                    // The preview region is not draggable
                     isDraggable={region.id !== previewCutRegion?.id}
                     onMouseDown={handleRegionMouseDown}
                     setRef={el => regionRefs.current.set(region.id, el)}
                   />
+                </div>
+              ))}
+            </div>
+
+            {/* Layer 3: Zoom Region Tracks */}
+            <div className="relative pt-6 space-y-4 z-20">
+              <div className="h-24 relative bg-gradient-to-b from-background/50 to-background/20">
+                {zoomRegions.map(region => (
+                  <ZoomRegionBlock key={region.id} region={region} left={timeToPx(region.startTime)} width={timeToPx(region.duration)} isSelected={selectedRegionId === region.id} onMouseDown={handleRegionMouseDown} setRef={el => regionRefs.current.set(region.id, el)} />
                 ))}
               </div>
             </div>
-            {duration > 0 && <div ref={playheadRef} className="absolute top-0 bottom-0 z-30" style={{ transform: `translateX(${timeToPx(currentTime)}px)`, pointerEvents: "none" }}><Playhead height={timelineRef.current?.clientHeight ?? 200} isDragging={isDraggingPlayhead} onMouseDown={(e) => { e.stopPropagation(); setIsDraggingPlayhead(true); document.body.style.cursor = 'grabbing'; }} /></div>}
+
+            {/* Layer 4: Playhead (Always on top) */}
+            {duration > 0 &&
+              <div ref={playheadRef} className="absolute top-0 bottom-0 z-40" style={{ transform: `translateX(${timeToPx(currentTime)}px)`, pointerEvents: "none" }}>
+                <Playhead height={timelineRef.current?.clientHeight ?? 200} isDragging={isDraggingPlayhead} onMouseDown={(e) => { e.stopPropagation(); setIsDraggingPlayhead(true); document.body.style.cursor = 'grabbing'; }} />
+              </div>
+            }
           </div>
         </div>
+
+        {/* Right trim handle */}
         <div className="w-6 shrink-0 h-full bg-card flex items-center justify-center transition-colors cursor-ew-resize select-none border-l border-border/80 hover:bg-accent/50" onMouseDown={() => setIsDraggingRightStrip(true)}>
           <FlipScissorsIcon className="text-muted-foreground size-4" />
         </div>
