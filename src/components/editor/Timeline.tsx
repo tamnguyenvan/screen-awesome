@@ -124,14 +124,18 @@ export function Timeline({ videoRef }: { videoRef: React.RefObject<HTMLVideoElem
 
   const handleRegionMouseDown = useCallback((e: ReactMouseEvent<HTMLDivElement>, region: TimelineRegion, type: 'move' | 'resize-left' | 'resize-right') => {
     e.stopPropagation();
+    // Action 1: Always select the region on any mousedown
     setSelectedRegionId(region.id);
 
-    // Allow selection but prevent dragging the body of a trim region.
+    // Action 2: Conditionally start the drag operation
     const isTrimRegion = (region as CutRegion).trimType !== undefined;
     if (isTrimRegion && type === 'move') {
+      // If it's a trim region and the user tries to drag its body,
+      // we just select it (done above) and do nothing else.
       return;
     }
 
+    // For all other cases (moving a normal region, resizing any region), proceed to set up the drag.
     if (type === 'move' || type === 'resize-left') updateVideoTime(region.startTime);
     else if (type === 'resize-right') updateVideoTime(region.startTime + region.duration);
 
@@ -201,11 +205,17 @@ export function Timeline({ videoRef }: { videoRef: React.RefObject<HTMLVideoElem
 
         if (isDraggingLeftStrip) {
           const duration = Math.min(timeAtMouse, currentDuration);
-          newPreview = { id: 'preview-cut-left', type: 'cut', startTime: 0, duration: duration, trimType: 'start' };
+          newPreview = {
+            id: 'preview-cut-left', type: 'cut', startTime: 0, duration,
+            trimType: 'start', zIndex: 0
+          };
         } else {
           const startTime = Math.max(0, timeAtMouse);
           const duration = currentDuration - startTime;
-          newPreview = { id: 'preview-cut-right', type: 'cut', startTime, duration: duration, trimType: 'end' };
+          newPreview = {
+            id: 'preview-cut-right', type: 'cut', startTime, duration,
+            trimType: 'end', zIndex: 0
+          };
         }
         // Hide the preview if it's too small, providing instant visual feedback
         setPreviewCutRegion(newPreview.duration >= MINIMUM_REGION_DURATION ? newPreview : null);
@@ -350,34 +360,55 @@ export function Timeline({ videoRef }: { videoRef: React.RefObject<HTMLVideoElem
             setSelectedRegionId(null);
           }}>
           <div ref={timelineRef} className="relative h-full min-w-full" style={{ width: `${timeToPx(duration)}px` }}>
-            {/* Layer 1: Ruler (Top, sticky) */}
-            {/* We render the ruler first, but its high z-index will keep it on top */}
             <Ruler ticks={rulerTicks} timeToPx={timeToPx} formatTime={formatTime} />
 
             {/* Layer 2: Cut Regions (Full height overlays) */}
             {/* These are rendered here to be positioned relative to timelineRef */}
-            <div className="absolute top-0 left-0 right-0 bottom-0 z-10 pointer-events-none">
-              {allCutRegionsToRender.map(region => (
-                <div key={region.id} className="pointer-events-auto">
-                  <CutRegionBlock
-                    region={region}
-                    left={timeToPx(region.startTime)}
-                    width={timeToPx(region.duration)}
-                    isSelected={selectedRegionId === region.id}
-                    isDraggable={region.id !== previewCutRegion?.id}
-                    onMouseDown={handleRegionMouseDown}
-                    setRef={el => regionRefs.current.set(region.id, el)}
-                  />
-                </div>
-              ))}
+            <div className="absolute top-0 left-0 right-0 bottom-0 pointer-events-none">
+              {allCutRegionsToRender.map(region => {
+                const isTrim = region.trimType !== undefined;
+                // zIndex logic: trim regions are lowest, selected is highest, others by creation order.
+                const z = isTrim ? 10 : (region.id === selectedRegionId ? 39 : 15 + ((region as CutRegion).zIndex ?? 0));
+
+                return (
+                  <div
+                    key={region.id}
+                    className="absolute top-0 h-full pointer-events-auto"
+                    style={{ left: `${timeToPx(region.startTime)}px`, width: `${timeToPx(region.duration)}px`, zIndex: z }}
+                  >
+                    <CutRegionBlock
+                      region={region}
+                      isSelected={selectedRegionId === region.id}
+                      isDraggable={region.id !== previewCutRegion?.id}
+                      onMouseDown={handleRegionMouseDown}
+                      setRef={el => regionRefs.current.set(region.id, el)}
+                    />
+                  </div>
+                );
+              })}
             </div>
 
             {/* Layer 3: Zoom Region Tracks */}
-            <div className="relative pt-6 space-y-4 z-20">
+            <div className="relative pt-6 space-y-4">
               <div className="h-24 relative bg-gradient-to-b from-background/50 to-background/20">
-                {zoomRegions.map(region => (
-                  <ZoomRegionBlock key={region.id} region={region} left={timeToPx(region.startTime)} width={timeToPx(region.duration)} isSelected={selectedRegionId === region.id} onMouseDown={handleRegionMouseDown} setRef={el => regionRefs.current.set(region.id, el)} />
-                ))}
+                {zoomRegions.map(region => {
+                  // zIndex logic: selected is highest, others by creation order.
+                  const z = region.id === selectedRegionId ? 39 : 15 + region.zIndex;
+                  return (
+                    <div
+                      key={region.id}
+                      className="absolute h-14"
+                      style={{ left: `${timeToPx(region.startTime)}px`, width: `${timeToPx(region.duration)}px`, zIndex: z }}
+                    >
+                      <ZoomRegionBlock
+                        region={region}
+                        isSelected={selectedRegionId === region.id}
+                        onMouseDown={handleRegionMouseDown}
+                        setRef={el => regionRefs.current.set(region.id, el)}
+                      />
+                    </div>
+                  );
+                })}
               </div>
             </div>
 

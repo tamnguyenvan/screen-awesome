@@ -35,8 +35,9 @@ export interface ZoomRegion {
   duration: number;
   zoomLevel: number;
   easing: 'linear' | 'ease-in-out';
-  targetX: number; // Click position X (absolute pixels)
-  targetY: number; // Click position Y (absolute pixels)
+  targetX: number;
+  targetY: number;
+  zIndex: number; // ADD THIS
 }
 
 export interface CutRegion {
@@ -45,6 +46,7 @@ export interface CutRegion {
   startTime: number;
   duration: number;
   trimType?: 'start' | 'end';
+  zIndex: number;
 }
 
 export type TimelineRegion = ZoomRegion | CutRegion;
@@ -78,6 +80,7 @@ interface EditorState {
   isCurrentlyCut: boolean;
   theme: 'light' | 'dark';
   timelineZoom: number;
+  nextZIndex: number,
 }
 
 // --- Actions ---
@@ -121,6 +124,7 @@ const initialState: Omit<EditorState, 'frameStyles'> = {
   isCurrentlyCut: false,
   theme: 'light',
   timelineZoom: 1,
+  nextZIndex: 1,
 };
 
 const initialFrameStyles: FrameStyles = {
@@ -193,11 +197,15 @@ export const useEditorStore = create(
             easing: 'ease-in-out',
             targetX: firstClick.x,
             targetY: firstClick.y,
+            zIndex: index + 1,
           };
           return acc;
         }, {} as Record<string, ZoomRegion>);
 
-        set(state => { state.zoomRegions = newZoomRegions; });
+        set(state => {
+          state.zoomRegions = newZoomRegions;
+          state.nextZIndex = mergedClickGroups.length + 1;
+        });
 
       } catch (error) {
         console.error("Failed to process metadata file:", error);
@@ -253,6 +261,7 @@ export const useEditorStore = create(
     addZoomRegion: () => {
       const lastMousePos = get().metadata.find(m => m.timestamp <= get().currentTime);
       const id = `zoom-${Date.now()}`;
+      const zIndex = get().nextZIndex; // GET CURRENT Z-INDEX
       const newRegion: ZoomRegion = {
         id,
         type: 'zoom',
@@ -262,20 +271,31 @@ export const useEditorStore = create(
         easing: 'ease-in-out',
         targetX: lastMousePos?.x || get().videoDimensions.width / 2,
         targetY: lastMousePos?.y || get().videoDimensions.height / 2,
+        zIndex, // ASSIGN Z-INDEX
       };
-      set(state => { state.zoomRegions[id] = newRegion; });
+      set(state => {
+        state.zoomRegions[id] = newRegion;
+        state.nextZIndex++; // INCREMENT FOR NEXT REGION
+      });
     },
 
     addCutRegion: (regionData) => {
       const id = `cut-${Date.now()}`;
+      const zIndex = get().nextZIndex; // GET CURRENT Z-INDEX
       const newRegion: CutRegion = {
         id,
         type: 'cut',
         startTime: get().currentTime,
         duration: 2,
+        zIndex, // ASSIGN Z-INDEX
         ...regionData,
       };
-      set(state => { state.cutRegions[id] = newRegion; });
+      set(state => {
+        state.cutRegions[id] = newRegion;
+        if (!regionData?.trimType) { // Don't increment zIndex for trim regions
+          state.nextZIndex++; // INCREMENT FOR NEXT REGION
+        }
+      });
     },
 
     updateRegion: (id, updates) => set(state => {
@@ -314,7 +334,7 @@ export const useFrameStyles = () => useEditorStore(useShallow(state => state.fra
 
 // CORRECTED HOOK
 export const useAllRegions = () => useEditorStore(useShallow(state => ({
-    // Return the original objects, which are stable references
-    zoomRegions: state.zoomRegions,
-    cutRegions: state.cutRegions,
+  // Return the original objects, which are stable references
+  zoomRegions: state.zoomRegions,
+  cutRegions: state.cutRegions,
 })));
