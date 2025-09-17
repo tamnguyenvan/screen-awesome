@@ -12,7 +12,8 @@ interface RegionSettingsPanelProps {
 }
 
 export function RegionSettingsPanel({ region }: RegionSettingsPanelProps) {
-  const { updateRegion, deleteRegion, setSelectedRegionId } = useEditorStore();
+  // OPTIMIZATION: Actions don't cause re-renders, so we get them directly from the store's state
+  const { updateRegion, deleteRegion } = useEditorStore.getState();
 
   const handleValueChange = (name: string, value: string | number) => {
     const finalValue = typeof value === 'string' ? parseFloat(value) : value;
@@ -21,7 +22,7 @@ export function RegionSettingsPanel({ region }: RegionSettingsPanelProps) {
   
   const handleDelete = () => {
     deleteRegion(region.id);
-    setSelectedRegionId(null);
+    // Note: setSelectedRegionId(null) is now handled inside deleteRegion to avoid stale selections
   }
 
   const RegionIcon = region.type === 'zoom' ? Camera : Scissors;
@@ -114,7 +115,7 @@ export function RegionSettingsPanel({ region }: RegionSettingsPanelProps) {
             
             <Select 
               value={region.easing} 
-              onValueChange={(value) => handleValueChange('easing', value)}
+              onValueChange={(value) => updateRegion(region.id, { easing: value as 'linear' | 'ease-in-out' })}
             >
               <SelectTrigger label="Animation">
                 <SelectValue placeholder="Select animation type" />

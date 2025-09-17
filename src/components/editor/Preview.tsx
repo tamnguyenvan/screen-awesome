@@ -1,13 +1,10 @@
 // src/components/editor/Preview.tsx
 
-import React, { useEffect, useMemo, useRef } from 'react';
-import { useEditorStore } from '../../store/editorStore';
+import React, { useEffect, useMemo, useRef, memo } from 'react';
+import { useEditorStore, usePlaybackState } from '../../store/editorStore';
 import { calculateZoomTransform } from '../../lib/transform';
 import { Film } from 'lucide-react';
-
-interface PreviewProps {
-  videoRef: React.RefObject<HTMLVideoElement>;
-}
+import { useShallow } from 'zustand/react/shallow';
 
 const generateBackgroundStyle = (backgroundState: ReturnType<typeof useEditorStore.getState>['frameStyles']['background']) => {
   switch (backgroundState.type) {
@@ -34,12 +31,26 @@ const generateBackgroundStyle = (backgroundState: ReturnType<typeof useEditorSto
   }
 };
 
-export function Preview({ videoRef }: PreviewProps) {
-  const {
-    frameStyles, videoUrl, isPlaying, cutRegions, setPlaying,
-    setCurrentTime, setDuration, aspectRatio, setVideoDimensions,
-    videoDimensions, isCurrentlyCut
-  } = useEditorStore();
+// OPTIMIZATION: Memoize the Preview component to prevent re-renders from unrelated state changes
+export const Preview = memo(({ videoRef }: { videoRef: React.RefObject<HTMLVideoElement> }) => {
+  // Select all state values
+  const { frameStyles, videoUrl, aspectRatio, videoDimensions, cutRegions } = useEditorStore(
+    useShallow(state => ({
+      frameStyles: state.frameStyles,
+      videoUrl: state.videoUrl,
+      aspectRatio: state.aspectRatio,
+      videoDimensions: state.videoDimensions,
+      cutRegions: state.cutRegions,
+    })));
+  const { setPlaying, setCurrentTime, setDuration, setVideoDimensions } = useEditorStore(
+    useShallow(state => ({
+      setPlaying: state.setPlaying,
+      setCurrentTime: state.setCurrentTime,
+      setDuration: state.setDuration,
+      setVideoDimensions: state.setVideoDimensions,
+    })));
+  // OPTIMIZATION: Use specialized hook for playback state
+  const { isPlaying, isCurrentlyCut } = usePlaybackState();
 
   const transformContainerRef = useRef<HTMLDivElement>(null);
 
@@ -48,14 +59,12 @@ export function Preview({ videoRef }: PreviewProps) {
 
     const updateTransform = () => {
       if (!transformContainerRef.current || !videoRef.current) return;
-
       const liveCurrentTime = videoRef.current.currentTime;
       const { scale, translateX, translateY } = calculateZoomTransform(liveCurrentTime);
-
       transformContainerRef.current.style.transform = `scale(${scale}) translate(${translateX}%, ${translateY}%)`;
     };
 
-    updateTransform();
+    updateTransform(); // Initial update
 
     const animate = () => {
       updateTransform();
@@ -66,9 +75,7 @@ export function Preview({ videoRef }: PreviewProps) {
       animate();
     }
 
-    return () => {
-      cancelAnimationFrame(animationFrameId);
-    };
+    return () => cancelAnimationFrame(animationFrameId);
   }, [isPlaying, videoRef]);
 
   useEffect(() => {
@@ -82,12 +89,10 @@ export function Preview({ videoRef }: PreviewProps) {
     if (!video) return;
 
     if (isPlaying && isCurrentlyCut) {
-      const { cutRegions } = useEditorStore.getState();
-
-      const activeCutRegion = cutRegions.find(
+      const allCutRegions = Object.values(useEditorStore.getState().cutRegions);
+      const activeCutRegion = allCutRegions.find(
         r => video.currentTime >= r.startTime && video.currentTime < (r.startTime + r.duration)
       );
-
       if (activeCutRegion) {
         console.log(`Skipping cut region, jumping to ${activeCutRegion.startTime + activeCutRegion.duration}`);
         video.currentTime = activeCutRegion.startTime + activeCutRegion.duration;
@@ -98,61 +103,34 @@ export function Preview({ videoRef }: PreviewProps) {
 
   const backgroundStyle = useMemo(() => generateBackgroundStyle(frameStyles.background), [frameStyles.background]);
   const cssAspectRatio = useMemo(() => aspectRatio.replace(':', ' / '), [aspectRatio]);
-
   const videoAspectRatio = useMemo(() => {
     if (videoDimensions.height === 0) return 16 / 9;
     return videoDimensions.width / videoDimensions.height;
   }, [videoDimensions]);
 
   const handleTimeUpdate = () => {
-    if (videoRef.current) {
-      // Tìm end trim region, nếu có
-      const endTrimRegion = cutRegions.find(r => r.trimType === 'end');
-
-      if (endTrimRegion && videoRef.current.currentTime >= endTrimRegion.startTime) {
-        // Đã đến điểm cần dừng phát
-        // Giới hạn thời gian của video đúng bằng điểm bắt đầu của trim region
-        videoRef.current.currentTime = endTrimRegion.startTime;
-
-        // Dừng video. Trình xử lý onPause trên thẻ <video>
-        // sẽ tự động cập nhật trạng thái isPlaying trong store.
-        videoRef.current.pause();
-      }
-
-      setCurrentTime(videoRef.current.currentTime);
+    if (!videoRef.current) return;
+    const endTrimRegion = Object.values(cutRegions).find(r => r.trimType === 'end');
+    if (endTrimRegion && videoRef.current.currentTime >= endTrimRegion.startTime) {
+      videoRef.current.currentTime = endTrimRegion.startTime;
+      videoRef.current.pause();
     }
+    setCurrentTime(videoRef.current.currentTime);
   };
 
   const handleLoadedMetadata = () => {
     if (videoRef.current) {
       setDuration(videoRef.current.duration);
-      setVideoDimensions({
-        width: videoRef.current.videoWidth,
-        height: videoRef.current.videoHeight
-      });
+      setVideoDimensions({ width: videoRef.current.videoWidth, height: videoRef.current.videoHeight });
     }
   };
-
-  const handlePlay = () => setPlaying(true);
-  const handlePause = () => setPlaying(false);
 
   return (
     <div
       className="transition-all duration-300 ease-out flex items-center justify-center relative overflow-hidden shadow-lg"
-      style={{
-        ...backgroundStyle,
-        aspectRatio: cssAspectRatio,
-        height: '100%',
-        maxWidth: '100%',
-        maxHeight: '100%',
-      }}
+      style={{ ...backgroundStyle, aspectRatio: cssAspectRatio, height: '100%', maxWidth: '100%', maxHeight: '100%' }}
     >
-      <div
-        className="w-full h-full flex items-center justify-center relative"
-        style={{
-          padding: `${frameStyles.padding}%`,
-        }}
-      >
+      <div className="w-full h-full flex items-center justify-center relative" style={{ padding: `${frameStyles.padding}%` }}>
         {videoUrl ? (
           <div
             ref={transformContainerRef}
@@ -160,12 +138,8 @@ export function Preview({ videoRef }: PreviewProps) {
             style={{
               aspectRatio: videoAspectRatio,
               borderRadius: `${frameStyles.borderRadius}px`,
-              boxShadow: frameStyles.shadow > 0
-                ? `0 ${frameStyles.shadow}px ${frameStyles.shadow * 2}px rgba(0,0,0,0.${Math.min(frameStyles.shadow * 2, 50)})`
-                : 'none',
-              border: frameStyles.borderWidth > 0
-                ? `${frameStyles.borderWidth}px solid ${frameStyles.borderColor}`
-                : 'none',
+              boxShadow: frameStyles.shadow > 0 ? `0 ${frameStyles.shadow}px ${frameStyles.shadow * 2}px rgba(0,0,0,0.${Math.min(frameStyles.shadow * 2, 50)})` : 'none',
+              border: frameStyles.borderWidth > 0 ? `${frameStyles.borderWidth}px solid ${frameStyles.borderColor}` : 'none',
               overflow: 'hidden',
             }}
           >
@@ -175,13 +149,13 @@ export function Preview({ videoRef }: PreviewProps) {
               className="w-full h-full object-cover"
               onTimeUpdate={handleTimeUpdate}
               onLoadedMetadata={handleLoadedMetadata}
-              onPlay={handlePlay}
-              onPause={handlePause}
-              onEnded={handlePause}
+              onPlay={() => setPlaying(true)}
+              onPause={() => setPlaying(false)}
+              onEnded={() => setPlaying(false)}
             />
           </div>
         ) : (
-          <div className="w-full h-full bg-muted/10 border-2 border-dashed border-border/50 rounded-xl flex flex-col items-center justify-center text-muted-foreground gap-4 transition-all duration-200 hover:border-border/80">
+          <div className="w-full h-full bg-muted/10 border-2 border-dashed border-border/50 rounded-xl flex flex-col items-center justify-center text-muted-foreground gap-4">
             <div className="w-16 h-16 rounded-full bg-primary/10 flex items-center justify-center">
               <Film className="w-8 h-8 text-primary/70" />
             </div>
@@ -194,4 +168,5 @@ export function Preview({ videoRef }: PreviewProps) {
       </div>
     </div>
   );
-}
+});
+Preview.displayName = 'Preview';

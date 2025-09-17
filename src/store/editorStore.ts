@@ -2,6 +2,7 @@
 
 import { create } from 'zustand';
 import { immer } from 'zustand/middleware/immer';
+import { useShallow } from 'zustand/react/shallow';
 import { WALLPAPERS } from '../lib/constants';
 
 // --- Types ---
@@ -27,7 +28,6 @@ interface FrameStyles {
   borderColor: string;
 }
 
-// Thêm targetX và targetY
 export interface ZoomRegion {
   id: string;
   type: 'zoom';
@@ -35,8 +35,8 @@ export interface ZoomRegion {
   duration: number;
   zoomLevel: number;
   easing: 'linear' | 'ease-in-out';
-  targetX: number; // Click position X (0 to 1)
-  targetY: number; // Click position Y (0 to 1)
+  targetX: number; // Click position X (absolute pixels)
+  targetY: number; // Click position Y (absolute pixels)
 }
 
 export interface CutRegion {
@@ -49,7 +49,6 @@ export interface CutRegion {
 
 export type TimelineRegion = ZoomRegion | CutRegion;
 
-// Define metadata type
 interface MetaDataItem {
   timestamp: number;
   x: number;
@@ -71,8 +70,8 @@ interface EditorState {
   isPlaying: boolean;
   frameStyles: FrameStyles;
   aspectRatio: AspectRatio;
-  zoomRegions: ZoomRegion[];
-  cutRegions: CutRegion[];
+  zoomRegions: Record<string, ZoomRegion>; // OPTIMIZATION: Array -> Record
+  cutRegions: Record<string, CutRegion>;   // OPTIMIZATION: Array -> Record
   previewCutRegion: CutRegion | null;
   selectedRegionId: string | null;
   activeZoomRegionId: string | null;
@@ -114,8 +113,8 @@ const initialState: Omit<EditorState, 'frameStyles'> = {
   currentTime: 0,
   isPlaying: false,
   aspectRatio: '16:9',
-  zoomRegions: [],
-  cutRegions: [],
+  zoomRegions: {}, // OPTIMIZATION: Init as empty object
+  cutRegions: {},   // OPTIMIZATION: Init as empty object
   previewCutRegion: null,
   selectedRegionId: null,
   activeZoomRegionId: null,
@@ -158,16 +157,12 @@ export const useEditorStore = create(
       try {
         const metadataContent = await window.electronAPI.readFile(metadataPath);
         const metadata: MetaDataItem[] = JSON.parse(metadataContent);
-
-        // Convert timestamp from ms to s
         const processedMetadata = metadata.map(item => ({ ...item, timestamp: item.timestamp / 1000 }));
         set(state => { state.metadata = processedMetadata });
 
         const clicks = processedMetadata.filter(item => item.type === 'click' && item.pressed);
-
         if (clicks.length === 0) return;
 
-        // Logic to merge clicks that are close to each other
         const mergedClickGroups: MetaDataItem[][] = [];
         if (clicks.length > 0) {
           let currentGroup = [clicks[0]];
@@ -182,28 +177,27 @@ export const useEditorStore = create(
           mergedClickGroups.push(currentGroup);
         }
 
-        const newZoomRegions: ZoomRegion[] = mergedClickGroups.map((group, index) => {
+        const newZoomRegions: Record<string, ZoomRegion> = mergedClickGroups.reduce((acc, group, index) => {
           const firstClick = group[0];
           const lastClick = group[group.length - 1];
+          const startTime = Math.max(0, firstClick.timestamp - 0.25);
+          const duration = Math.max(3, (lastClick.timestamp - firstClick.timestamp) + 0.75);
+          const id = `auto-zoom-${Date.now()}-${index}`;
 
-          const startTime = firstClick.timestamp - 0.25; // Start zoom before click
-          const duration = (lastClick.timestamp - firstClick.timestamp) + 0.75; // Time from first click to last click + add 0.25s at start and 0.5s at end
-
-          return {
-            id: `auto-zoom-${Date.now()}-${index}`,
+          acc[id] = {
+            id,
             type: 'zoom',
-            startTime: Math.max(0, startTime),
-            duration: Math.max(3, duration),
+            startTime,
+            duration,
             zoomLevel: 2.0,
             easing: 'ease-in-out',
             targetX: firstClick.x,
             targetY: firstClick.y,
           };
-        });
+          return acc;
+        }, {} as Record<string, ZoomRegion>);
 
-        set(state => {
-          state.zoomRegions = newZoomRegions;
-        });
+        set(state => { state.zoomRegions = newZoomRegions; });
 
       } catch (error) {
         console.error("Failed to process metadata file:", error);
@@ -213,66 +207,44 @@ export const useEditorStore = create(
     setVideoDimensions: (dims) => set(state => { state.videoDimensions = dims }),
 
     setDuration: (duration) => set(state => { state.duration = duration; }),
+
     setCurrentTime: (time) => set(state => {
       state.currentTime = time;
+      const allZoomRegions = Object.values(state.zoomRegions);
+      const allCutRegions = Object.values(state.cutRegions);
 
-      // --- Logic for Zoom Region ---
-      const activeRegion = state.zoomRegions.find(r => r.id === state.activeZoomRegionId);
+      const newActiveRegion = allZoomRegions.find(r => time >= r.startTime && time < r.startTime + r.duration);
+      state.activeZoomRegionId = newActiveRegion?.id ?? null;
 
-      // If time still within the active region, do nothing
-      if (activeRegion && time >= activeRegion.startTime && time <= activeRegion.startTime + activeRegion.duration) {
-        // Still in the old region, but need to check cut logic
-      } else {
-        // otherwise, find new region
-        const newActiveRegion = state.zoomRegions.find(
-          r => time >= r.startTime && time <= r.startTime + r.duration
-        );
-        state.activeZoomRegionId = newActiveRegion ? newActiveRegion.id : null;
-      }
-
-      // --- Logic for Cut Region ---
-      const activeCutRegion = state.cutRegions.find(
-        r => time >= r.startTime && time <= r.startTime + r.duration
-      );
-      state.isCurrentlyCut = !!activeCutRegion; // Set boolean flag
+      const activeCutRegion = allCutRegions.find(r => time >= r.startTime && time < r.startTime + r.duration);
+      state.isCurrentlyCut = !!activeCutRegion;
     }),
+
     togglePlay: () => set(state => { state.isPlaying = !state.isPlaying; }),
     setPlaying: (isPlaying) => set(state => { state.isPlaying = isPlaying; }),
 
-    updateFrameStyle: (style) => set(state => {
-      Object.assign(state.frameStyles, style);
-    }),
+    updateFrameStyle: (style) => set(state => { Object.assign(state.frameStyles, style); }),
 
     updateBackground: (bg) => set((state) => {
       const currentBg = state.frameStyles.background;
-
       if (!bg.type || bg.type === currentBg.type) {
         Object.assign(state.frameStyles.background, bg);
         return;
       }
-
       const newBackgroundState: Background = { type: bg.type };
-
       switch (bg.type) {
-        case 'color':
-          newBackgroundState.color = '#ffffff';
-          break;
+        case 'color': newBackgroundState.color = '#ffffff'; break;
         case 'gradient':
           newBackgroundState.gradientStart = currentBg.gradientStart || '#6366f1';
           newBackgroundState.gradientEnd = currentBg.gradientEnd || '#9ca9ff';
           newBackgroundState.gradientDirection = currentBg.gradientDirection || 'to bottom right';
           break;
         case 'image':
-          // Set default to first wallpaper
-          newBackgroundState.imageUrl = WALLPAPERS[0].imageUrl;
-          newBackgroundState.thumbnailUrl = WALLPAPERS[0].thumbnailUrl;
-          break;
         case 'wallpaper':
           newBackgroundState.imageUrl = WALLPAPERS[0].imageUrl;
           newBackgroundState.thumbnailUrl = WALLPAPERS[0].thumbnailUrl;
           break;
       }
-
       state.frameStyles.background = newBackgroundState;
     }),
 
@@ -280,8 +252,9 @@ export const useEditorStore = create(
 
     addZoomRegion: () => {
       const lastMousePos = get().metadata.find(m => m.timestamp <= get().currentTime);
+      const id = `zoom-${Date.now()}`;
       const newRegion: ZoomRegion = {
-        id: `zoom-${Date.now()}`,
+        id,
         type: 'zoom',
         startTime: get().currentTime,
         duration: 3,
@@ -290,48 +263,58 @@ export const useEditorStore = create(
         targetX: lastMousePos?.x || get().videoDimensions.width / 2,
         targetY: lastMousePos?.y || get().videoDimensions.height / 2,
       };
-      set(state => {
-        state.zoomRegions.push(newRegion);
-      });
+      set(state => { state.zoomRegions[id] = newRegion; });
     },
 
     addCutRegion: (regionData) => {
+      const id = `cut-${Date.now()}`;
       const newRegion: CutRegion = {
-        id: `cut-${Date.now()}`,
+        id,
         type: 'cut',
         startTime: get().currentTime,
         duration: 2,
-        ...regionData, // Ghi đè bằng dữ liệu được truyền vào
+        ...regionData,
       };
-      set(state => {
-        state.cutRegions.push(newRegion);
-      });
+      set(state => { state.cutRegions[id] = newRegion; });
     },
 
     updateRegion: (id, updates) => set(state => {
-      const region = state.zoomRegions.find(r => r.id === id) || state.cutRegions.find(r => r.id === id);
-      if (region) {
-        Object.assign(region, updates);
-      }
+      const region = state.zoomRegions[id] || state.cutRegions[id];
+      if (region) { Object.assign(region, updates); }
     }),
 
     deleteRegion: (id) => set(state => {
-      state.zoomRegions = state.zoomRegions.filter(r => r.id !== id);
-      state.cutRegions = state.cutRegions.filter(r => r.id !== id);
+      delete state.zoomRegions[id];
+      delete state.cutRegions[id];
+      if (state.selectedRegionId === id) {
+        state.selectedRegionId = null;
+      }
     }),
 
     setSelectedRegionId: (id) => set(state => { state.selectedRegionId = id; }),
-    toggleTheme: () => set(state => {
-      state.theme = state.theme === 'dark' ? 'light' : 'dark';
-    }),
-    setPreviewCutRegion: (region) => set(state => {
-      state.previewCutRegion = region;
-    }),
+    toggleTheme: () => set(state => { state.theme = state.theme === 'dark' ? 'light' : 'dark'; }),
+    setPreviewCutRegion: (region) => set(state => { state.previewCutRegion = region; }),
     setTimelineZoom: (zoom) => set(state => { state.timelineZoom = zoom; }),
-
     reset: () => set(state => {
       Object.assign(state, initialState);
       state.frameStyles = initialFrameStyles;
     }),
   }))
 );
+
+// --- OPTIMIZATION: Specialized hooks with selectors to prevent unnecessary re-renders ---
+export const usePlaybackState = () => useEditorStore(useShallow(state => ({
+  currentTime: state.currentTime,
+  duration: state.duration,
+  isPlaying: state.isPlaying,
+  isCurrentlyCut: state.isCurrentlyCut
+})));
+
+export const useFrameStyles = () => useEditorStore(useShallow(state => state.frameStyles));
+
+// CORRECTED HOOK
+export const useAllRegions = () => useEditorStore(useShallow(state => ({
+    // Return the original objects, which are stable references
+    zoomRegions: state.zoomRegions,
+    cutRegions: state.cutRegions,
+})));

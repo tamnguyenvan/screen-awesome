@@ -1,92 +1,106 @@
 // src/components/editor/Timeline.tsx
 import React, {
   useRef, useState, MouseEvent as ReactMouseEvent,
-  useEffect, useCallback, useMemo
+  useEffect, useCallback, useMemo, memo
 } from 'react';
-import { useEditorStore, TimelineRegion, CutRegion } from '../../store/editorStore';
+import { useShallow } from 'zustand/react/shallow';
+import { useEditorStore, TimelineRegion, CutRegion, useAllRegions } from '../../store/editorStore';
 import { ZoomRegionBlock } from './timeline/ZoomRegionBlock';
 import { CutRegionBlock } from './timeline/CutRegionBlock';
 import { Playhead } from './timeline/Playhead';
-
 import { cn } from '../../lib/utils';
 import { Scissors } from 'lucide-react';
 
 const MINIMUM_REGION_DURATION = 0.1; // 100ms
+const REGION_DELETE_THRESHOLD = 0.05; // 50ms - Regions smaller than this on mouse up are deleted.
 
-
-interface TimelineProps {
-  videoRef: React.RefObject<HTMLVideoElement>;
-}
-// Hàm mới: Tính toán khoảng cách vạch chia thước đo thông minh
 const calculateRulerInterval = (duration: number): { major: number; minor: number } => {
   if (duration <= 0) return { major: 1, minor: 0.5 };
-
-  const targetMajorTicks = 10; // Số lượng vạch chính mong muốn
+  const targetMajorTicks = 10;
   const roughInterval = duration / targetMajorTicks;
-
-  // Các khoảng "đẹp": 0.1s, 0.5s, 1s, 2s, 5s, 10s, 15s, 30s, 1m, 2m, 5m...
   const niceIntervals = [0.1, 0.2, 0.5, 1, 2, 5, 10, 15, 30, 60, 120, 300, 600];
-
   const major = niceIntervals.find(i => i >= roughInterval) || niceIntervals[niceIntervals.length - 1];
-  const minor = major / (major > 1 ? 5 : 2); // Chia nhỏ hơn cho các khoảng lớn
-
+  const minor = major / (major > 1 ? 5 : 2);
   return { major, minor };
 };
 
-export function Timeline({ videoRef }: TimelineProps) {
-  const {
-    isPlaying,
-    currentTime,
-    duration,
-    timelineZoom,
-    zoomRegions,
-    cutRegions,
-    previewCutRegion,
-    selectedRegionId,
-    addCutRegion,
-    deleteRegion,
-    setPreviewCutRegion,
-    updateRegion,
-    setCurrentTime,
-    setSelectedRegionId,
-  } = useEditorStore();
+// OPTIMIZATION: Memoized Ruler component to prevent re-rendering on every playhead move
+const Ruler = memo(({ ticks, timeToPx, formatTime }: {
+  ticks: { time: number; type: string }[];
+  timeToPx: (time: number) => number;
+  formatTime: (seconds: number) => string;
+}) => (
+  <div className="h-12 sticky top-0 left-0 right-0 z-10 border-b-2 border-border/60 bg-gradient-to-b from-muted/80 to-muted/40">
+    {ticks.map(({ time, type }) => (
+      <div
+        key={`tick-${time}`}
+        className="absolute top-0 flex flex-col items-center group"
+        style={{ left: `${timeToPx(time)}px` }}
+      >
+        <div className={cn("bg-foreground/70 transition-all", type === 'major' ? 'w-0.5 h-6' : 'w-px h-3')} />
+        {type === 'major' && (
+          <span className="text-xs text-foreground/90 font-mono font-medium -translate-x-1/2">
+            {formatTime(time)}
+          </span>
+        )}
+      </div>
+    ))}
+  </div>
+));
+Ruler.displayName = 'Ruler';
+
+const FlipScissorsIcon = (props: React.SVGProps<SVGSVGElement>) => (
+  <svg xmlns="http://www.w3.org/2000/svg" width={24} height={24} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} strokeLinecap="round" strokeLinejoin="round" {...props} >
+    <g transform="translate(24,0) scale(-1,1)">
+      <circle cx={6} cy={6} r={3} /> <path d="M8.12 8.12 12 12" /> <path d="M20 4 8.12 15.88" /> <circle cx={6} cy={18} r={3} /> <path d="M14.8 14.8 20 20" />
+    </g>
+  </svg>
+);
+
+
+export function Timeline({ videoRef }: { videoRef: React.RefObject<HTMLVideoElement> }) {
+  // Select all state values
+  const { currentTime, duration, timelineZoom, previewCutRegion, selectedRegionId, isPlaying } = useEditorStore(
+    useShallow(state => ({
+      currentTime: state.currentTime,
+      duration: state.duration,
+      timelineZoom: state.timelineZoom,
+      previewCutRegion: state.previewCutRegion,
+      selectedRegionId: state.selectedRegionId,
+      isPlaying: state.isPlaying
+    }))
+  );
+
+  // Use specialized hook to subscribe only to region changes
+  const { zoomRegions: zoomRegionsMap, cutRegions: cutRegionsMap } = useAllRegions();
+
+  // Convert objects to arrays and memoize them
+  const zoomRegions = useMemo(() => Object.values(zoomRegionsMap), [zoomRegionsMap]);
+  const cutRegions = useMemo(() => Object.values(cutRegionsMap), [cutRegionsMap]);
+
+  // Select all actions
+  const { addCutRegion, deleteRegion, setPreviewCutRegion, updateRegion, setCurrentTime, setSelectedRegionId } = useEditorStore(
+    useShallow(state => ({
+      addCutRegion: state.addCutRegion,
+      deleteRegion: state.deleteRegion,
+      setPreviewCutRegion: state.setPreviewCutRegion,
+      updateRegion: state.updateRegion,
+      setCurrentTime: state.setCurrentTime,
+      setSelectedRegionId: state.setSelectedRegionId
+    }))
+  );
+
   const containerRef = useRef<HTMLDivElement>(null);
   const timelineRef = useRef<HTMLDivElement>(null);
   const playheadRef = useRef<HTMLDivElement>(null);
-
   const regionRefs = useRef<Map<string, HTMLDivElement | null>>(new Map());
+  const animationFrameRef = useRef<number>();
 
-  const [draggingRegion, setDraggingRegion] = useState<{
-    id: string; type: 'move' | 'resize-left' | 'resize-right';
-    initialX: number; initialStartTime: number; initialDuration: number;
-  } | null>(null);
-
+  const [draggingRegion, setDraggingRegion] = useState<{ id: string; type: 'move' | 'resize-left' | 'resize-right'; initialX: number; initialStartTime: number; initialDuration: number; } | null>(null);
   const [isDraggingPlayhead, setIsDraggingPlayhead] = useState(false);
   const [containerWidth, setContainerWidth] = useState(0);
-
-  // Add these states to the component (before the return statement):
   const [isDraggingLeftStrip, setIsDraggingLeftStrip] = useState(false);
   const [isDraggingRightStrip, setIsDraggingRightStrip] = useState(false);
-
-  const handleLeftStripDrag = useCallback((e: ReactMouseEvent<HTMLDivElement>) => {
-    e.stopPropagation();
-    const existingStartTrim = cutRegions.find(r => r.trimType === 'start');
-    if (existingStartTrim) {
-      deleteRegion(existingStartTrim.id);
-    }
-    setIsDraggingLeftStrip(true);
-    document.body.style.cursor = 'grab';
-  }, [cutRegions, deleteRegion]);
-
-  const handleRightStripDrag = useCallback((e: ReactMouseEvent<HTMLDivElement>) => {
-    e.stopPropagation();
-    const existingEndTrim = cutRegions.find(r => r.trimType === 'end');
-    if (existingEndTrim) {
-      deleteRegion(existingEndTrim.id);
-    }
-    setIsDraggingRightStrip(true);
-    document.body.style.cursor = 'grab';
-  }, [cutRegions, deleteRegion]);
 
   useEffect(() => {
     if (containerRef.current) setContainerWidth(containerRef.current.clientWidth);
@@ -95,98 +109,49 @@ export function Timeline({ videoRef }: TimelineProps) {
     return () => observer.disconnect();
   }, []);
 
-  // --- LOGIC TÍNH TOÁN PIXEL MỚI ---
   const pixelsPerSecond = useMemo(() => {
-    if (duration === 0 || containerWidth === 0) {
-      return 200; // Giá trị mặc định khi chưa có video
-    }
-    // Ở 1x, timeline vừa khít container. Các mức zoom khác sẽ nhân lên.
-    const basePps = containerWidth / duration;
-    return basePps * timelineZoom;
+    if (duration === 0 || containerWidth === 0) return 200;
+    return (containerWidth / duration) * timelineZoom;
   }, [duration, containerWidth, timelineZoom]);
 
   const timeToPx = useCallback((time: number) => time * pixelsPerSecond, [pixelsPerSecond]);
   const pxToTime = useCallback((px: number) => px / pixelsPerSecond, [pixelsPerSecond]);
 
-  const totalWidthPx = duration * pixelsPerSecond;
-
-  // --- END LOGIC MỚI ---
-
-  // CHANGE START: Helper function to update video time cleanly
   const updateVideoTime = useCallback((time: number) => {
     const clampedTime = Math.max(0, Math.min(time, duration));
     setCurrentTime(clampedTime);
-    if (videoRef.current) {
-      videoRef.current.currentTime = clampedTime;
-    }
+    if (videoRef.current) videoRef.current.currentTime = clampedTime;
   }, [duration, setCurrentTime, videoRef]);
-  // CHANGE END
-
-  const handleTimelineClick = (e: ReactMouseEvent<HTMLDivElement>) => {
-    if (draggingRegion || isDraggingPlayhead || !timelineRef.current || duration === 0) return;
-    if ((e.target as HTMLElement).closest('[data-region-id]') || (e.target as HTMLElement).closest('[data-playhead-handle]')) return;
-    const rect = timelineRef.current.getBoundingClientRect();
-    const newTime = pxToTime(e.clientX - rect.left);
-    updateVideoTime(newTime); // Use helper
-    setSelectedRegionId(null);
-  };
 
   const handleRegionMouseDown = useCallback((e: ReactMouseEvent<HTMLDivElement>, region: TimelineRegion, type: 'move' | 'resize-left' | 'resize-right') => {
     e.stopPropagation();
     setSelectedRegionId(region.id);
 
-    // CHANGE START: Set playhead on initial click
-    // When resizing left, it feels better to snap to the left edge
-    // When resizing right, it feels better to snap to the right edge
-    if (type === 'move' || type === 'resize-left') {
-      updateVideoTime(region.startTime);
-    } else if (type === 'resize-right') {
-      updateVideoTime(region.startTime + region.duration);
-    }
-    // CHANGE END
+    if (type === 'move' || type === 'resize-left') updateVideoTime(region.startTime);
+    else if (type === 'resize-right') updateVideoTime(region.startTime + region.duration);
 
     document.body.style.cursor = type === 'move' ? 'grabbing' : 'ew-resize';
-    setDraggingRegion({
-      id: region.id, type,
-      initialX: e.clientX, initialStartTime: region.startTime, initialDuration: region.duration
-    });
-  }, [setSelectedRegionId, updateVideoTime]); // Add updateVideoTime to dependencies
+    setDraggingRegion({ id: region.id, type, initialX: e.clientX, initialStartTime: region.startTime, initialDuration: region.duration });
+  }, [setSelectedRegionId, updateVideoTime]);
 
-  const handlePlayheadMouseDown = (e: ReactMouseEvent<HTMLDivElement>) => {
-    e.stopPropagation();
-    setIsDraggingPlayhead(true);
-    document.body.style.cursor = 'grabbing';
-  };
+  const allRegions = useMemo(() => [...zoomRegions, ...cutRegions], [zoomRegions, cutRegions]);
 
-  // Format time as MM:SS or MM:MM:SS
-  const formatTime = (seconds: number): string => {
+  const formatTime = useCallback((seconds: number): string => {
     const hrs = Math.floor(seconds / 3600);
     const mins = Math.floor((seconds % 3600) / 60);
     const secs = Math.floor(seconds % 60);
-
-    if (hrs > 0) {
-      return `${hrs}:${String(mins).padStart(2, '0')}:${String(secs).padStart(2, '0')}`;
-    }
+    if (hrs > 0) return `${hrs}:${String(mins).padStart(2, '0')}:${String(secs).padStart(2, '0')}`;
     return `${String(mins).padStart(2, '0')}:${String(secs).padStart(2, '0')}`;
-  };
+  }, []);
 
-  // Memoize ruler ticks for performance
   const rulerTicks = useMemo(() => {
     if (duration <= 0) return [];
-
-    const interval = calculateRulerInterval(duration);
+    const { major, minor } = calculateRulerInterval(duration);
     const ticks = [];
-
-    for (let time = 0; time <= duration; time += interval.major) {
-      ticks.push({ time, type: 'major' });
-    }
-
-    // Add minor ticks if there's enough space
-    if (timeToPx(interval.minor) > 20) {
-      for (let time = 0; time <= duration; time += interval.minor) {
-        if (time % interval.major !== 0) {
-          ticks.push({ time, type: 'minor' });
-        }
+    for (let time = 0; time <= duration; time += major) ticks.push({ time, type: 'major' });
+    if (timeToPx(minor) > 20) {
+      for (let time = 0; time <= duration; time += minor) {
+        if (time % major !== 0) ticks.push({ time, type: 'minor' });
       }
     }
     return ticks;
@@ -196,216 +161,139 @@ export function Timeline({ videoRef }: TimelineProps) {
     const handleMouseMove = (e: MouseEvent) => {
       if (isDraggingPlayhead && timelineRef.current) {
         const rect = timelineRef.current.getBoundingClientRect();
-        const newTime = pxToTime(e.clientX - rect.left);
-        updateVideoTime(newTime); // Use helper
+        updateVideoTime(pxToTime(e.clientX - rect.left));
         return;
       }
 
       if (draggingRegion) {
         const element = regionRefs.current.get(draggingRegion.id);
         if (!element) return;
-
-        const regionToUpdate = allRegions.find(r => r.id === draggingRegion.id);
-        const isTrim = regionToUpdate?.type === 'cut' && ('trimType' in regionToUpdate);
-
-        const deltaX = e.clientX - draggingRegion.initialX;
-        const deltaTime = pxToTime(deltaX);
+        const deltaTime = pxToTime(e.clientX - draggingRegion.initialX);
 
         if (draggingRegion.type === 'move') {
           const newStartTime = draggingRegion.initialStartTime + deltaTime;
           updateVideoTime(newStartTime);
-          element.style.transform = `translateX(${deltaX}px)`;
-
+          element.style.transform = `translateX(${timeToPx(newStartTime - draggingRegion.initialStartTime)}px)`;
         } else if (draggingRegion.type === 'resize-right') {
-          const newDuration = draggingRegion.initialDuration + deltaTime;
-
-          // FIX: Kiểm tra và xóa ngay lập tức nếu region quá nhỏ
-          if (isTrim && newDuration < MINIMUM_REGION_DURATION) {
-            useEditorStore.getState().deleteRegion(draggingRegion.id);
-            setDraggingRegion(null); // Dừng việc kéo ngay lập tức
-            document.body.style.cursor = 'default';
-            return; // Thoát khỏi hàm xử lý
-          }
-
-          const safeDuration = Math.max(MINIMUM_REGION_DURATION, newDuration);
-          const newEndTime = draggingRegion.initialStartTime + safeDuration;
-          updateVideoTime(newEndTime);
-          const newWidth = timeToPx(safeDuration);
-          element.style.width = `${newWidth}px`;
-
+          const newDuration = Math.max(MINIMUM_REGION_DURATION, draggingRegion.initialDuration + deltaTime);
+          updateVideoTime(draggingRegion.initialStartTime + newDuration);
+          element.style.width = `${timeToPx(newDuration)}px`;
         } else if (draggingRegion.type === 'resize-left') {
-          // --- FIX START: Logic riêng cho Right Trim Region ---
-          const isEndTrim = isTrim && regionToUpdate?.trimType === 'end';
-
-          if (isEndTrim) {
-            // BEHAVIOR: Kéo handle trái của right trim. Mép phải cố định ở cuối video.
-            const newStartTime = Math.max(0, draggingRegion.initialStartTime + deltaTime);
-            const newDuration = duration - newStartTime;
-
-            if (newDuration < MINIMUM_REGION_DURATION) {
-              useEditorStore.getState().deleteRegion(draggingRegion.id);
-              setDraggingRegion(null);
-              document.body.style.cursor = 'default';
-              return;
-            }
-
-            const safeStartTime = Math.min(duration - MINIMUM_REGION_DURATION, newStartTime);
-            const safeDuration = duration - safeStartTime;
-
-            updateVideoTime(safeStartTime);
-            // Cập nhật trực tiếp style left và width thay vì transform
-            element.style.left = `${timeToPx(safeStartTime)}px`;
-            element.style.width = `${timeToPx(safeDuration)}px`;
-            element.style.transform = 'translateX(0px)'; // Đảm bảo không có transform
-
-          } else {
-            // BEHAVIOR: Logic cũ cho cut region thông thường và left trim. Mép phải cố định.
-            const initialEndTime = draggingRegion.initialStartTime + draggingRegion.initialDuration;
-            const newStartTime = Math.max(0, draggingRegion.initialStartTime + deltaTime);
-            const newDuration = initialEndTime - newStartTime;
-
-            if (isTrim && newDuration < MINIMUM_REGION_DURATION) {
-              useEditorStore.getState().deleteRegion(draggingRegion.id);
-              setDraggingRegion(null);
-              document.body.style.cursor = 'default';
-              return;
-            }
-
-            const safeStartTime = Math.min(initialEndTime - MINIMUM_REGION_DURATION, newStartTime);
-            updateVideoTime(safeStartTime);
-
-            const newTranslateX = timeToPx(safeStartTime - draggingRegion.initialStartTime);
-            const newWidth = timeToPx(initialEndTime - safeStartTime);
-
-            element.style.transform = `translateX(${newTranslateX}px)`;
-            element.style.width = `${newWidth}px`;
-          }
-          // --- FIX END ---
+          const initialEndTime = draggingRegion.initialStartTime + draggingRegion.initialDuration;
+          const newStartTime = Math.min(initialEndTime - MINIMUM_REGION_DURATION, Math.max(0, draggingRegion.initialStartTime + deltaTime));
+          updateVideoTime(newStartTime);
+          element.style.transform = `translateX(${timeToPx(newStartTime - draggingRegion.initialStartTime)}px)`;
+          element.style.width = `${timeToPx(initialEndTime - newStartTime)}px`;
         }
       }
 
       if ((isDraggingLeftStrip || isDraggingRightStrip) && timelineRef.current) {
         document.body.style.cursor = 'grabbing';
         const rect = timelineRef.current.getBoundingClientRect();
-        const mouseX = e.clientX - rect.left;
-        const timeAtMouse = pxToTime(Math.max(0, mouseX));
-
-        let previewRegion: CutRegion | null = null;
-        if (isDraggingLeftStrip) {
-          previewRegion = {
-            id: 'preview-cut-left',
-            type: 'cut',
-            startTime: 0,
-            duration: Math.min(timeAtMouse, duration),
-          };
-        } else if (isDraggingRightStrip) {
+        const timeAtMouse = pxToTime(Math.max(0, e.clientX - rect.left));
+        let newPreview: CutRegion | null = null;
+        if (isDraggingLeftStrip) newPreview = { id: 'preview-cut-left', type: 'cut', startTime: 0, duration: Math.min(timeAtMouse, duration) };
+        else {
           const startTime = Math.max(0, timeAtMouse);
-          previewRegion = {
-            id: 'preview-cut-right',
-            type: 'cut',
-            startTime: startTime,
-            duration: duration - startTime,
-          };
+          newPreview = { id: 'preview-cut-right', type: 'cut', startTime, duration: duration - startTime };
         }
-
-        // FIX: Chỉ hiển thị preview region nếu nó đủ lớn
-        if (previewRegion && previewRegion.duration >= MINIMUM_REGION_DURATION) {
-          setPreviewCutRegion(previewRegion);
-        } else {
-          setPreviewCutRegion(null); // Ẩn preview nếu quá nhỏ
-        }
+        setPreviewCutRegion(newPreview.duration >= MINIMUM_REGION_DURATION ? newPreview : null);
       }
     };
 
     const handleMouseUp = (e: MouseEvent) => {
       document.body.style.cursor = 'default';
-      if (isDraggingPlayhead) setIsDraggingPlayhead(false);
+      setIsDraggingPlayhead(false);
 
       if (draggingRegion) {
         const element = regionRefs.current.get(draggingRegion.id);
-        if (element) {
-          element.style.transform = 'translateX(0px)';
-        }
-
-        const deltaX = e.clientX - draggingRegion.initialX;
-        const deltaTime = pxToTime(deltaX);
+        if (element) element.style.transform = 'translateX(0px)';
+        
+        const deltaTime = pxToTime(e.clientX - draggingRegion.initialX);
         const finalUpdates: Partial<TimelineRegion> = {};
-
+        
         if (draggingRegion.type === 'move') {
           finalUpdates.startTime = Math.max(0, draggingRegion.initialStartTime + deltaTime);
+          finalUpdates.duration = draggingRegion.initialDuration;
         } else if (draggingRegion.type === 'resize-right') {
-          finalUpdates.duration = Math.max(MINIMUM_REGION_DURATION, draggingRegion.initialDuration + deltaTime);
-        } else if (draggingRegion.type === 'resize-left') {
-          // --- FIX START: Logic lưu state riêng cho Right Trim Region ---
-          const regionToUpdate = allRegions.find(r => r.id === draggingRegion.id);
-          const isEndTrim = regionToUpdate?.type === 'cut' && regionToUpdate.trimType === 'end';
-
-          if (isEndTrim) {
-            const newStartTime = Math.max(0, draggingRegion.initialStartTime + deltaTime);
-            finalUpdates.startTime = Math.min(duration - MINIMUM_REGION_DURATION, newStartTime);
-            finalUpdates.duration = duration - finalUpdates.startTime;
-          } else {
-            // Logic cũ cho các region khác
-            const newStartTime = Math.min(
-              draggingRegion.initialStartTime + draggingRegion.initialDuration - MINIMUM_REGION_DURATION,
-              Math.max(0, draggingRegion.initialStartTime + deltaTime)
-            );
-            finalUpdates.duration = (draggingRegion.initialStartTime + draggingRegion.initialDuration) - newStartTime;
-            finalUpdates.startTime = newStartTime;
-          }
-          // --- FIX END ---
+          finalUpdates.startTime = draggingRegion.initialStartTime;
+          finalUpdates.duration = Math.max(0, draggingRegion.initialDuration + deltaTime);
+        } else {
+          const newStartTime = Math.min(
+            draggingRegion.initialStartTime + draggingRegion.initialDuration, 
+            Math.max(0, draggingRegion.initialStartTime + deltaTime)
+          );
+          finalUpdates.duration = (draggingRegion.initialStartTime + draggingRegion.initialDuration) - newStartTime;
+          finalUpdates.startTime = newStartTime;
+        }
+        
+        // FIX: Delete region if it's too small
+        if (finalUpdates.duration < REGION_DELETE_THRESHOLD) {
+            deleteRegion(draggingRegion.id);
+        } else {
+            updateRegion(draggingRegion.id, finalUpdates);
         }
 
-        updateRegion(draggingRegion.id, finalUpdates);
+        // Sync global state after drag is complete
+        if (videoRef.current) {
+            setCurrentTime(videoRef.current.currentTime);
+        }
         setDraggingRegion(null);
       }
 
-      if ((isDraggingLeftStrip || isDraggingRightStrip) && previewCutRegion) {
-        if (previewCutRegion.duration > MINIMUM_REGION_DURATION) {
-          // Logic bây giờ luôn là thêm mới, vì cái cũ (nếu có) đã bị xóa khi mousedown.
-          addCutRegion({
-            startTime: previewCutRegion.startTime,
-            duration: previewCutRegion.duration,
-            trimType: isDraggingLeftStrip ? 'start' : 'end',
-          });
-        }
+      if (previewCutRegion) {
+        const trimType = isDraggingLeftStrip ? 'start' : 'end';
+        const existingTrim = cutRegions.find(r => r.trimType === trimType);
+        if (existingTrim) deleteRegion(existingTrim.id);
+        addCutRegion({
+          startTime: previewCutRegion.startTime,
+          duration: previewCutRegion.duration,
+          trimType
+        });
       }
 
-      if (isDraggingLeftStrip) setIsDraggingLeftStrip(false);
-      if (isDraggingRightStrip) setIsDraggingRightStrip(false);
+      setIsDraggingLeftStrip(false);
+      setIsDraggingRightStrip(false);
       setPreviewCutRegion(null);
     };
+
     window.addEventListener('mousemove', handleMouseMove);
     window.addEventListener('mouseup', handleMouseUp);
     return () => {
       window.removeEventListener('mousemove', handleMouseMove);
       window.removeEventListener('mouseup', handleMouseUp);
     };
+  }, [draggingRegion, isDraggingPlayhead, isDraggingLeftStrip, isDraggingRightStrip, pxToTime, timeToPx, updateVideoTime, updateRegion, duration, addCutRegion, setPreviewCutRegion, previewCutRegion, cutRegions, deleteRegion]);
 
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [draggingRegion, isDraggingPlayhead, isDraggingLeftStrip, isDraggingRightStrip,
-    pxToTime, timeToPx, updateVideoTime, updateRegion, duration, addCutRegion, 
-    setPreviewCutRegion, previewCutRegion, cutRegions, deleteRegion]);
-
+  // CHANGE 1: EFFECT FOR SMOOTH PLAYHEAD ANIMATION
+  // This effect uses requestAnimationFrame for smooth updates during playback
   useEffect(() => {
-    let animationFrameId: number;
-    const animatePlayhead = () => {
+    const animate = () => {
       if (videoRef.current && playheadRef.current) {
-        playheadRef.current.style.transform = `translateX(${timeToPx(videoRef.current.currentTime)}px)`;
+        const videoTime = videoRef.current.currentTime;
+        playheadRef.current.style.transform = `translateX(${timeToPx(videoTime)}px)`;
       }
-      animationFrameId = requestAnimationFrame(animatePlayhead);
+      animationFrameRef.current = requestAnimationFrame(animate);
     };
-    if (isPlaying) animationFrameId = requestAnimationFrame(animatePlayhead);
-    return () => cancelAnimationFrame(animationFrameId);
-  }, [isPlaying, videoRef, timeToPx]);
 
+    if (isPlaying) {
+      animationFrameRef.current = requestAnimationFrame(animate);
+    }
+
+    return () => {
+      if (animationFrameRef.current) {
+        cancelAnimationFrame(animationFrameRef.current);
+      }
+    };
+  }, [isPlaying, timeToPx, videoRef]);
+
+  // CHANGE 2: EFFECT FOR STATIC PLAYHEAD POSITION
+  // This effect handles setting the playhead position when paused, scrubbing, or clicking
   useEffect(() => {
-    if (!isPlaying && playheadRef.current && duration > 0) {
+    if (!isPlaying && playheadRef.current) {
       playheadRef.current.style.transform = `translateX(${timeToPx(currentTime)}px)`;
     }
-  }, [currentTime, isPlaying, duration, timeToPx]);
-
-  const allRegions = [...zoomRegions, ...cutRegions];
+  }, [currentTime, isPlaying, timeToPx]);
 
   const trimOverlayRegions = useMemo(() => {
     const existingTrims = cutRegions.filter(r => r.trimType);
@@ -415,177 +303,48 @@ export function Timeline({ videoRef }: TimelineProps) {
   return (
     <div className="h-full flex flex-col bg-background p-4">
       <div className="h-full flex flex-row rounded-xl overflow-hidden shadow-sm bg-card border border-border/80">
-        {/* Left Strip (Static) */}
-        <div
-          className={cn(
-            "w-6 flex-shrink-0 h-full rounded-l-xl bg-card flex items-center justify-center transition-all duration-150 cursor-ew-resize select-none border-r border-border/80",
-            isDraggingLeftStrip ? "bg-primary/10" : "hover:bg-accent/50"
-            // Xóa dòng kiểm tra hasStartTrim ở đây
-          )}
-          // Xóa điều kiện và luôn gán sự kiện
-          onMouseDown={handleLeftStripDrag}
-        >
-          <div className="flex flex-col items-center gap-1">
-            <Scissors size={16} className="text-muted-foreground" />
-          </div>
+        <div className="w-6 shrink-0 h-full bg-card flex items-center justify-center transition-colors cursor-ew-resize select-none border-r border-border/80 hover:bg-accent/50" onMouseDown={() => setIsDraggingLeftStrip(true)}>
+          <Scissors size={16} className="text-muted-foreground" />
         </div>
-
-        {/* Scrollable Timeline Container */}
         <div
           ref={containerRef}
           className="flex-1 overflow-x-auto overflow-y-hidden bg-card/50"
-          onMouseDown={handleTimelineClick}
-        >
-          <div
-            ref={timelineRef}
-            className="relative h-full min-w-full"
-            style={{
-              width: `${totalWidthPx}px`,
-            }}
-          >
-            {/* Ruler */}
-            <div className="h-12 sticky top-0 left-0 right-0 z-10 border-b-2 border-border/60 bg-gradient-to-b from-muted/80 to-muted/40">
-              {rulerTicks.map(({ time, type }) => (
-                <div
-                  key={`tick-${time}`}
-                  className={cn(
-                    "absolute top-0 flex flex-col group",
-                    time === 0 ? 'items-start' : 'items-center'
-                  )}
-                  style={{ left: `${timeToPx(time)}px` }}
-                >
-                  {/* tick marks */}
-                  <div className={cn(
-                    "bg-foreground/70 transition-all duration-150",
-                    type === 'major'
-                      ? 'w-0.5 h-6 shadow-sm group-hover:bg-primary group-hover:h-7'
-                      : 'w-px h-3 group-hover:bg-foreground group-hover:h-4'
-                  )}></div>
+          onMouseDown={e => {
+            // CHANGE 3: FIX CLICK-TO-SEEK
+            // Removed the `e.target !== e.currentTarget` check
+            if (duration === 0) return;
 
-                  {/* time labels */}
-                  {type === 'major' && (
-                    <div className={cn(time > 0 && "translate-x-1/2 -ml-0.5")}>
-                      <span className="text-xs text-foreground/90 font-mono font-medium tracking-wide">
-                        {formatTime(time)}
-                      </span>
-                    </div>
-                  )}
-                </div>
-              ))}
+            // Check if the click was on a region block; if so, do nothing.
+            // The region block's onMouseDown will handle it and stop propagation.
+            const target = e.target as HTMLElement;
+            if (target.closest('[data-region-id]')) {
+              return;
+            }
 
-              {/* Ruler background pattern */}
-              <div className="absolute inset-0 opacity-5">
-                <div className="w-full h-full bg-gradient-to-r from-transparent via-foreground/10 to-transparent"></div>
-              </div>
-            </div>
-
-            {/* Tracks Area */}
-            <div className="relative pt-6 space-y-4"> {/* Removed absolute positioning */}
+            const rect = (e.currentTarget as HTMLDivElement).getBoundingClientRect();
+            updateVideoTime(pxToTime(e.clientX - rect.left));
+            setSelectedRegionId(null);
+          }}>
+          <div ref={timelineRef} className="relative h-full min-w-full" style={{ width: `${timeToPx(duration)}px` }}>
+            <Ruler ticks={rulerTicks} timeToPx={timeToPx} formatTime={formatTime} />
+            <div className="relative pt-6 space-y-4">
               <div className="h-24 relative bg-gradient-to-b from-background/50 to-background/20">
                 {allRegions.map(region => (
                   region.type === 'zoom' ?
-                    <ZoomRegionBlock
-                      key={region.id}
-                      region={region}
-                      left={timeToPx(region.startTime)}
-                      width={timeToPx(region.duration)}
-                      isSelected={selectedRegionId === region.id}
-                      onMouseDown={handleRegionMouseDown}
-                      setRef={(el) => regionRefs.current.set(region.id, el)}
-                    />
-                    :
-                    <CutRegionBlock
-                      key={region.id}
-                      region={region}
-                      left={timeToPx(region.startTime)}
-                      width={timeToPx(region.duration)}
-                      isSelected={selectedRegionId === region.id}
-                      onMouseDown={handleRegionMouseDown}
-                      setRef={(el) => regionRefs.current.set(region.id, el)}
-                    />
+                    <ZoomRegionBlock key={region.id} region={region} left={timeToPx(region.startTime)} width={timeToPx(region.duration)} isSelected={selectedRegionId === region.id} onMouseDown={handleRegionMouseDown} setRef={el => regionRefs.current.set(region.id, el)} /> :
+                    <CutRegionBlock key={region.id} region={region} left={timeToPx(region.startTime)} width={timeToPx(region.duration)} isSelected={selectedRegionId === region.id} onMouseDown={handleRegionMouseDown} setRef={el => regionRefs.current.set(region.id, el)} />
                 ))}
-
-                {previewCutRegion && (
-                  <CutRegionBlock
-                    region={previewCutRegion}
-                    left={timeToPx(previewCutRegion.startTime)}
-                    width={timeToPx(previewCutRegion.duration)}
-                    isSelected={selectedRegionId === previewCutRegion.id}
-                    isDraggable={false} // Quan trọng: Vô hiệu hóa kéo thả
-                    onMouseDown={() => { }} // No-op
-                    setRef={() => { }}     // No-op
-                  />
-                )}
+                {previewCutRegion && <CutRegionBlock region={previewCutRegion} left={timeToPx(previewCutRegion.startTime)} width={timeToPx(previewCutRegion.duration)} isSelected={false} isDraggable={false} onMouseDown={() => { }} setRef={() => { }} />}
               </div>
             </div>
-
-            {trimOverlayRegions.map(region => (
-              <div
-                key={`overlay-${region.id}`}
-                className="absolute top-0 h-full bg-gray-400/20 z-20 pointer-events-none"
-                style={{
-                  left: `${timeToPx(region.startTime)}px`,
-                  width: `${timeToPx(region.duration)}px`,
-                }}
-              />
-            ))}
-
-            {/* Playhead */}
-            {duration > 0 && (
-              <div
-                ref={playheadRef}
-                className="absolute top-0 bottom-0 z-30"
-                style={{ pointerEvents: "none" }}
-              >
-                <Playhead
-                  height={timelineRef.current?.clientHeight ?? 200}
-                  isDragging={isDraggingPlayhead}
-                  onMouseDown={handlePlayheadMouseDown}
-                />
-              </div>
-            )}
+            {trimOverlayRegions.map(region => (<div key={`overlay-${region.id}`} className="absolute top-0 h-full bg-gray-400/20 z-20 pointer-events-none" style={{ left: `${timeToPx(region.startTime)}px`, width: `${timeToPx(region.duration)}px` }} />))}
+            {duration > 0 && <div ref={playheadRef} className="absolute top-0 bottom-0 z-30" style={{ transform: `translateX(${timeToPx(currentTime)}px)`, pointerEvents: "none" }}><Playhead height={timelineRef.current?.clientHeight ?? 200} isDragging={isDraggingPlayhead} onMouseDown={(e) => { e.stopPropagation(); setIsDraggingPlayhead(true); document.body.style.cursor = 'grabbing'; }} /></div>}
           </div>
         </div>
-
-        {/* Right Strip (Static) */}
-        <div
-          className={cn(
-            "w-6 flex-shrink-0 h-full rounded-r-xl bg-card flex items-center justify-center transition-all duration-150 cursor-ew-resize select-none border-l border-border/80",
-            isDraggingRightStrip ? "bg-primary/10" : "hover:bg-accent/50"
-            // Xóa dòng kiểm tra hasEndTrim ở đây
-          )}
-          // Xóa điều kiện và luôn gán sự kiện
-          onMouseDown={handleRightStripDrag}
-        >
-          <div className="flex flex-col items-center gap-1">
-            <FlipScissorsIcon className="text-muted-foreground size-4" />
-          </div>
+        <div className="w-6 shrink-0 h-full bg-card flex items-center justify-center transition-colors cursor-ew-resize select-none border-l border-border/80 hover:bg-accent/50" onMouseDown={() => setIsDraggingRightStrip(true)}>
+          <FlipScissorsIcon className="text-muted-foreground size-4" />
         </div>
       </div>
     </div>
   );
 }
-
-const FlipScissorsIcon = (props: React.SVGProps<SVGSVGElement>) => (
-  <svg
-    xmlns="http://www.w3.org/2000/svg"
-    width={24}
-    height={24}
-    viewBox="0 0 24 24"
-    fill="none"
-    stroke="currentColor"
-    strokeWidth={2}
-    strokeLinecap="round"
-    strokeLinejoin="round"
-    className="lucide lucide-scissors-icon lucide-scissors"
-    {...props}
-  >
-    <g transform="translate(24,0) scale(-1,1)">
-      <circle cx={6} cy={6} r={3} />
-      <path d="M8.12 8.12 12 12" />
-      <path d="M20 4 8.12 15.88" />
-      <circle cx={6} cy={18} r={3} />
-      <path d="M14.8 14.8 20 20" />
-    </g>
-  </svg>
-);

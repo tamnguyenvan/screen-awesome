@@ -4,6 +4,7 @@ import { RegionSettingsPanel } from './RegionSettingsPanel';
 import { Palette } from 'lucide-react';
 import { BackgroundSettings } from './sidepanel/BackgroundSettings';
 import { FrameEffectsSettings } from './sidepanel/FrameEffectsSettings';
+import { useShallow } from 'zustand/react/shallow';
 
 function FrameSettingsPanel() {
   return (
@@ -33,11 +34,18 @@ function FrameSettingsPanel() {
 }
 
 export function SidePanel() {
-  const { selectedRegionId, zoomRegions, cutRegions } = useEditorStore();
+  // OPTIMIZATION: Select only the necessary state and use shallow comparison
+  const { selectedRegionId, zoomRegions, cutRegions } = useEditorStore(
+    useShallow(state => ({
+      selectedRegionId: state.selectedRegionId,
+      zoomRegions: state.zoomRegions,
+      cutRegions: state.cutRegions,
+    })));
 
-  const selectedRegion =
-    zoomRegions.find(r => r.id === selectedRegionId) ||
-    cutRegions.find(r => r.id === selectedRegionId);
+  // OPTIMIZATION: O(1) lookup instead of O(n) find()
+  const selectedRegion = selectedRegionId
+    ? zoomRegions[selectedRegionId] || cutRegions[selectedRegionId]
+    : null;
 
   if (selectedRegion) {
     return <RegionSettingsPanel region={selectedRegion} />;

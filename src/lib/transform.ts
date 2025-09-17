@@ -27,23 +27,12 @@ function findLastIndex<T>(array: T[], predicate: (value: T, index: number, obj: 
 /**
  * Calculates the required CSS translate percentages to center the view on a specific point
  * after a given scale has been applied.
- * @param scale The current zoom level (e.g., 2 for 2x).
- * @param focusPointX The absolute X coordinate of the point to focus on.
- * @param focusPointY The absolute Y coordinate of the point to focus on.
- * @param videoWidth The total width of the video.
- * @param videoHeight The total height of the video.
- * @returns An object with { translateX, translateY } in CSS percentages.
  */
 function calculatePan(scale: number, focusPointX: number, focusPointY: number, videoWidth: number, videoHeight: number) {
-  // The amount the focus point is moved by the scale operation, in pixels.
-  // We need to counteract this with a translation.
   const panX = -(focusPointX - videoWidth / 2) * (scale - 1);
   const panY = -(focusPointY - videoHeight / 2) * (scale - 1);
-
-  // Convert pixel translation to CSS percentage translation.
   const translateX = (panX / videoWidth) * 100;
   const translateY = (panY / videoHeight) * 100;
-
   return { translateX, translateY };
 }
 
@@ -58,12 +47,10 @@ export const calculateZoomTransform = (currentTime: number) => {
 
   const { width: videoWidth, height: videoHeight } = videoDimensions;
 
-  const activeRegion = activeZoomRegionId
-    ? zoomRegions.find(r => r.id === activeZoomRegionId)
-    : undefined;
-
+  // OPTIMIZATION: O(1) lookup for the active region
+  const activeRegion = activeZoomRegionId ? zoomRegions[activeZoomRegionId] : undefined;
+  
   const defaultTransform = { scale: 1, translateX: 0, translateY: 0 };
-
   if (!activeRegion || videoWidth === 0 || videoHeight === 0) {
     return defaultTransform;
   }
@@ -71,65 +58,56 @@ export const calculateZoomTransform = (currentTime: number) => {
   const { startTime, duration, zoomLevel, targetX, targetY } = activeRegion;
   const elapsed = currentTime - startTime;
 
-  // --- Phase 1: Zoom In (first 0.8s) ---
+  // Phase 1: Zoom In (first 0.8s)
   const zoomInDuration = 0.8;
   if (elapsed <= zoomInDuration) {
-    let t = elapsed / zoomInDuration;
-    t = easeInOutCubic(t);
+    const t = easeInOutCubic(elapsed / zoomInDuration);
     const currentScale = lerp(1, zoomLevel, t);
     const focusX = lerp(videoWidth / 2, targetX, t);
     const focusY = lerp(videoHeight / 2, targetY, t);
-    const { translateX, translateY } = calculatePan(currentScale, focusX, focusY, videoWidth, videoHeight);
-    return { scale: currentScale, translateX, translateY };
+    return { scale: currentScale, ...calculatePan(currentScale, focusX, focusY, videoWidth, videoHeight) };
   }
 
-  // --- Phase 3: Zoom Out (last 0.8s) ---
+  // Phase 3: Zoom Out (last 0.8s)
   const zoomOutDuration = 0.8;
   const zoomOutStartTime = duration - zoomOutDuration;
   if (elapsed >= zoomOutStartTime) {
-    let t = (elapsed - zoomOutStartTime) / zoomOutDuration;
-    t = easeInOutCubic(t);
+    const t = easeInOutCubic((elapsed - zoomOutStartTime) / zoomOutDuration);
     
-    const lastMousePos = [...metadata].reverse().find(m => m.timestamp <= startTime + zoomOutStartTime)
-      || { x: targetX, y: targetY };
+    // Find the last known mouse position before the zoom-out starts
+    const lastMousePos = findLastIndex(metadata, m => m.timestamp <= startTime + zoomOutStartTime);
+    const lastKnownPos = lastMousePos !== -1 ? metadata[lastMousePos] : { x: targetX, y: targetY };
 
     const currentScale = lerp(zoomLevel, 1, t);
-    const focusX = lerp(lastMousePos.x, videoWidth / 2, t);
-    const focusY = lerp(lastMousePos.y, videoHeight / 2, t);
+    const focusX = lerp(lastKnownPos.x, videoWidth / 2, t);
+    const focusY = lerp(lastKnownPos.y, videoHeight / 2, t);
 
-    const { translateX, translateY } = calculatePan(currentScale, focusX, focusY, videoWidth, videoHeight);
-    return { scale: currentScale, translateX, translateY };
+    return { scale: currentScale, ...calculatePan(currentScale, focusX, focusY, videoWidth, videoHeight) };
   }
 
-  // --- Phase 2: Tracking ---
+  // Phase 2: Tracking mouse movement
   const prevIndex = findLastIndex(metadata, m => m.timestamp <= currentTime);
-
   if (prevIndex === -1) {
-    const { translateX, translateY } = calculatePan(zoomLevel, targetX, targetY, videoWidth, videoHeight);
-    return { scale: zoomLevel, translateX, translateY };
+    return { scale: zoomLevel, ...calculatePan(zoomLevel, targetX, targetY, videoWidth, videoHeight) };
   }
   
   const prevPos = metadata[prevIndex];
   const nextPos = metadata[prevIndex + 1];
 
+  // If there's no next position or it's outside the tracking window, just stick to the previous position
   if (!nextPos || nextPos.timestamp > startTime + zoomOutStartTime) {
-    const { translateX, translateY } = calculatePan(zoomLevel, prevPos.x, prevPos.y, videoWidth, videoHeight);
-    return { scale: zoomLevel, translateX, translateY };
+    return { scale: zoomLevel, ...calculatePan(zoomLevel, prevPos.x, prevPos.y, videoWidth, videoHeight) };
   }
 
+  // Interpolate between the previous and next mouse positions
   const timeDelta = nextPos.timestamp - prevPos.timestamp;
-
   if (timeDelta <= 0) {
-    const { translateX, translateY } = calculatePan(zoomLevel, prevPos.x, prevPos.y, videoWidth, videoHeight);
-    return { scale: zoomLevel, translateX, translateY };
+    return { scale: zoomLevel, ...calculatePan(zoomLevel, prevPos.x, prevPos.y, videoWidth, videoHeight) };
   }
 
-  const elapsedInDelta = currentTime - prevPos.timestamp;
-  const t = elapsedInDelta / timeDelta;
-
+  const t = (currentTime - prevPos.timestamp) / timeDelta;
   const focusX = lerp(prevPos.x, nextPos.x, t);
   const focusY = lerp(prevPos.y, nextPos.y, t);
 
-  const { translateX, translateY } = calculatePan(zoomLevel, focusX, focusY, videoWidth, videoHeight);
-  return { scale: zoomLevel, translateX, translateY };
+  return { scale: zoomLevel, ...calculatePan(zoomLevel, focusX, focusY, videoWidth, videoHeight) };
 };
