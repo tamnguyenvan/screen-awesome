@@ -4,7 +4,7 @@ import React, {
   useEffect, useCallback, useMemo
 } from 'react';
 import { useEditorStore, TimelineRegion, CutRegion } from '../../store/editorStore';
-import { ZoomRegionBlock } from './timeline/ZooomRegionBlock';
+import { ZoomRegionBlock } from './timeline/ZoomRegionBlock';
 import { CutRegionBlock } from './timeline/CutRegionBlock';
 import { Playhead } from './timeline/Playhead';
 
