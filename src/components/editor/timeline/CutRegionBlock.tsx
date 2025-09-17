@@ -1,3 +1,4 @@
+// src/components/editor/timeline/CutRegionBlock.tsx
 import { memo } from 'react';
 import { TimelineRegion, CutRegion } from '../../../store/editorStore';
 import { cn } from '../../../lib/utils';
@@ -45,18 +46,18 @@ export const CutRegionBlock = memo(({
       data-region-id={region.id}
       className={cn(
         'absolute h-14 flex items-center justify-center rounded-lg overflow-hidden',
-        'border-2', // Simplified classes
+        'border-2 backdrop-blur-sm', // Add backdrop-blur for a nicer effect
         canMove ? 'cursor-move' : 'cursor-default',
         isSelected 
-          ? 'bg-destructive/20 border-destructive' // Use a solid border for selection
-          : 'bg-muted/60 border-border/60'
+          ? 'bg-destructive/20 border-destructive z-10' // Selected state: darker bg, solid border, higher z-index
+          : 'bg-destructive/10 border-destructive/30'  // Default state: semi-transparent bg and border
       )}
       style={{ left: `${left}px`, width: `${width}px` }}
       onMouseDown={(e) => handleMouseDown(e, 'move')}
     >
       {canResizeLeft && (
         <div
-          className="absolute left-0 top-0 w-2 h-full cursor-ew-resize rounded-l-md flex items-center justify-center"
+          className="absolute left-0 top-0 w-2 h-full cursor-ew-resize rounded-l-md flex items-center justify-center z-20"
           onMouseDown={(e) => handleMouseDown(e, 'resize-left')}
         >
           <div className="w-0.5 h-1/2 bg-destructive/80 rounded-full" />
@@ -66,7 +67,7 @@ export const CutRegionBlock = memo(({
       <div className="pointer-events-none flex items-center gap-2 px-2">
         <Scissors className="w-4 h-4 text-destructive/80" />
         {width > 80 && (
-          <span className="text-xs font-medium text-destructive/90">
+          <span className="text-xs font-medium text-destructive/90 select-none">
             {region.trimType ? `${region.trimType.charAt(0).toUpperCase() + region.trimType.slice(1)} Trim` : 'Cut'}
           </span>
         )}
@@ -74,7 +75,7 @@ export const CutRegionBlock = memo(({
 
       {canResizeRight && (
         <div
-          className="absolute right-0 top-0 w-2 h-full cursor-ew-resize rounded-r-md flex items-center justify-center"
+          className="absolute right-0 top-0 w-2 h-full cursor-ew-resize rounded-r-md flex items-center justify-center z-20"
           onMouseDown={(e) => handleMouseDown(e, 'resize-right')}
         >
           <div className="w-0.5 h-1/2 bg-destructive/80 rounded-full" />

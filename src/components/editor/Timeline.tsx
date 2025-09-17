@@ -76,7 +76,6 @@ export function Timeline({ videoRef }: { videoRef: React.RefObject<HTMLVideoElem
 
   // Convert objects to arrays and memoize them
   const zoomRegions = useMemo(() => Object.values(zoomRegionsMap), [zoomRegionsMap]);
-  const cutRegions = useMemo(() => Object.values(cutRegionsMap), [cutRegionsMap]);
 
   // Select all actions
   const { addCutRegion, deleteRegion, setPreviewCutRegion, updateRegion, setCurrentTime, setSelectedRegionId } = useEditorStore(
@@ -134,8 +133,6 @@ export function Timeline({ videoRef }: { videoRef: React.RefObject<HTMLVideoElem
     setDraggingRegion({ id: region.id, type, initialX: e.clientX, initialStartTime: region.startTime, initialDuration: region.duration });
   }, [setSelectedRegionId, updateVideoTime]);
 
-  const allRegions = useMemo(() => [...zoomRegions, ...cutRegions], [zoomRegions, cutRegions]);
-
   const formatTime = useCallback((seconds: number): string => {
     const hrs = Math.floor(seconds / 3600);
     const mins = Math.floor((seconds % 3600) / 60);
@@ -192,11 +189,19 @@ export function Timeline({ videoRef }: { videoRef: React.RefObject<HTMLVideoElem
         const rect = timelineRef.current.getBoundingClientRect();
         const timeAtMouse = pxToTime(Math.max(0, e.clientX - rect.left));
         let newPreview: CutRegion | null = null;
-        if (isDraggingLeftStrip) newPreview = { id: 'preview-cut-left', type: 'cut', startTime: 0, duration: Math.min(timeAtMouse, duration) };
-        else {
+        
+        // FIX: Get latest duration directly from store to avoid stale state
+        const currentDuration = useEditorStore.getState().duration;
+
+        if (isDraggingLeftStrip) {
+          const duration = Math.min(timeAtMouse, currentDuration);
+          newPreview = { id: 'preview-cut-left', type: 'cut', startTime: 0, duration: duration, trimType: 'start' };
+        } else {
           const startTime = Math.max(0, timeAtMouse);
-          newPreview = { id: 'preview-cut-right', type: 'cut', startTime, duration: duration - startTime };
+          const duration = currentDuration - startTime;
+          newPreview = { id: 'preview-cut-right', type: 'cut', startTime, duration: duration, trimType: 'end' };
         }
+        // Hide the preview if it's too small, providing instant visual feedback
         setPreviewCutRegion(newPreview.duration >= MINIMUM_REGION_DURATION ? newPreview : null);
       }
     };
@@ -208,10 +213,10 @@ export function Timeline({ videoRef }: { videoRef: React.RefObject<HTMLVideoElem
       if (draggingRegion) {
         const element = regionRefs.current.get(draggingRegion.id);
         if (element) element.style.transform = 'translateX(0px)';
-        
+
         const deltaTime = pxToTime(e.clientX - draggingRegion.initialX);
         const finalUpdates: Partial<TimelineRegion> = {};
-        
+
         if (draggingRegion.type === 'move') {
           finalUpdates.startTime = Math.max(0, draggingRegion.initialStartTime + deltaTime);
           finalUpdates.duration = draggingRegion.initialDuration;
@@ -220,36 +225,47 @@ export function Timeline({ videoRef }: { videoRef: React.RefObject<HTMLVideoElem
           finalUpdates.duration = Math.max(0, draggingRegion.initialDuration + deltaTime);
         } else {
           const newStartTime = Math.min(
-            draggingRegion.initialStartTime + draggingRegion.initialDuration, 
+            draggingRegion.initialStartTime + draggingRegion.initialDuration,
             Math.max(0, draggingRegion.initialStartTime + deltaTime)
           );
           finalUpdates.duration = (draggingRegion.initialStartTime + draggingRegion.initialDuration) - newStartTime;
           finalUpdates.startTime = newStartTime;
         }
-        
-        // FIX: Delete region if it's too small
+
         if (finalUpdates.duration < REGION_DELETE_THRESHOLD) {
-            deleteRegion(draggingRegion.id);
+          deleteRegion(draggingRegion.id);
         } else {
-            updateRegion(draggingRegion.id, finalUpdates);
+          updateRegion(draggingRegion.id, finalUpdates);
         }
 
-        // Sync global state after drag is complete
         if (videoRef.current) {
-            setCurrentTime(videoRef.current.currentTime);
+          setCurrentTime(videoRef.current.currentTime);
         }
         setDraggingRegion(null);
       }
 
-      if (previewCutRegion) {
+      // Finalize trim region changes on mouse up
+      if (isDraggingLeftStrip || isDraggingRightStrip) {
+        // FIX: Get latest state directly from the store to avoid stale state
+        const finalPreview = useEditorStore.getState().previewCutRegion;
+        const allCutRegions = useEditorStore.getState().cutRegions;
+
         const trimType = isDraggingLeftStrip ? 'start' : 'end';
-        const existingTrim = cutRegions.find(r => r.trimType === trimType);
-        if (existingTrim) deleteRegion(existingTrim.id);
-        addCutRegion({
-          startTime: previewCutRegion.startTime,
-          duration: previewCutRegion.duration,
-          trimType
-        });
+        const existingTrim = Object.values(allCutRegions).find(r => r.trimType === trimType);
+
+        // Delete the old trim region if it exists
+        if (existingTrim) {
+          deleteRegion(existingTrim.id);
+        }
+
+        // If the preview is valid (not too small), add it as a new region
+        if (finalPreview) {
+          addCutRegion({
+            startTime: finalPreview.startTime,
+            duration: finalPreview.duration,
+            trimType
+          });
+        }
       }
 
       setIsDraggingLeftStrip(false);
@@ -263,10 +279,13 @@ export function Timeline({ videoRef }: { videoRef: React.RefObject<HTMLVideoElem
       window.removeEventListener('mousemove', handleMouseMove);
       window.removeEventListener('mouseup', handleMouseUp);
     };
-  }, [draggingRegion, isDraggingPlayhead, isDraggingLeftStrip, isDraggingRightStrip, pxToTime, timeToPx, updateVideoTime, updateRegion, duration, addCutRegion, setPreviewCutRegion, previewCutRegion, cutRegions, deleteRegion]);
+  }, [
+    // Dependencies remain mostly the same, as the logic inside now gets fresh state
+    draggingRegion, isDraggingPlayhead, isDraggingLeftStrip, isDraggingRightStrip, 
+    pxToTime, timeToPx, updateVideoTime, updateRegion, addCutRegion, 
+    setPreviewCutRegion, deleteRegion, setCurrentTime, videoRef
+  ]);
 
-  // CHANGE 1: EFFECT FOR SMOOTH PLAYHEAD ANIMATION
-  // This effect uses requestAnimationFrame for smooth updates during playback
   useEffect(() => {
     const animate = () => {
       if (videoRef.current && playheadRef.current) {
@@ -275,11 +294,9 @@ export function Timeline({ videoRef }: { videoRef: React.RefObject<HTMLVideoElem
       }
       animationFrameRef.current = requestAnimationFrame(animate);
     };
-
     if (isPlaying) {
       animationFrameRef.current = requestAnimationFrame(animate);
     }
-
     return () => {
       if (animationFrameRef.current) {
         cancelAnimationFrame(animationFrameRef.current);
@@ -287,18 +304,22 @@ export function Timeline({ videoRef }: { videoRef: React.RefObject<HTMLVideoElem
     };
   }, [isPlaying, timeToPx, videoRef]);
 
-  // CHANGE 2: EFFECT FOR STATIC PLAYHEAD POSITION
-  // This effect handles setting the playhead position when paused, scrubbing, or clicking
   useEffect(() => {
     if (!isPlaying && playheadRef.current) {
       playheadRef.current.style.transform = `translateX(${timeToPx(currentTime)}px)`;
     }
   }, [currentTime, isPlaying, timeToPx]);
 
-  const trimOverlayRegions = useMemo(() => {
-    const existingTrims = cutRegions.filter(r => r.trimType);
-    return previewCutRegion ? [...existingTrims, previewCutRegion] : existingTrims;
-  }, [cutRegions, previewCutRegion]);
+  const allCutRegionsToRender = useMemo(() => {
+    // We combine existing regions with the preview for rendering
+    const existingCuts = Object.values(cutRegionsMap);
+    // Don't render the preview if its trim type is already represented by an existing region
+    // This prevents flicker when starting to drag
+    if (previewCutRegion && !existingCuts.some(c => c.trimType === previewCutRegion.trimType)) {
+      return [...existingCuts, previewCutRegion];
+    }
+    return existingCuts;
+  }, [cutRegionsMap, previewCutRegion]);
 
   return (
     <div className="h-full flex flex-col bg-background p-4">
@@ -310,17 +331,11 @@ export function Timeline({ videoRef }: { videoRef: React.RefObject<HTMLVideoElem
           ref={containerRef}
           className="flex-1 overflow-x-auto overflow-y-hidden bg-card/50"
           onMouseDown={e => {
-            // CHANGE 3: FIX CLICK-TO-SEEK
-            // Removed the `e.target !== e.currentTarget` check
             if (duration === 0) return;
-
-            // Check if the click was on a region block; if so, do nothing.
-            // The region block's onMouseDown will handle it and stop propagation.
             const target = e.target as HTMLElement;
             if (target.closest('[data-region-id]')) {
               return;
             }
-
             const rect = (e.currentTarget as HTMLDivElement).getBoundingClientRect();
             updateVideoTime(pxToTime(e.clientX - rect.left));
             setSelectedRegionId(null);
@@ -329,15 +344,24 @@ export function Timeline({ videoRef }: { videoRef: React.RefObject<HTMLVideoElem
             <Ruler ticks={rulerTicks} timeToPx={timeToPx} formatTime={formatTime} />
             <div className="relative pt-6 space-y-4">
               <div className="h-24 relative bg-gradient-to-b from-background/50 to-background/20">
-                {allRegions.map(region => (
-                  region.type === 'zoom' ?
-                    <ZoomRegionBlock key={region.id} region={region} left={timeToPx(region.startTime)} width={timeToPx(region.duration)} isSelected={selectedRegionId === region.id} onMouseDown={handleRegionMouseDown} setRef={el => regionRefs.current.set(region.id, el)} /> :
-                    <CutRegionBlock key={region.id} region={region} left={timeToPx(region.startTime)} width={timeToPx(region.duration)} isSelected={selectedRegionId === region.id} onMouseDown={handleRegionMouseDown} setRef={el => regionRefs.current.set(region.id, el)} />
+                {zoomRegions.map(region => (
+                  <ZoomRegionBlock key={region.id} region={region} left={timeToPx(region.startTime)} width={timeToPx(region.duration)} isSelected={selectedRegionId === region.id} onMouseDown={handleRegionMouseDown} setRef={el => regionRefs.current.set(region.id, el)} />
                 ))}
-                {previewCutRegion && <CutRegionBlock region={previewCutRegion} left={timeToPx(previewCutRegion.startTime)} width={timeToPx(previewCutRegion.duration)} isSelected={false} isDraggable={false} onMouseDown={() => { }} setRef={() => { }} />}
+                {allCutRegionsToRender.map(region => (
+                  <CutRegionBlock
+                    key={region.id}
+                    region={region}
+                    left={timeToPx(region.startTime)}
+                    width={timeToPx(region.duration)}
+                    isSelected={selectedRegionId === region.id}
+                    // The preview region is not draggable
+                    isDraggable={region.id !== previewCutRegion?.id}
+                    onMouseDown={handleRegionMouseDown}
+                    setRef={el => regionRefs.current.set(region.id, el)}
+                  />
+                ))}
               </div>
             </div>
-            {trimOverlayRegions.map(region => (<div key={`overlay-${region.id}`} className="absolute top-0 h-full bg-gray-400/20 z-20 pointer-events-none" style={{ left: `${timeToPx(region.startTime)}px`, width: `${timeToPx(region.duration)}px` }} />))}
             {duration > 0 && <div ref={playheadRef} className="absolute top-0 bottom-0 z-30" style={{ transform: `translateX(${timeToPx(currentTime)}px)`, pointerEvents: "none" }}><Playhead height={timelineRef.current?.clientHeight ?? 200} isDragging={isDraggingPlayhead} onMouseDown={(e) => { e.stopPropagation(); setIsDraggingPlayhead(true); document.body.style.cursor = 'grabbing'; }} /></div>}
           </div>
         </div>
