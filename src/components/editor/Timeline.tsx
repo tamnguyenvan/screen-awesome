@@ -178,13 +178,19 @@ export function Timeline({ videoRef }: { videoRef: React.RefObject<HTMLVideoElem
         const deltaTime = pxToTime(e.clientX - draggingRegion.initialX);
 
         if (draggingRegion.type === 'move') {
-          const newStartTime = draggingRegion.initialStartTime + deltaTime;
-          updateVideoTime(newStartTime);
-          element.style.transform = `translateX(${timeToPx(newStartTime - draggingRegion.initialStartTime)}px)`;
+            const maxStartTime = duration - draggingRegion.initialDuration;
+            const intendedStartTime = draggingRegion.initialStartTime + deltaTime;
+            const newStartTime = Math.max(0, Math.min(intendedStartTime, maxStartTime));
+            
+            updateVideoTime(newStartTime);
+            element.style.transform = `translateX(${timeToPx(newStartTime - draggingRegion.initialStartTime)}px)`;
         } else if (draggingRegion.type === 'resize-right') {
-          const newDuration = Math.max(MINIMUM_REGION_DURATION, draggingRegion.initialDuration + deltaTime);
-          updateVideoTime(draggingRegion.initialStartTime + newDuration);
-          element.style.width = `${timeToPx(newDuration)}px`;
+            const maxDuration = duration - draggingRegion.initialStartTime;
+            const intendedDuration = draggingRegion.initialDuration + deltaTime;
+            const newDuration = Math.max(MINIMUM_REGION_DURATION, Math.min(intendedDuration, maxDuration));
+
+            updateVideoTime(draggingRegion.initialStartTime + newDuration);
+            element.style.width = `${timeToPx(newDuration)}px`;
         } else if (draggingRegion.type === 'resize-left') {
           const initialEndTime = draggingRegion.initialStartTime + draggingRegion.initialDuration;
           const newStartTime = Math.min(initialEndTime - MINIMUM_REGION_DURATION, Math.max(0, draggingRegion.initialStartTime + deltaTime));
@@ -200,7 +206,6 @@ export function Timeline({ videoRef }: { videoRef: React.RefObject<HTMLVideoElem
         const timeAtMouse = pxToTime(Math.max(0, e.clientX - rect.left));
         let newPreview: CutRegion | null = null;
 
-        // FIX: Get latest duration directly from store to avoid stale state
         const currentDuration = useEditorStore.getState().duration;
 
         if (isDraggingLeftStrip) {
@@ -217,7 +222,6 @@ export function Timeline({ videoRef }: { videoRef: React.RefObject<HTMLVideoElem
             trimType: 'end', zIndex: 0
           };
         }
-        // Hide the preview if it's too small, providing instant visual feedback
         setPreviewCutRegion(newPreview.duration >= MINIMUM_REGION_DURATION ? newPreview : null);
       }
     };
@@ -228,14 +232,20 @@ export function Timeline({ videoRef }: { videoRef: React.RefObject<HTMLVideoElem
 
       if (draggingRegion) {
         const element = regionRefs.current.get(draggingRegion.id);
-        if (element) element.style.transform = 'translateX(0px)';
+        if (element) {
+          element.style.transform = 'translateX(0px)';
+          element.style.width = '';
+        }
 
         const deltaTime = pxToTime(e.clientX - draggingRegion.initialX);
         const finalUpdates: Partial<TimelineRegion> = {};
 
         if (draggingRegion.type === 'move') {
-          finalUpdates.startTime = Math.max(0, draggingRegion.initialStartTime + deltaTime);
-          finalUpdates.duration = draggingRegion.initialDuration;
+          // BUG FIX: Use the same clamping logic as in handleMouseMove
+          const maxStartTime = duration - draggingRegion.initialDuration;
+          const intendedStartTime = draggingRegion.initialStartTime + deltaTime;
+          finalUpdates.startTime = Math.max(0, Math.min(intendedStartTime, maxStartTime));
+          finalUpdates.duration = draggingRegion.initialDuration; // Duration does not change on move
         } else if (draggingRegion.type === 'resize-right') {
           finalUpdates.startTime = draggingRegion.initialStartTime;
           finalUpdates.duration = Math.max(0, draggingRegion.initialDuration + deltaTime);
@@ -260,21 +270,15 @@ export function Timeline({ videoRef }: { videoRef: React.RefObject<HTMLVideoElem
         setDraggingRegion(null);
       }
 
-      // Finalize trim region changes on mouse up
       if (isDraggingLeftStrip || isDraggingRightStrip) {
-        // FIX: Get latest state directly from the store to avoid stale state
         const finalPreview = useEditorStore.getState().previewCutRegion;
         const allCutRegions = useEditorStore.getState().cutRegions;
-
         const trimType = isDraggingLeftStrip ? 'start' : 'end';
         const existingTrim = Object.values(allCutRegions).find(r => r.trimType === trimType);
 
-        // Delete the old trim region if it exists
         if (existingTrim) {
           deleteRegion(existingTrim.id);
         }
-
-        // If the preview is valid (not too small), add it as a new region
         if (finalPreview) {
           addCutRegion({
             startTime: finalPreview.startTime,
@@ -296,10 +300,9 @@ export function Timeline({ videoRef }: { videoRef: React.RefObject<HTMLVideoElem
       window.removeEventListener('mouseup', handleMouseUp);
     };
   }, [
-    // Dependencies remain mostly the same, as the logic inside now gets fresh state
     draggingRegion, isDraggingPlayhead, isDraggingLeftStrip, isDraggingRightStrip,
     pxToTime, timeToPx, updateVideoTime, updateRegion, addCutRegion,
-    setPreviewCutRegion, deleteRegion, setCurrentTime, videoRef
+    setPreviewCutRegion, deleteRegion, setCurrentTime, videoRef, duration
   ]);
 
   useEffect(() => {
@@ -357,10 +360,10 @@ export function Timeline({ videoRef }: { videoRef: React.RefObject<HTMLVideoElem
             }
             const scrollableContainer = e.currentTarget as HTMLDivElement;
             const rect = scrollableContainer.getBoundingClientRect();
-            
+
             // This ensures clicks work correctly on a zoomed timeline
             const clickX = e.clientX - rect.left + scrollableContainer.scrollLeft;
-            
+
             updateVideoTime(pxToTime(clickX));
             setSelectedRegionId(null);
           }}>
