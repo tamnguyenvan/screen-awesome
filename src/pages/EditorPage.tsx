@@ -11,14 +11,33 @@ import { ExportProgressOverlay } from '../components/editor/ExportProgressOverla
 import { WindowControls } from '../components/editor/WindowControls';
 import { Moon, Sun } from 'lucide-react';
 import { cn } from '../lib/utils';
+import { useKeyboardShortcuts } from '../hooks/useKeyboardShortcuts';
 
 export function EditorPage() {
-  const { loadProject, toggleTheme } = useEditorStore.getState();
+  // Lấy state và actions từ store
+  const { loadProject, toggleTheme, deleteRegion } = useEditorStore.getState();
   const videoRef = useRef<HTMLVideoElement>(null);
   const [isExportModalOpen, setExportModalOpen] = useState(false);
   const [isExporting, setIsExporting] = useState(false);
   const [exportProgress, setExportProgress] = useState(0);
   const [platform, setPlatform] = useState<NodeJS.Platform | null>(null);
+
+  const handleDeleteSelectedRegion = useCallback(() => {
+    // Dùng getState() để lấy selectedRegionId mới nhất bên trong callback
+    const currentSelectedId = useEditorStore.getState().selectedRegionId;
+    if (currentSelectedId) {
+      deleteRegion(currentSelectedId);
+    }
+  }, [deleteRegion]);
+
+  useKeyboardShortcuts(
+    {
+      'Delete': handleDeleteSelectedRegion,
+      'Backspace': handleDeleteSelectedRegion, // Thêm Backspace cho tiện lợi
+    },
+    [handleDeleteSelectedRegion]
+  );
+  // --- END: Thêm logic quản lý phím tắt ---
 
   useEffect(() => {
     window.electronAPI.getPlatform().then(setPlatform);
@@ -101,6 +120,7 @@ export function EditorPage() {
 
   return (
     <main className="h-screen w-screen bg-background flex flex-col overflow-hidden select-none">
+      {/* Header */}
       <header
         className="relative h-14 flex-shrink-0 border-b border-border bg-card/50 backdrop-blur-sm"
         style={{ WebkitAppRegion: 'drag' }}
@@ -122,7 +142,8 @@ export function EditorPage() {
           <ExportButton isExporting={isExporting} onClick={() => setExportModalOpen(true)} />
         </div>
       </header>
-
+      
+      {/* Layout chính không thay đổi */}
       <div className="flex flex-1 overflow-hidden">
         <div className="w-96 flex-shrink-0 bg-sidebar border-r border-sidebar-border overflow-hidden">
           <SidePanel />

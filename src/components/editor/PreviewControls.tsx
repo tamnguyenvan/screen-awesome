@@ -1,11 +1,13 @@
 // src/components/editor/PreviewControls.tsx
 import React from 'react';
-import { Play, Pause, Rewind, Scissors, Plus, ZoomIn } from 'lucide-react';
+// Thêm icon Trash2 và các component Tooltip
+import { Play, Pause, Rewind, Scissors, Plus, ZoomIn, Trash2 } from 'lucide-react';
 import { useEditorStore, AspectRatio } from '../../store/editorStore';
 import { Button } from '../ui/button';
 import { cn } from '../../lib/utils';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '../ui/select';
 import Slider from '../ui/slider';
+import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '../ui/tooltip';
 
 interface PreviewControlsProps {
   videoRef: React.RefObject<HTMLVideoElement>;
@@ -24,13 +26,20 @@ export function PreviewControls({ videoRef }: PreviewControlsProps) {
   const {
     isPlaying, togglePlay, currentTime, duration, setCurrentTime,
     aspectRatio, setAspectRatio, addZoomRegion, addCutRegion,
-    timelineZoom, setTimelineZoom
+    timelineZoom, setTimelineZoom,
+    selectedRegionId, deleteRegion // Lấy thêm state và action cần thiết
   } = useEditorStore();
 
   const handleRewind = () => {
     setCurrentTime(0);
     if (videoRef.current) {
       videoRef.current.currentTime = 0;
+    }
+  }
+
+  const handleDelete = () => {
+    if (selectedRegionId) {
+      deleteRegion(selectedRegionId);
     }
   }
 
@@ -60,8 +69,30 @@ export function PreviewControls({ videoRef }: PreviewControlsProps) {
           Add Cut
         </Button>
 
+        <TooltipProvider delayDuration={200}>
+          <Tooltip>
+            <TooltipTrigger asChild>
+              {/* Nút được bọc trong div để Tooltip hoạt động ngay cả khi nút bị disabled */}
+              <div> 
+                <Button
+                  variant="destructive"
+                  size="sm"
+                  onClick={handleDelete}
+                  disabled={!selectedRegionId}
+                  className="bg-destructive/10 hover:bg-destructive/20 text-destructive font-medium px-4 py-2 rounded-lg transition-all duration-200 disabled:opacity-40 disabled:cursor-not-allowed"
+                >
+                  <Trash2 className="w-4 h-4" />
+                </Button>
+              </div>
+            </TooltipTrigger>
+            <TooltipContent>
+              <p>Delete Selected Region (Del)</p>
+            </TooltipContent>
+          </Tooltip>
+        </TooltipProvider>
+
         {/* Timeline Zoom Control */}
-        <div className="flex items-center gap-3 ml-6 px-4 py-2 bg-background/30 rounded-lg border border-border/30">
+        <div className="flex items-center gap-3 ml-4 px-4 py-2 bg-background/30 rounded-lg border border-border/30">
           <ZoomIn className="w-4 h-4 text-muted-foreground" />
           <div className="w-24">
             <Slider
