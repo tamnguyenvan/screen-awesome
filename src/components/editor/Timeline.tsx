@@ -96,6 +96,7 @@ export function Timeline({ videoRef }: { videoRef: React.RefObject<HTMLVideoElem
   const animationFrameRef = useRef<number>();
   const { setPlaying } = useEditorStore();
   const wasPlayingRef = useRef(false);
+  const isDraggingRegionHiddenRef = useRef(false);
 
   const [draggingRegion, setDraggingRegion] = useState<{ id: string; type: 'move' | 'resize-left' | 'resize-right'; initialX: number; initialStartTime: number; initialDuration: number; } | null>(null);
   const [isDraggingPlayhead, setIsDraggingPlayhead] = useState(false);
@@ -132,6 +133,8 @@ export function Timeline({ videoRef }: { videoRef: React.RefObject<HTMLVideoElem
     if (wasPlayingRef.current) {
       setPlaying(false);
     }
+
+    isDraggingRegionHiddenRef.current = false;
 
     setSelectedRegionId(region.id);
 
@@ -195,16 +198,42 @@ export function Timeline({ videoRef }: { videoRef: React.RefObject<HTMLVideoElem
         } else if (draggingRegion.type === 'resize-right') {
           const maxDuration = duration - draggingRegion.initialStartTime;
           const intendedDuration = draggingRegion.initialDuration + deltaTime;
-          const newDuration = Math.max(MINIMUM_REGION_DURATION, Math.min(intendedDuration, maxDuration));
 
-          updateVideoTime(draggingRegion.initialStartTime + newDuration);
-          element.style.width = `${timeToPx(newDuration)}px`;
+          // Check if it should vanish (without clamping to MINIMUM_REGION_DURATION yet)
+          if (intendedDuration < REGION_DELETE_THRESHOLD) {
+            element.style.display = 'none';
+            isDraggingRegionHiddenRef.current = true;
+            updateVideoTime(draggingRegion.initialStartTime); // Reset playhead to start of region
+          } else {
+            // Clamp to valid range
+            const newDuration = Math.min(intendedDuration, maxDuration);
+
+            element.style.display = 'block';
+            isDraggingRegionHiddenRef.current = false;
+            element.style.width = `${timeToPx(newDuration)}px`;
+            updateVideoTime(draggingRegion.initialStartTime + newDuration);
+          }
         } else if (draggingRegion.type === 'resize-left') {
           const initialEndTime = draggingRegion.initialStartTime + draggingRegion.initialDuration;
-          const newStartTime = Math.min(initialEndTime - MINIMUM_REGION_DURATION, Math.max(0, draggingRegion.initialStartTime + deltaTime));
-          updateVideoTime(newStartTime);
-          element.style.transform = `translateX(${timeToPx(newStartTime - draggingRegion.initialStartTime)}px)`;
-          element.style.width = `${timeToPx(initialEndTime - newStartTime)}px`;
+          // Calculate the potential new start time (clamped by 0 and the end time)
+          const tentativeStartTime = Math.max(0, Math.min(draggingRegion.initialStartTime + deltaTime, initialEndTime));
+
+          // Calculate the potential new duration
+          const newDuration = initialEndTime - tentativeStartTime;
+
+          if (newDuration < REGION_DELETE_THRESHOLD) {
+            element.style.display = 'none';
+            isDraggingRegionHiddenRef.current = true;
+            updateVideoTime(initialEndTime); // Reset playhead to end of region
+          } else {
+            const newStartTime = tentativeStartTime;
+
+            element.style.display = 'block';
+            isDraggingRegionHiddenRef.current = false;
+            element.style.width = `${timeToPx(newDuration)}px`;
+            element.style.transform = `translateX(${timeToPx(newStartTime - draggingRegion.initialStartTime)}px)`;
+            updateVideoTime(newStartTime);
+          }
         }
       }
 
@@ -243,50 +272,56 @@ export function Timeline({ videoRef }: { videoRef: React.RefObject<HTMLVideoElem
         if (element) {
           element.style.transform = 'translateX(0px)';
           element.style.width = '';
+          element.style.display = 'block'; // Ensure it's visible if it wasn't deleted
         }
 
-        const deltaTime = pxToTime(e.clientX - draggingRegion.initialX);
-        const finalUpdates: Partial<TimelineRegion> = {};
-
-        if (draggingRegion.type === 'move') {
-          // BUG FIX: Use the same clamping logic as in handleMouseMove
-          const maxStartTime = duration - draggingRegion.initialDuration;
-          const intendedStartTime = draggingRegion.initialStartTime + deltaTime;
-          finalUpdates.startTime = Math.max(0, Math.min(intendedStartTime, maxStartTime));
-          finalUpdates.duration = draggingRegion.initialDuration; // Duration does not change on move
-        } else if (draggingRegion.type === 'resize-right') {
-          finalUpdates.startTime = draggingRegion.initialStartTime;
-          finalUpdates.duration = Math.max(0, draggingRegion.initialDuration + deltaTime);
-        } else {
-          const newStartTime = Math.min(
-            draggingRegion.initialStartTime + draggingRegion.initialDuration,
-            Math.max(0, draggingRegion.initialStartTime + deltaTime)
-          );
-          finalUpdates.duration = (draggingRegion.initialStartTime + draggingRegion.initialDuration) - newStartTime;
-          finalUpdates.startTime = newStartTime;
-        }
-
-        if (finalUpdates.duration < REGION_DELETE_THRESHOLD) {
+        if (isDraggingRegionHiddenRef.current) {
           deleteRegion(draggingRegion.id);
         } else {
-          updateRegion(draggingRegion.id, finalUpdates);
+          // Proceed with final calculation and standard threshold check
+          const deltaTime = pxToTime(e.clientX - draggingRegion.initialX);
+          const finalUpdates: Partial<TimelineRegion> = {};
+
+          if (draggingRegion.type === 'move') {
+            const maxStartTime = duration - draggingRegion.initialDuration;
+            const intendedStartTime = draggingRegion.initialStartTime + deltaTime;
+            finalUpdates.startTime = Math.max(0, Math.min(intendedStartTime, maxStartTime));
+            finalUpdates.duration = draggingRegion.initialDuration;
+          } else if (draggingRegion.type === 'resize-right') {
+            finalUpdates.startTime = draggingRegion.initialStartTime;
+            const intendedDuration = draggingRegion.initialDuration + deltaTime;
+            const maxDuration = duration - draggingRegion.initialStartTime;
+            finalUpdates.duration = Math.max(MINIMUM_REGION_DURATION, Math.min(intendedDuration, maxDuration));
+
+          } else {
+            const initialEndTime = draggingRegion.initialStartTime + draggingRegion.initialDuration;
+            const newStartTime = Math.min(
+              initialEndTime - MINIMUM_REGION_DURATION,
+              Math.max(0, draggingRegion.initialStartTime + deltaTime)
+            );
+            finalUpdates.duration = initialEndTime - newStartTime;
+            finalUpdates.startTime = newStartTime;
+          }
+
+          if (finalUpdates.duration! < REGION_DELETE_THRESHOLD) {
+            deleteRegion(draggingRegion.id);
+          } else {
+            updateRegion(draggingRegion.id, finalUpdates);
+          }
         }
 
-        if (videoRef.current) {
+        if (videoRef.current && !isDraggingRegionHiddenRef.current) {
           setCurrentTime(videoRef.current.currentTime);
         }
+
         setDraggingRegion(null);
+        isDraggingRegionHiddenRef.current = false; // Reset ref
       }
 
       if (isDraggingLeftStrip || isDraggingRightStrip) {
         const finalPreview = useEditorStore.getState().previewCutRegion;
-        const allCutRegions = useEditorStore.getState().cutRegions;
         const trimType = isDraggingLeftStrip ? 'start' : 'end';
-        const existingTrim = Object.values(allCutRegions).find(r => r.trimType === trimType);
 
-        if (existingTrim) {
-          deleteRegion(existingTrim.id);
-        }
         if (finalPreview) {
           addCutRegion({
             startTime: finalPreview.startTime,
@@ -361,6 +396,12 @@ export function Timeline({ videoRef }: { videoRef: React.RefObject<HTMLVideoElem
           onMouseDown={() => {
             wasPlayingRef.current = useEditorStore.getState().isPlaying;
             if (wasPlayingRef.current) setPlaying(false);
+            const state = useEditorStore.getState();
+            const existingLeftTrim = Object.values(state.cutRegions).find(r => r.trimType === 'start');
+            if (existingLeftTrim) {
+              state.deleteRegion(existingLeftTrim.id);
+            }
+
             setIsDraggingLeftStrip(true)
           }}>
           <Scissors size={16} className="text-muted-foreground" />
@@ -454,6 +495,14 @@ export function Timeline({ videoRef }: { videoRef: React.RefObject<HTMLVideoElem
           onMouseDown={() => {
             wasPlayingRef.current = useEditorStore.getState().isPlaying;
             if (wasPlayingRef.current) setPlaying(false);
+
+            // --- FIX (Issue 2): Delete existing right trim region before starting new drag ---
+            const state = useEditorStore.getState();
+            const existingRightTrim = Object.values(state.cutRegions).find(r => r.trimType === 'end');
+            if (existingRightTrim) {
+              state.deleteRegion(existingRightTrim.id);
+            }
+
             setIsDraggingRightStrip(true);
           }}>
           <FlipScissorsIcon className="text-muted-foreground size-4" />
