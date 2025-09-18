@@ -19,7 +19,6 @@ export const CutRegionBlock = memo(({
   onMouseDown,
   setRef
 }: CutRegionBlockProps) => {
-  void isSelected
   const isTrimRegion = !!region.trimType;
   const canMove = isDraggable && !isTrimRegion;
   const canResizeLeft = isDraggable && region.trimType !== 'start';
@@ -37,36 +36,37 @@ export const CutRegionBlock = memo(({
       data-region-id={region.id}
       className={cn(
         'w-full h-full', // Take up full space of parent div
-        'bg-foreground/40 border-border/50 border-2',
+        'bg-destructive/40 backdrop-blur-[2px] border-y-2 border-destructive/80',
+        isSelected && 'ring-2 ring-offset-2 ring-offset-background ring-destructive'
       )}
     >
       <div 
         className={cn(
           'relative w-full h-14 mt-[72px] flex items-center justify-center rounded-lg',
-          'border border-destructive',
+          'border-x-2 border-destructive',
+          'bg-destructive/20',
           canMove ? 'cursor-grab' : 'cursor-default'
         )}
-        onMouseDown={(e) => handleMouseDown(e, 'move')}
+        onMouseDown={(e) => canMove && handleMouseDown(e, 'move')} // Only allow move if canMove
       >
         {canResizeLeft && (
           <div
-            className="absolute left-0 top-0 w-2 h-full cursor-ew-resize rounded-l-md flex items-center justify-center z-20"
+            className="absolute left-0 top-0 w-4 h-full cursor-ew-resize rounded-l-md flex items-center justify-center z-20"
             onMouseDown={(e) => handleMouseDown(e, 'resize-left')} >
-            <div className="w-0.5 h-1/2 bg-destructive/80 rounded-full" />
+            <div className="w-0.5 h-1/2 bg-white/80 rounded-full" />
           </div>
         )}
         <div className="pointer-events-none flex items-center gap-2 px-2">
           <Scissors className="w-4 h-4 text-white/70" />
-          {/* Check width of the PARENT element for this logic */}
           <span className="text-xs font-medium text-white/80 select-none">
             {region.trimType ? `${region.trimType.charAt(0).toUpperCase() + region.trimType.slice(1)} Trim` : 'Cut'}
           </span>
         </div>
         {canResizeRight && (
           <div
-            className="absolute right-0 top-0 w-2 h-full cursor-ew-resize rounded-r-md flex items-center justify-center z-20"
+            className="absolute right-0 top-0 w-4 h-full cursor-ew-resize rounded-r-md flex items-center justify-center z-20"
             onMouseDown={(e) => handleMouseDown(e, 'resize-right')} >
-            <div className="w-0.5 h-1/2 bg-destructive/80 rounded-full" />
+            <div className="w-0.5 h-1/2 bg-white/80 rounded-full" />
           </div>
         )}
       </div>
