@@ -319,6 +319,7 @@ export const useEditorStore = create(
 
         set(state => {
           state.zoomRegions[id] = newRegion;
+          state.selectedRegionId = id;
           state.nextZIndex++;
         });
       },
@@ -344,6 +345,7 @@ export const useEditorStore = create(
 
         set(state => {
           state.cutRegions[id] = newRegion;
+          state.selectedRegionId = id;
           if (!regionData?.trimType) {
             state.nextZIndex++;
           }
