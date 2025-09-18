@@ -1,4 +1,5 @@
 // src/pages/RendererPage.tsx
+
 import log from 'electron-log/renderer';
 import { useEffect, useRef } from 'react';
 import { CutRegion, useEditorStore, EditorState, EditorActions } from '../store/editorStore';
@@ -11,6 +12,10 @@ const RESOLUTIONS = {
   '2k': { width: 2560, height: 1440 },
 };
 
+/**
+ * Draws the background (color, gradient, image) onto the canvas.
+ * This matches the implementation in Preview.tsx (generateBackgroundStyle).
+ */
 const drawBackground = async (
   ctx: CanvasRenderingContext2D,
   width: number,
@@ -33,12 +38,23 @@ const drawBackground = async (
       if (direction.includes('circle')) {
         gradient = ctx.createRadialGradient(width / 2, height / 2, 0, width / 2, height / 2, Math.max(width, height) / 2);
       } else {
-        const points = {
-          'to bottom': [0, 0, 0, height], 'to top': [0, height, 0, 0], 'to right': [0, 0, width, 0],
-          'to left': [width, 0, 0, 0], 'to bottom right': [0, 0, width, height], 'to bottom left': [width, 0, 0, height],
-          'to top right': [0, height, width, 0], 'to top left': [width, height, 0, 0],
-        }[direction] || [0, 0, width, 0];
-        gradient = ctx.createLinearGradient(points[0], points[1], points[2], points[3]);
+        // Map direction strings to canvas coordinates
+        const getCoords = (dir: string) => {
+          switch (dir) {
+            case 'to bottom': return [0, 0, 0, height];
+            case 'to top': return [0, height, 0, 0];
+            case 'to right': return [0, 0, width, 0];
+            case 'to left': return [width, 0, 0, 0];
+            case 'to bottom right': return [0, 0, width, height];
+            case 'to bottom left': return [width, 0, 0, height];
+            case 'to top right': return [0, height, width, 0];
+            case 'to top left': return [width, height, 0, 0];
+            default: return [0, 0, width, 0];
+          }
+        };
+        const coords = getCoords(direction);
+        // @ts-expect-error - TS doesn't know coords has exactly 4 elements
+        gradient = ctx.createLinearGradient(...coords);
       }
 
       gradient.addColorStop(0, start);
@@ -50,42 +66,62 @@ const drawBackground = async (
     case 'image':
     case 'wallpaper': {
       if (!backgroundState.imageUrl) {
-        ctx.fillStyle = '#111'; ctx.fillRect(0, 0, width, height); return;
+        // Fallback background if no image
+        ctx.fillStyle = 'oklch(0.2077 0.0398 265.7549)';
+        ctx.fillRect(0, 0, width, height);
+        return;
       }
+
       await new Promise<void>((resolve, reject) => {
         const img = new Image();
         img.onload = () => {
-          const imgRatio = img.width / img.height; const canvasRatio = width / height;
+          // Cover scaling logic
+          const imgRatio = img.width / img.height;
+          const canvasRatio = width / height;
           let sx, sy, sWidth, sHeight;
+
           if (imgRatio > canvasRatio) {
-            sHeight = img.height; sWidth = sHeight * canvasRatio;
-            sx = (img.width - sWidth) / 2; sy = 0;
+            // Image is wider than canvas
+            sHeight = img.height;
+            sWidth = sHeight * canvasRatio;
+            sx = (img.width - sWidth) / 2;
+            sy = 0;
           } else {
-            sWidth = img.width; sHeight = sWidth / canvasRatio;
-            sx = 0; sy = (img.height - sHeight) / 2;
+            // Image is taller than canvas
+            sWidth = img.width;
+            sHeight = sWidth / canvasRatio;
+            sx = 0;
+            sy = (img.height - sHeight) / 2;
           }
+
           ctx.drawImage(img, sx, sy, sWidth, sHeight, 0, 0, width, height);
           resolve();
         };
         img.onerror = (err) => {
           log.error(`[RendererPage] Failed to load background image: ${img.src}`, err);
-          reject(err);
+          // Draw fallback on error
+          ctx.fillStyle = 'oklch(0.2077 0.0398 265.7549)';
+          ctx.fillRect(0, 0, width, height);
+          resolve(); // Resolve anyway to continue export
         };
 
         if (!backgroundState.imageUrl) {
+          log.error('[RendererPage] No image URL provided');
           reject(new Error('No image URL provided'));
           return;
         }
-        
-        // Use a relative path that Electron's protocol can resolve
-        img.src = backgroundState.imageUrl.startsWith('blob:')
+
+        // Use the custom media:// protocol for local file access
+        const finalUrl = backgroundState.imageUrl.startsWith('blob:')
           ? backgroundState.imageUrl
           : `media://${backgroundState.imageUrl}`;
+          
+        img.src = finalUrl;
       });
       break;
     }
     default:
-      ctx.fillStyle = '#111';
+      ctx.fillStyle = 'oklch(0.2077 0.0398 265.7549)';
       ctx.fillRect(0, 0, width, height);
   }
 };
@@ -111,10 +147,13 @@ export function RendererPage() {
 
         if (!canvas || !video) throw new Error('Canvas or Video ref is not available.');
 
+        // 1. Setup Output Dimensions
         const { resolution, fps } = exportSettings;
         const [ratioW, ratioH] = projectState.aspectRatio.split(':').map(Number);
         const baseHeight = RESOLUTIONS[resolution as keyof typeof RESOLUTIONS].height;
         const aspectValue = ratioW / ratioH;
+        
+        // Calculate width and ensure it's even for FFmpeg compatibility
         let outputWidth = Math.round(baseHeight * aspectValue);
         outputWidth = outputWidth % 2 === 0 ? outputWidth : outputWidth + 1;
         const outputHeight = baseHeight;
@@ -122,13 +161,48 @@ export function RendererPage() {
         canvas.width = outputWidth;
         canvas.height = outputHeight;
 
+        // Use alpha: false for performance as we always draw a background
         const ctx = canvas.getContext('2d', { alpha: false });
         if (!ctx) throw new Error('Failed to get 2D context from canvas.');
 
-        // Set state for transform calculations
+        // Load project state into the store for calculations (e.g., calculateZoomTransform)
         useEditorStore.setState(projectState);
+        const state = useEditorStore.getState();
+        const { frameStyles, videoDimensions } = state;
 
-        // --- FIX: Wait for video to be ready before starting the loop ---
+        // --- Pre-calculate static layout values ---
+
+        // The area available for the "Frame" (Outer border included) after padding
+        const paddingPercent = frameStyles.padding / 100;
+        const availableWidth = outputWidth * (1 - 2 * paddingPercent);
+        const availableHeight = outputHeight * (1 - 2 * paddingPercent);
+
+        const videoAspectRatio = videoDimensions.width / videoDimensions.height;
+
+        // Calculate frame dimensions maintaining video aspect ratio within available space
+        let frameWidth, frameHeight;
+        if (availableWidth / availableHeight > videoAspectRatio) {
+          frameHeight = availableHeight;
+          frameWidth = frameHeight * videoAspectRatio;
+        } else {
+          frameWidth = availableWidth;
+          frameHeight = frameWidth / videoAspectRatio;
+        }
+
+        // Position of the frame's top-left corner
+        const frameX = (outputWidth - frameWidth) / 2;
+        const frameY = (outputHeight - frameHeight) / 2;
+
+        // Inner frame dimensions (where video is drawn)
+        const borderWidth = frameStyles.borderWidth;
+        const innerWidth = frameWidth - (borderWidth * 2);
+        const innerHeight = frameHeight - (borderWidth * 2);
+        const innerX = borderWidth;
+        const innerY = borderWidth;
+        const innerRadius = Math.max(0, frameStyles.borderRadius - borderWidth);
+
+
+        // 2. Load Video and Wait
         await new Promise<void>((resolve, reject) => {
             const onCanPlay = () => {
                 video.removeEventListener('canplay', onCanPlay);
@@ -148,9 +222,10 @@ export function RendererPage() {
 
             video.src = `media://${projectState.videoPath}`;
             video.muted = true;
-            video.load(); // Explicitly start loading
+            video.load();
         });
 
+        // Helper to seek video accurately
         const seek = (time: number): Promise<void> => {
           if (Math.abs(video.currentTime - time) < 0.01) return Promise.resolve();
           return new Promise((resolve, reject) => {
@@ -162,11 +237,12 @@ export function RendererPage() {
           });
         };
 
+        // 3. Start Render Loop
         const totalFrames = Math.floor(projectState.duration * fps);
         log.info(`[RendererPage] Starting render for ${totalFrames} frames at ${fps} FPS.`);
 
         if (totalFrames <= 0) {
-          log.warn('[RendererPage] No frames to render (duration might be 0). Aborting render.');
+          log.warn('[RendererPage] No frames to render. Aborting.');
           window.electronAPI.finishRender();
           return;
         }
@@ -176,81 +252,107 @@ export function RendererPage() {
         for (let frameIndex = 0; frameIndex < totalFrames; frameIndex++) {
           const currentTime = frameIndex / fps;
 
+          // Skip cut regions
           const activeCutRegion = cutRegionsArray.find(
             (r: CutRegion) => currentTime >= r.startTime && currentTime < r.startTime + r.duration
           );
 
           if (activeCutRegion) {
             const endOfCut = activeCutRegion.startTime + activeCutRegion.duration;
-            frameIndex = Math.floor(endOfCut * fps) - 1; // Jump frameIndex to the end of the cut
+            // Jump frameIndex to the frame just before the end of the cut
+            frameIndex = Math.floor(endOfCut * fps) - 1; 
             continue;
           }
 
+          // Prepare for rendering
           await seek(currentTime);
-          useEditorStore.getState().setCurrentTime(currentTime);
-          const state = useEditorStore.getState();
+          state.setCurrentTime(currentTime); // Update store for zoom calculations
 
-          await drawBackground(ctx, outputWidth, outputHeight, state.frameStyles.background);
+          // --- BEGIN FRAME RENDERING ---
+
+          // 1. Draw Background
+          await drawBackground(ctx, outputWidth, outputHeight, frameStyles.background);
+
+          // 2. Apply Transformations (Crucial: Do this *before* drawing the frame so shadow/border are transformed)
           ctx.save();
-          
-          const paddingPercent = state.frameStyles.padding / 100;
-          const availableWidth = outputWidth * (1 - 2 * paddingPercent);
-          const availableHeight = outputHeight * (1 - 2 * paddingPercent);
-          const videoAspectRatio = state.videoDimensions.width / state.videoDimensions.height;
-          let videoDisplayWidth, videoDisplayHeight;
-          if (availableWidth / availableHeight > videoAspectRatio) {
-            videoDisplayHeight = availableHeight;
-            videoDisplayWidth = videoDisplayHeight * videoAspectRatio;
-          } else {
-            videoDisplayWidth = availableWidth;
-            videoDisplayHeight = videoDisplayWidth / videoAspectRatio;
-          }
-          const paddingX = (outputWidth - videoDisplayWidth) / 2;
-          const paddingY = (outputHeight - videoDisplayHeight) / 2;
 
-          ctx.shadowColor = `rgba(0,0,0,${Math.min(state.frameStyles.shadow * 0.015, 0.4)})`;
-          ctx.shadowBlur = state.frameStyles.shadow * 1.5;
-          ctx.shadowOffsetX = 0;
-          ctx.shadowOffsetY = state.frameStyles.shadow;
-          
-          const framePath = new Path2D();
-          framePath.roundRect(paddingX, paddingY, videoDisplayWidth, videoDisplayHeight, state.frameStyles.borderRadius);
-          ctx.fillStyle = 'rgba(0,0,0,1)';
-          ctx.fill(framePath);
-          ctx.shadowColor = 'transparent';
-
-          const borderGradient = ctx.createLinearGradient(paddingX, paddingY, paddingX + videoDisplayWidth, paddingY + videoDisplayHeight);
-          borderGradient.addColorStop(0, 'rgba(255, 255, 255, 0.25)');
-          borderGradient.addColorStop(1, 'rgba(255, 255, 255, 0.05)');
-          ctx.fillStyle = borderGradient;
-          ctx.fill(framePath);
-          ctx.strokeStyle = 'rgba(255, 255, 255, 0.3)';
-          ctx.lineWidth = 1;
-          ctx.stroke(framePath);
-
-          const borderWidth = state.frameStyles.borderWidth;
-          const videoInnerRadius = Math.max(0, state.frameStyles.borderRadius - borderWidth);
-          const videoPath = new Path2D();
-          videoPath.roundRect(
-            paddingX + borderWidth, paddingY + borderWidth, 
-            videoDisplayWidth - (borderWidth * 2), videoDisplayHeight - (borderWidth * 2), 
-            videoInnerRadius
-          );
-          ctx.clip(videoPath);
+          // Move context origin to the center of the frame area
+          ctx.translate(frameX + frameWidth / 2, frameY + frameHeight / 2);
 
           const { scale, translateX, translateY } = calculateZoomTransform(currentTime);
-          const innerVideoWidth = videoDisplayWidth - (borderWidth * 2);
-          const innerVideoHeight = videoDisplayHeight - (borderWidth * 2);
-          const scaledVideoRenderWidth = innerVideoWidth * scale;
-          const scaledVideoRenderHeight = innerVideoHeight * scale;
-          const panX = (translateX / 100) * innerVideoWidth;
-          const panY = (translateY / 100) * innerVideoHeight;
-          const renderX = (paddingX + borderWidth) - (scaledVideoRenderWidth - innerVideoWidth) / 2 + panX;
-          const renderY = (paddingY + borderWidth) - (scaledVideoRenderHeight - innerVideoHeight) / 2 + panY;
-          ctx.drawImage(video, renderX, renderY, scaledVideoRenderWidth, scaledVideoRenderHeight);
-          
-          ctx.restore();
 
+          // Apply scale
+          ctx.scale(scale, scale);
+
+          // Apply pan translation (translateX/Y are percentages of the frame width/height)
+          const panX = (translateX / 100) * frameWidth;
+          const panY = (translateY / 100) * frameHeight;
+          ctx.translate(panX, panY);
+
+          // Move origin back so (0,0) is the top-left of the frame area
+          ctx.translate(-frameWidth / 2, -frameHeight / 2);
+
+          // --- Now everything drawn is inside the zoomed/panned frame container ---
+
+          // 3. Draw the Frame Shadow
+          const { shadow, borderRadius } = frameStyles;
+          const shadowOpacity = Math.min(shadow * 0.015, 0.4);
+
+          ctx.shadowColor = `rgba(0, 0, 0, ${shadowOpacity})`;
+          ctx.shadowBlur = shadow * 1.5;
+          ctx.shadowOffsetX = 0;
+          ctx.shadowOffsetY = shadow;
+
+          const frameOuterPath = new Path2D();
+          // Draw at (0,0) because context is translated to frameX, frameY
+          frameOuterPath.roundRect(0, 0, frameWidth, frameHeight, borderRadius);
+
+          // Fill with near-transparent to cast the shadow without showing the fill
+          ctx.fillStyle = 'rgba(0,0,0,0.001)';
+          ctx.fill(frameOuterPath);
+
+          // Reset shadow for subsequent draws
+          ctx.shadowColor = 'transparent';
+          ctx.shadowBlur = 0;
+          ctx.shadowOffsetY = 0;
+
+          // 4. Draw the "Glass" Effect (Border and Gradient Overlay)
+          ctx.save();
+          ctx.clip(frameOuterPath);
+
+          // --- Gradient Overlay (Simulating glassyFrameStyle from Preview.tsx) ---
+          const gradient = ctx.createLinearGradient(0, 0, frameWidth, frameHeight);
+          gradient.addColorStop(0, 'rgba(255, 255, 255, 0.25)');
+          gradient.addColorStop(0.5, 'rgba(255, 255, 255, 0.15)');
+          gradient.addColorStop(1, 'rgba(255, 255, 255, 0.05)');
+          ctx.fillStyle = gradient;
+          ctx.fillRect(0, 0, frameWidth, frameHeight);
+
+          // --- Glass Border ---
+          ctx.strokeStyle = 'rgba(255, 255, 255, 0.3)';
+          ctx.lineWidth = 2; // Stroke is centered, so 2px width gives ~1px visual border
+          ctx.stroke(frameOuterPath);
+
+          ctx.restore(); // End glass clip
+
+          // 5. Draw the Video Content
+          const videoClipPath = new Path2D();
+          videoClipPath.roundRect(innerX, innerY, innerWidth, innerHeight, innerRadius);
+
+          ctx.save();
+          ctx.clip(videoClipPath);
+
+          // Draw video into the inner rectangle.
+          // The context is already scaled/panned, so we just draw at the calculated inner coordinates.
+          ctx.drawImage(video, innerX, innerY, innerWidth, innerHeight);
+
+          ctx.restore(); // End video clip
+
+          // --- END FRAME RENDERING ---
+
+          ctx.restore(); // Restore context state (removes zoom/pan transform)
+
+          // 6. Extract and Send Frame Data
           const imageData = ctx.getImageData(0, 0, outputWidth, outputHeight);
           const frameBuffer = Buffer.from(imageData.data.buffer);
           const progress = Math.round(((frameIndex + 1) / totalFrames) * 100);
@@ -267,6 +369,7 @@ export function RendererPage() {
       }
     });
 
+    // Signal to main process that the renderer is ready to receive the project data
     log.info('[RendererPage] Sending "render:ready" signal to main process.');
     window.electronAPI.rendererReady();
 

@@ -804,13 +804,13 @@ async function handleExportStart(
 
   // 2. Create a hidden window to act as worker
   renderWorker = new BrowserWindow({
-    show: true,
+    show: false,
     width: 1280,
     height: 720,
     webPreferences: {
       preload: path.join(__dirname, 'preload.mjs'),
       // Important: allow rendering without showing on screen
-      offscreen: false,
+      offscreen: true,
     },
   });
 

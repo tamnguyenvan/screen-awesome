@@ -7,7 +7,8 @@ import { Timeline } from '../components/editor/Timeline';
 import { PreviewControls } from '../components/editor/PreviewControls';
 import { ExportButton } from '../components/editor/ExportButton';
 import { ExportModal, ExportSettings } from '../components/editor/ExportModal';
-import { ExportProgressOverlay } from '../components/editor/ExportProgressOverlay';
+// REMOVE THIS IMPORT
+// import { ExportProgressOverlay } from '../components/editor/ExportProgressOverlay';
 import { WindowControls } from '../components/editor/WindowControls';
 import { Moon, Sun } from 'lucide-react';
 import { cn } from '../lib/utils';
@@ -22,6 +23,8 @@ export function EditorPage() {
   const [isExportModalOpen, setExportModalOpen] = useState(false);
   const [isExporting, setIsExporting] = useState(false);
   const [exportProgress, setExportProgress] = useState(0);
+  // ADD NEW STATE FOR EXPORT RESULT
+  const [exportResult, setExportResult] = useState<{ success: boolean; outputPath?: string; error?: string } | null>(null);
   const [platform, setPlatform] = useState<NodeJS.Platform | null>(null);
 
   const handleDeleteSelectedRegion = useCallback(() => {
@@ -42,7 +45,6 @@ export function EditorPage() {
     },
     [handleDeleteSelectedRegion, undo, redo]
   );
-  // --- END: Thêm logic quản lý phím tắt ---
 
   useEffect(() => {
     window.electronAPI.getPlatform().then(setPlatform);
@@ -56,14 +58,11 @@ export function EditorPage() {
       setExportProgress(progress);
     });
 
+    // --- MODIFIED EXPORT COMPLETE LISTENER ---
     const cleanCompleteListener = window.electronAPI.onExportComplete(({ success, outputPath, error }) => {
-      setIsExporting(false);
-      setExportProgress(100);
-      if (success) {
-        alert(`Export successful! Saved to:\n${outputPath}`);
-      } else {
-        alert(`Export failed:\n${error}`);
-      }
+      setIsExporting(false); // The core process is done
+      setExportProgress(100); // Ensure bar is full
+      setExportResult({ success, outputPath, error }); // Set result to show success/error view in modal
     });
 
     return () => {
@@ -74,7 +73,8 @@ export function EditorPage() {
   }, [loadProject]);
 
   const handleStartExport = useCallback(async (settings: ExportSettings) => {
-    setExportModalOpen(false);
+    // Don't close the modal, just start the export process.
+    // The modal will change its own view based on the `isExporting` prop.
 
     const defaultPath = `ScreenAwesome-Export-${Date.now()}.${settings.format}`;
     const result = await window.electronAPI.showSaveDialog({
@@ -87,12 +87,12 @@ export function EditorPage() {
 
     if (result.canceled || !result.filePath) {
       console.log('User cancelled the save dialog.');
+      // If user cancels save, we don't start exporting. Modal remains in settings view.
       return;
     }
 
     const fullState = useEditorStore.getState();
 
-    // --- FIX: Convert region objects back to arrays before sending ---
     const plainState = {
       videoPath: fullState.videoPath,
       metadata: fullState.metadata,
@@ -104,6 +104,8 @@ export function EditorPage() {
       cutRegions: fullState.cutRegions,
     };
 
+    // Reset state for the new export
+    setExportResult(null);
     setIsExporting(true);
     setExportProgress(0);
 
@@ -115,12 +117,24 @@ export function EditorPage() {
       });
     } catch (e) {
       console.error("Export invocation failed", e);
-      alert(`An error occurred while starting the export: ${e}`);
+      // If starting the export fails, show an error in the modal
+      setExportResult({ success: false, error: `An error occurred while starting the export: ${e}` });
       setIsExporting(false);
     }
   }, []);
 
   const currentTheme = useEditorStore(state => state.theme);
+
+  // --- ADD A HANDLER TO RESET STATE WHEN MODAL IS CLOSED ---
+  const handleCloseExportModal = () => {
+    setExportModalOpen(false);
+    // Delay reset to avoid UI flicker during closing animation
+    setTimeout(() => {
+      setIsExporting(false);
+      setExportProgress(0);
+      setExportResult(null);
+    }, 250);
+  };
 
   return (
     <main className="h-screen w-screen bg-background flex flex-col overflow-hidden select-none">
@@ -151,7 +165,7 @@ export function EditorPage() {
         </div>
       </header>
 
-      {/* Layout chính không thay đổi */}
+      {/* Main Layout (No Changes) */}
       <div className="flex flex-1 overflow-hidden">
         <div className="w-96 flex-shrink-0 bg-sidebar border-r border-sidebar-border overflow-hidden">
           <SidePanel />
@@ -171,8 +185,15 @@ export function EditorPage() {
         </div>
       </div>
 
-      <ExportModal isOpen={isExportModalOpen} onClose={() => setExportModalOpen(false)} onStartExport={handleStartExport} />
-      <ExportProgressOverlay isExporting={isExporting} progress={exportProgress} />
+      {/* --- UPDATED MODAL AND REMOVED OVERLAY --- */}
+      <ExportModal
+        isOpen={isExportModalOpen}
+        onClose={handleCloseExportModal}
+        onStartExport={handleStartExport}
+        isExporting={isExporting}
+        progress={exportProgress}
+        result={exportResult}
+      />
     </main>
   );
 }
