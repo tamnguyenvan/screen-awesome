@@ -7,6 +7,7 @@ import { Film } from 'lucide-react';
 import { useShallow } from 'zustand/react/shallow';
 
 const generateBackgroundStyle = (backgroundState: ReturnType<typeof useEditorStore.getState>['frameStyles']['background']) => {
+  // ... (no changes in this function, keeping it for brevity)
   switch (backgroundState.type) {
     case 'color':
       return { background: backgroundState.color || '#ffffff' };
@@ -31,9 +32,7 @@ const generateBackgroundStyle = (backgroundState: ReturnType<typeof useEditorSto
   }
 };
 
-// OPTIMIZATION: Memoize the Preview component to prevent re-renders from unrelated state changes
 export const Preview = memo(({ videoRef }: { videoRef: React.RefObject<HTMLVideoElement> }) => {
-  // Select all state values
   const { frameStyles, videoUrl, aspectRatio, videoDimensions, cutRegions } = useEditorStore(
     useShallow(state => ({
       frameStyles: state.frameStyles,
@@ -49,34 +48,33 @@ export const Preview = memo(({ videoRef }: { videoRef: React.RefObject<HTMLVideo
       setDuration: state.setDuration,
       setVideoDimensions: state.setVideoDimensions,
     })));
-  // OPTIMIZATION: Use specialized hook for playback state
   const { isPlaying, isCurrentlyCut } = usePlaybackState();
 
-  const transformContainerRef = useRef<HTMLDivElement>(null);
+  const frameContainerRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
     let animationFrameId: number;
-
     const updateTransform = () => {
-      if (!transformContainerRef.current || !videoRef.current) return;
+      if (!frameContainerRef.current || !videoRef.current) return;
       const liveCurrentTime = videoRef.current.currentTime;
       const { scale, translateX, translateY } = calculateZoomTransform(liveCurrentTime);
-      transformContainerRef.current.style.transform = `scale(${scale}) translate(${translateX}%, ${translateY}%)`;
+      const shadowOpacity = Math.min(frameStyles.shadow * 0.015, 0.4);
+      const shadowBlur = frameStyles.shadow * 1.5;
+      frameContainerRef.current.style.filter = `drop-shadow(0px ${frameStyles.shadow}px ${shadowBlur}px rgba(0, 0, 0, ${shadowOpacity}))`;
+      frameContainerRef.current.style.transform = `scale(${scale}) translate(${translateX}%, ${translateY}%)`;
     };
-
-    updateTransform(); // Initial update
-
+    updateTransform();
     const animate = () => {
       updateTransform();
       animationFrameId = requestAnimationFrame(animate);
     };
-
     if (isPlaying) {
       animate();
+    } else {
+      updateTransform();
     }
-
     return () => cancelAnimationFrame(animationFrameId);
-  }, [isPlaying, videoRef]);
+  }, [isPlaying, videoRef, frameStyles.shadow]);
 
   useEffect(() => {
     const video = videoRef.current;
@@ -87,14 +85,12 @@ export const Preview = memo(({ videoRef }: { videoRef: React.RefObject<HTMLVideo
   useEffect(() => {
     const video = videoRef.current;
     if (!video) return;
-
     if (isPlaying && isCurrentlyCut) {
       const allCutRegions = Object.values(useEditorStore.getState().cutRegions);
       const activeCutRegion = allCutRegions.find(
         r => video.currentTime >= r.startTime && video.currentTime < (r.startTime + r.duration)
       );
       if (activeCutRegion) {
-        console.log(`Skipping cut region, jumping to ${activeCutRegion.startTime + activeCutRegion.duration}`);
         video.currentTime = activeCutRegion.startTime + activeCutRegion.duration;
         setCurrentTime(video.currentTime);
       }
@@ -103,12 +99,23 @@ export const Preview = memo(({ videoRef }: { videoRef: React.RefObject<HTMLVideo
 
   const backgroundStyle = useMemo(() => generateBackgroundStyle(frameStyles.background), [frameStyles.background]);
   const cssAspectRatio = useMemo(() => aspectRatio.replace(':', ' / '), [aspectRatio]);
-  const videoAspectRatio = useMemo(() => {
-    if (videoDimensions.height === 0) return 16 / 9;
-    return videoDimensions.width / videoDimensions.height;
-  }, [videoDimensions]);
+  
+  const { videoDisplayWidth, videoDisplayHeight } = useMemo(() => {
+      if (!videoDimensions.width || !videoDimensions.height) {
+        return { videoDisplayWidth: '100%', videoDisplayHeight: '100%' };
+      }
+      const [vpWidth, vpHeight] = aspectRatio.split(':').map(Number);
+      const viewportAspectRatio = vpWidth / vpHeight;
+      const nativeVideoAspectRatio = videoDimensions.width / videoDimensions.height;
+      if (nativeVideoAspectRatio > viewportAspectRatio) {
+        return { videoDisplayWidth: '100%', videoDisplayHeight: 'auto' };
+      } else {
+        return { videoDisplayWidth: 'auto', videoDisplayHeight: '100%' };
+      }
+  }, [aspectRatio, videoDimensions]);
 
   const handleTimeUpdate = () => {
+    // ... (no changes in this function)
     if (!videoRef.current) return;
     const endTrimRegion = Object.values(cutRegions).find(r => r.trimType === 'end');
     if (endTrimRegion && videoRef.current.currentTime >= endTrimRegion.startTime) {
@@ -119,52 +126,116 @@ export const Preview = memo(({ videoRef }: { videoRef: React.RefObject<HTMLVideo
   };
 
   const handleLoadedMetadata = () => {
+    // ... (no changes in this function)
     if (videoRef.current) {
       setDuration(videoRef.current.duration);
       setVideoDimensions({ width: videoRef.current.videoWidth, height: videoRef.current.videoHeight });
     }
   };
 
+  // Enhanced glassy frame styles
+  const glassyFrameStyle = useMemo(() => ({
+    padding: `${frameStyles.borderWidth}px`,
+    borderRadius: `${frameStyles.borderRadius}px`,
+    background: `
+      linear-gradient(135deg, 
+        rgba(255, 255, 255, 0.25) 0%, 
+        rgba(255, 255, 255, 0.15) 50%, 
+        rgba(255, 255, 255, 0.05) 100%
+      ),
+      radial-gradient(ellipse at top left, 
+        rgba(255, 255, 255, 0.2) 0%, 
+        transparent 50%
+      )
+    `,
+    backdropFilter: 'blur(20px) saturate(180%)',
+    WebkitBackdropFilter: 'blur(20px) saturate(180%)',
+    border: `1px solid rgba(255, 255, 255, 0.3)`,
+    boxShadow: `
+      inset 0 1px 0 0 rgba(255, 255, 255, 0.4),
+      inset 0 -1px 0 0 rgba(255, 255, 255, 0.1),
+      0 0 0 1px rgba(0, 0, 0, 0.1),
+      0 2px 10px -2px rgba(0, 0, 0, 0.2),
+      0 8px 25px -5px rgba(0, 0, 0, 0.1)
+    `,
+    position: 'relative' as const,
+    overflow: 'hidden' as const,
+  }), [frameStyles.borderWidth, frameStyles.borderRadius]);
+
+  const videoStyle = useMemo(() => ({
+    borderRadius: `${Math.max(0, frameStyles.borderRadius - frameStyles.borderWidth)}px`,
+    position: 'relative' as const,
+    zIndex: 1,
+  }), [frameStyles.borderRadius, frameStyles.borderWidth]);
+
   return (
     <div
-      className="transition-all duration-300 ease-out flex items-center justify-center relative overflow-hidden shadow-lg"
-      style={{ ...backgroundStyle, aspectRatio: cssAspectRatio, height: '100%', maxWidth: '100%', maxHeight: '100%' }}
+      className="transition-all duration-300 ease-out flex items-center justify-center relative overflow-hidden"
+      style={{ ...backgroundStyle, aspectRatio: cssAspectRatio, width: '100%', height: '100%' }}
     >
-      <div className="w-full h-full flex items-center justify-center relative" style={{ padding: `${frameStyles.padding}%` }}>
+      <div className="w-full h-full flex items-center justify-center" style={{ padding: `${frameStyles.padding}%` }}>
         {videoUrl ? (
+          // Container receives transform (zoom/pan) and shadow.
           <div
-            ref={transformContainerRef}
-            className={`transition-transform duration-75 max-w-full max-h-full relative overflow-hidden`}
+            ref={frameContainerRef}
+            className="relative transition-transform duration-75"
             style={{
-              aspectRatio: videoAspectRatio,
-              borderRadius: `${frameStyles.borderRadius}px`,
-              boxShadow: frameStyles.shadow > 0 ? `0 ${frameStyles.shadow}px ${frameStyles.shadow * 2}px rgba(0,0,0,0.${Math.min(frameStyles.shadow * 2, 50)})` : 'none',
-              '--border-thickness': `${frameStyles.borderWidth}px`,
-            } as React.CSSProperties}
+              width: videoDisplayWidth,
+              height: videoDisplayHeight,
+              aspectRatio: videoDimensions.width / videoDimensions.height,
+              maxWidth: '100%',
+              maxHeight: '100%',
+            }}
           >
-            <video
-              ref={videoRef}
-              src={videoUrl}
-              className="w-full h-full object-cover"
-              onTimeUpdate={handleTimeUpdate}
-              onLoadedMetadata={handleLoadedMetadata}
-              onPlay={() => setPlaying(true)}
-              onPause={() => setPlaying(false)}
-              onEnded={() => setPlaying(false)}
-            />
+            {/* Enhanced Glassy Frame with premium glass effect */}
+            <div
+              className="w-full h-full transition-all duration-300 ease-out"
+              style={glassyFrameStyle}
+            >
+              {/* Shimmer effect overlay */}
+              <div
+                className="absolute inset-0 pointer-events-none opacity-30"
+                style={{
+                  background: `
+                    linear-gradient(45deg, 
+                      transparent 30%, 
+                      rgba(255, 255, 255, 0.3) 50%, 
+                      transparent 70%
+                    )
+                  `,
+                  borderRadius: `${frameStyles.borderRadius}px`,
+                  animation: frameStyles.borderWidth > 0 ? 'shimmer 3s ease-in-out infinite' : 'none',
+                }}
+              />
+              
+              {/* Video Element with enhanced styling */}
+              <video
+                ref={videoRef}
+                src={videoUrl}
+                className="w-full h-full object-cover block relative z-10 transition-all duration-200"
+                style={videoStyle}
+                onTimeUpdate={handleTimeUpdate}
+                onLoadedMetadata={handleLoadedMetadata}
+                onPlay={() => setPlaying(true)}
+                onPause={() => setPlaying(false)}
+                onEnded={() => setPlaying(false)}
+              />
+            </div>
           </div>
         ) : (
-          <div className="w-full h-full bg-muted/10 border-2 border-dashed border-border/50 rounded-xl flex flex-col items-center justify-center text-muted-foreground gap-4">
-            <div className="w-16 h-16 rounded-full bg-primary/10 flex items-center justify-center">
-              <Film className="w-8 h-8 text-primary/70" />
+          <div className="w-full h-full bg-gradient-to-br from-slate-50/10 to-slate-100/5 border-2 border-dashed border-white/20 rounded-xl flex flex-col items-center justify-center text-white/70 gap-4 backdrop-blur-sm">
+            <div className="w-16 h-16 rounded-full bg-gradient-to-br from-white/20 to-white/5 flex items-center justify-center backdrop-blur-md border border-white/20">
+              <Film className="w-8 h-8 text-white/70" />
             </div>
             <div className="text-center">
-              <p className="text-lg font-medium mb-1">No project loaded</p>
-              <p className="text-sm text-muted-foreground/70">Load a project to begin editing</p>
+              <p className="text-lg font-medium mb-1 text-white/80">No project loaded</p>
+              <p className="text-sm text-white/50">Load a project to begin editing</p>
             </div>
           </div>
         )}
       </div>
+      
+      {/* Shimmer animation is now defined in globals.css */}
     </div>
   );
 });

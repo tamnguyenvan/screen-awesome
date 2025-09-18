@@ -137,7 +137,7 @@ const initialFrameStyles: FrameStyles = {
   },
   borderRadius: 16,
   shadow: 5,
-  borderWidth: 0,
+  borderWidth: 10,
 }
 
 const MINIMUM_REGION_DURATION = 0.1;
