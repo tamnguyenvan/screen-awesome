@@ -387,7 +387,7 @@ export function Timeline({ videoRef }: { videoRef: React.RefObject<HTMLVideoElem
             updateVideoTime(pxToTime(clickX));
             setSelectedRegionId(null);
           }}>
-          <div ref={timelineRef} className="relative h-full min-w-full" style={{ width: `${timeToPx(duration)}px` }}>
+          <div ref={timelineRef} className="relative h-full min-w-full overflow-hidden" style={{ width: `${timeToPx(duration)}px` }}>
             <Ruler ticks={rulerTicks} timeToPx={timeToPx} formatTime={formatTime} />
 
             {/* Layer 2: Cut Regions (Full height overlays) */}
