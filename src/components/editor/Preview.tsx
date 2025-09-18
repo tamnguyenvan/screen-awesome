@@ -171,7 +171,7 @@ export const Preview = memo(({ videoRef }: { videoRef: React.RefObject<HTMLVideo
   return (
     <div
       className="transition-all duration-300 ease-out flex items-center justify-center relative overflow-hidden"
-      style={{ ...backgroundStyle, aspectRatio: cssAspectRatio, width: '100%', height: '100%' }}
+      style={{ ...backgroundStyle, aspectRatio: cssAspectRatio, maxWidth: '100%', maxHeight: '100%' }}
     >
       <div className="w-full h-full flex items-center justify-center" style={{ padding: `${frameStyles.padding}%` }}>
         {videoUrl ? (
