@@ -221,9 +221,6 @@ export const useEditorStore = create(
       setDuration: (duration) => set(state => {
         state.duration = duration;
 
-        // FIX: After setting duration, iterate through existing regions
-        // and clamp any that might now be out of bounds. This is crucial
-        // for auto-generated regions created before duration was known.
         if (duration > 0) {
           Object.values(state.zoomRegions).forEach(region => {
             const regionEndTime = region.startTime + region.duration;
@@ -261,25 +258,38 @@ export const useEditorStore = create(
 
       updateBackground: (bg) => set((state) => {
         const currentBg = state.frameStyles.background;
-        if (!bg.type || bg.type === currentBg.type) {
+
+        // If type is changing, create a new default state for that type first
+        if (bg.type && bg.type !== currentBg.type) {
+          let newBackgroundState: Background = { type: bg.type };
+          switch (bg.type) {
+            case 'color':
+              newBackgroundState = { type: 'color', color: '#ffffff' };
+              break;
+            case 'gradient':
+              newBackgroundState = {
+                type: 'gradient',
+                gradientStart: '#6366f1',
+                gradientEnd: '#9ca9ff',
+                gradientDirection: 'to bottom right',
+              };
+              break;
+            case 'image':
+            case 'wallpaper':
+              newBackgroundState = {
+                type: bg.type,
+                imageUrl: WALLPAPERS[0].imageUrl,
+                thumbnailUrl: WALLPAPERS[0].thumbnailUrl,
+              };
+              break;
+          }
+          // IMPORTANT: Merge the incoming changes (bg) over the new default state
+          // This ensures the selected wallpaper/color is applied immediately, not the default.
+          state.frameStyles.background = { ...newBackgroundState, ...bg };
+        } else {
+          // If type is not changing, just merge the properties
           Object.assign(state.frameStyles.background, bg);
-          return;
         }
-        const newBackgroundState: Background = { type: bg.type };
-        switch (bg.type) {
-          case 'color': newBackgroundState.color = '#ffffff'; break;
-          case 'gradient':
-            newBackgroundState.gradientStart = currentBg.gradientStart || '#6366f1';
-            newBackgroundState.gradientEnd = currentBg.gradientEnd || '#9ca9ff';
-            newBackgroundState.gradientDirection = currentBg.gradientDirection || 'to bottom right';
-            break;
-          case 'image':
-          case 'wallpaper':
-            newBackgroundState.imageUrl = WALLPAPERS[0].imageUrl;
-            newBackgroundState.thumbnailUrl = WALLPAPERS[0].thumbnailUrl;
-            break;
-        }
-        state.frameStyles.background = newBackgroundState;
       }),
 
       setAspectRatio: (ratio) => set(state => { state.aspectRatio = ratio; }),
@@ -303,7 +313,6 @@ export const useEditorStore = create(
           zIndex: nextZIndex,
         };
 
-        // Clamp duration to video length
         if (newRegion.startTime + newRegion.duration > duration) {
           newRegion.duration = Math.max(MINIMUM_REGION_DURATION, duration - newRegion.startTime);
         }
@@ -329,7 +338,6 @@ export const useEditorStore = create(
           ...regionData,
         };
 
-        // Clamp duration to video length
         if (newRegion.startTime + newRegion.duration > duration) {
           newRegion.duration = Math.max(MINIMUM_REGION_DURATION, duration - newRegion.startTime);
         }
@@ -343,28 +351,17 @@ export const useEditorStore = create(
       },
 
       updateRegion: (id, updates) => set(state => {
-        // Lấy region từ draft state. Mọi thay đổi trên 'region' giờ đây
-        // sẽ được immer theo dõi một cách an toàn.
         const region = state.zoomRegions[id] || state.cutRegions[id];
 
         if (region) {
-          // 1. Áp dụng các thay đổi vào draft region
           Object.assign(region, updates);
-
-          // 2. Thực hiện logic clamping để đảm bảo giá trị luôn hợp lệ
-          // sau khi đã cập nhật.
           const videoDuration = state.duration;
           if (videoDuration > 0) {
-            // Kẹp startTime trong khoảng [0, duration - MIN_DURATION]
             region.startTime = Math.max(0, Math.min(region.startTime, videoDuration - MINIMUM_REGION_DURATION));
-
-            // Kẹp duration dựa trên startTime mới
             const maxPossibleDuration = videoDuration - region.startTime;
             region.duration = Math.max(MINIMUM_REGION_DURATION, Math.min(region.duration, maxPossibleDuration));
           }
         }
-        // Không cần return hay gọi set() lần nữa.
-        // Immer sẽ tự động tạo state mới khi hàm này kết thúc.
       }),
 
       deleteRegion: (id) => set(state => {
@@ -390,7 +387,6 @@ export const useEditorStore = create(
   )
 );
 
-// --- OPTIMIZATION: Specialized hooks with selectors to prevent unnecessary re-renders ---
 export const usePlaybackState = () => useEditorStore(useShallow(state => ({
   currentTime: state.currentTime,
   duration: state.duration,
@@ -400,9 +396,7 @@ export const usePlaybackState = () => useEditorStore(useShallow(state => ({
 
 export const useFrameStyles = () => useEditorStore(useShallow(state => state.frameStyles));
 
-// CORRECTED HOOK
 export const useAllRegions = () => useEditorStore(useShallow(state => ({
-  // Return the original objects, which are stable references
   zoomRegions: state.zoomRegions,
   cutRegions: state.cutRegions,
 })));

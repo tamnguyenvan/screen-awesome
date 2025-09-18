@@ -1,5 +1,5 @@
 // src/components/editor/sidepanel/BackgroundSettings.tsx
-import React, { useState } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { useEditorStore } from '../../../store/editorStore';
 import { cn } from '../../../lib/utils';
 import { WALLPAPERS } from '../../../lib/constants';
@@ -8,8 +8,14 @@ import {
   ArrowUp, ArrowDown, ArrowLeft, ArrowRight, ArrowDownRight, ArrowUpLeft, ArrowDownLeft, Plus
 } from 'lucide-react';
 import { ControlGroup } from './ControlGroup';
+import { Button } from '../../ui/button';
 
 type BackgroundTab = 'color' | 'gradient' | 'image' | 'wallpaper';
+type LocalGradientState = {
+  gradientStart: string;
+  gradientEnd: string;
+  gradientDirection: string;
+};
 
 // Helper component for circular color picker
 const ColorPickerRoundedRect = ({
@@ -77,18 +83,35 @@ const COLOR_PRESETS = [
 export function BackgroundSettings() {
   const { frameStyles, updateBackground } = useEditorStore();
   const [activeTab, setActiveTab] = useState<BackgroundTab>(frameStyles.background.type);
+  const [localGradient, setLocalGradient] = useState<LocalGradientState>({
+    gradientStart: frameStyles.background.gradientStart || '#6366f1',
+    gradientEnd: frameStyles.background.gradientEnd || '#9ca9ff',
+    gradientDirection: frameStyles.background.gradientDirection || 'to bottom right',
+  });
+  const imageInputRef = useRef<HTMLInputElement>(null);
 
-  const handleBackgroundChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-    const { name, value } = e.target;
-    updateBackground({ [name]: value });
+  // Sync local gradient state when tab becomes active or global state changes
+  useEffect(() => {
+    if (activeTab === 'gradient') {
+      setLocalGradient({
+        gradientStart: frameStyles.background.gradientStart || '#6366f1',
+        gradientEnd: frameStyles.background.gradientEnd || '#9ca9ff',
+        gradientDirection: frameStyles.background.gradientDirection || 'to bottom right',
+      });
+    }
+  }, [activeTab, frameStyles.background]);
+
+
+  const handleLocalGradientChange = (updates: Partial<LocalGradientState>) => {
+    setLocalGradient(prev => ({ ...prev, ...updates }));
+  };
+
+  const applyGradient = () => {
+    updateBackground({ type: 'gradient', ...localGradient });
   };
 
   const handleColorPresetClick = (color: string) => {
     updateBackground({ type: 'color', color: color });
-  };
-
-  const handleGradientPresetClick = (direction: string) => {
-    updateBackground({ gradientDirection: direction });
   };
 
   const handleImageUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -104,13 +127,12 @@ export function BackgroundSettings() {
       URL.revokeObjectURL(frameStyles.background.imageUrl);
     }
     // Reset to default wallpaper
-    updateBackground({ type: 'image', imageUrl: WALLPAPERS[0].imageUrl, thumbnailUrl: WALLPAPERS[0].thumbnailUrl });
+    updateBackground({ type: 'wallpaper', imageUrl: WALLPAPERS[0].imageUrl, thumbnailUrl: WALLPAPERS[0].thumbnailUrl });
   };
 
-  const selectTab = (tab: BackgroundTab) => {
-    setActiveTab(tab);
-    updateBackground({ type: tab });
-  };
+  const handleReplaceImage = () => {
+    imageInputRef.current?.click();
+  }
 
   const tabs = [
     { id: 'wallpaper', name: 'Wallpaper' },
@@ -127,10 +149,8 @@ export function BackgroundSettings() {
     >
       {/* Tab Navigation */}
       <div className="relative p-1 bg-sidebar-accent/50 rounded-full mb-6">
-        {/* Tab buttons */}
         <div className="relative">
           <div className="relative grid grid-cols-4 gap-1 p-1 bg-muted/50 rounded-full">
-            {/* Sliding indicator */}
             <div
               className="absolute top-1 left-1 right-1 bottom-1 bg-background rounded-full shadow-sm transition-all duration-300 ease-in-out"
               style={{
@@ -142,7 +162,7 @@ export function BackgroundSettings() {
             {tabs.map((tab) => (
               <button
                 key={tab.id}
-                onClick={() => selectTab(tab.id as BackgroundTab)}
+                onClick={() => setActiveTab(tab.id as BackgroundTab)}
                 className={cn(
                   "relative z-10 py-2 text-sm font-medium transition-colors duration-200",
                   activeTab === tab.id
@@ -157,7 +177,6 @@ export function BackgroundSettings() {
         </div>
       </div>
 
-
       {/* Tab Content */}
       <div className="min-h-[240px]">
         {activeTab === 'wallpaper' && (
@@ -166,7 +185,7 @@ export function BackgroundSettings() {
               {WALLPAPERS.slice(0, 18).map((wallpaper, index) => (
                 <button
                   key={`${wallpaper.thumbnailUrl}-${index}`}
-                  onClick={() => updateBackground({ thumbnailUrl: wallpaper.thumbnailUrl, imageUrl: wallpaper.imageUrl, type: 'wallpaper' })}
+                  onClick={() => updateBackground({ type: 'wallpaper', thumbnailUrl: wallpaper.thumbnailUrl, imageUrl: wallpaper.imageUrl })}
                   className={cn(
                     "relative aspect-square rounded-lg overflow-hidden border-2 transition-all duration-300",
                     frameStyles.background.thumbnailUrl === wallpaper.thumbnailUrl
@@ -230,9 +249,9 @@ export function BackgroundSettings() {
                   onChange={(e) => handleColorPresetClick(e.target.value)}
                   className="absolute inset-0 w-full h-full opacity-0 cursor-pointer"
                 />
-                <div 
+                <div
                   className="absolute inset-0 w-full h-full rounded-lg"
-                  style={{ 
+                  style={{
                     background: frameStyles.background.color || 'conic-gradient(from_90deg_at_50%_50%,#ef4444_0%,#eab308_25%,#10b981_50%,#3b82f6_75%,#7c3aed_100%)',
                     opacity: 0.9
                   }}
@@ -247,28 +266,26 @@ export function BackgroundSettings() {
 
         {activeTab === 'gradient' && (
           <div className="space-y-4">
-            {/* Color Selection Row */}
             <div>
               <h5 className="text-xs font-semibold text-muted-foreground mb-2 uppercase tracking-wider">Colors</h5>
               <div className="flex items-center gap-4">
                 <ColorPickerRoundedRect
                   label="Start"
-                  color={frameStyles.background.gradientStart || '#6366f1'}
+                  color={localGradient.gradientStart}
                   name="gradientStart"
-                  onChange={handleBackgroundChange}
+                  onChange={(e) => handleLocalGradientChange({ gradientStart: e.target.value })}
                   size="md"
                 />
                 <ColorPickerRoundedRect
                   label="End"
-                  color={frameStyles.background.gradientEnd || '#9ca9ff'}
+                  color={localGradient.gradientEnd}
                   name="gradientEnd"
-                  onChange={handleBackgroundChange}
+                  onChange={(e) => handleLocalGradientChange({ gradientEnd: e.target.value })}
                   size="md"
                 />
               </div>
             </div>
 
-            {/* Gradient Styles Row */}
             <div>
               <h5 className="text-xs font-semibold text-muted-foreground mb-2 uppercase tracking-wider">Style</h5>
               <div className="grid grid-cols-4 gap-2">
@@ -285,15 +302,15 @@ export function BackgroundSettings() {
                       className={cn(
                         "relative w-16 h-10 rounded-lg overflow-hidden border-2 transition-all duration-200",
                         "flex items-center justify-center group",
-                        frameStyles.background.gradientDirection === preset.direction
+                        localGradient.gradientDirection === preset.direction
                           ? "border-primary ring-2 ring-primary/20"
                           : "border-sidebar-border hover:border-primary/60"
                       )}
                       style={gradientStyle}
-                      onClick={() => handleGradientPresetClick(preset.direction)}
+                      onClick={() => handleLocalGradientChange({ gradientDirection: preset.direction })}
                       title={preset.name}
                     >
-                      {frameStyles.background.gradientDirection === preset.direction && (
+                      {localGradient.gradientDirection === preset.direction && (
                         <div className="absolute inset-0 bg-black/10 flex items-center justify-center">
                           <div className="w-5 h-5 bg-white/90 rounded-full flex items-center justify-center shadow-sm">
                             <Check className="w-3 h-3 text-gray-800" />
@@ -305,6 +322,7 @@ export function BackgroundSettings() {
                 })}
               </div>
             </div>
+            <Button onClick={applyGradient} className="w-full mt-4">Apply Gradient</Button>
           </div>
         )}
 
@@ -318,7 +336,7 @@ export function BackgroundSettings() {
                   ? "h-48 border-primary/30 bg-sidebar-accent/10"
                   : "h-32 border-sidebar-border hover:border-primary/60 hover:bg-primary/5"
               )}>
-                {frameStyles.background.imageUrl ? (
+                {frameStyles.background.imageUrl && frameStyles.background.type === 'image' ? (
                   <>
                     <img
                       src={frameStyles.background.imageUrl}
@@ -337,10 +355,16 @@ export function BackgroundSettings() {
                         <X className="w-4 h-4 mr-1.5 inline" />
                         Remove
                       </button>
-                      <div className="px-3 py-2 bg-primary/90 text-primary-foreground rounded-lg font-medium text-sm backdrop-blur-sm">
+                      <button
+                        onClick={(e) => {
+                          e.preventDefault();
+                          e.stopPropagation();
+                          handleReplaceImage();
+                        }}
+                        className="px-3 py-2 bg-primary/90 text-primary-foreground rounded-lg font-medium text-sm backdrop-blur-sm hover:bg-primary/80 transition-colors">
                         <UploadCloud className="w-4 h-4 mr-1.5 inline" />
                         Replace
-                      </div>
+                      </button>
                     </div>
                   </>
                 ) : (
@@ -355,6 +379,7 @@ export function BackgroundSettings() {
                   </div>
                 )}
                 <input
+                  ref={imageInputRef}
                   type="file"
                   accept="image/*"
                   onChange={handleImageUpload}
