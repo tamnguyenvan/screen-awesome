@@ -27,7 +27,7 @@ export function FrameEffectsSettings() {
               </svg>
               <span>Padding</span>
             </div>
-            <span className="text-xs text-muted-foreground">{frameStyles.padding}px</span>
+            <span className="text-xs text-muted-foreground">{frameStyles.padding}%</span>
           </label>
           <Slider
             min={0}
