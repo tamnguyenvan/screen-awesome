@@ -35,7 +35,7 @@ export const CutRegionBlock = memo(({
       ref={setRef}
       data-region-id={region.id}
       className={cn(
-        'w-full h-full', // Take up full space of parent div
+        'w-full h-full pointer-events-none',
         'bg-destructive/40 backdrop-blur-[2px] border-y-2 border-destructive/80',
         isSelected && 'ring-2 ring-offset-2 ring-offset-background ring-destructive'
       )}
@@ -45,9 +45,10 @@ export const CutRegionBlock = memo(({
           'relative w-full h-14 mt-[72px] flex items-center justify-center rounded-lg',
           'border-x-2 border-destructive',
           'bg-destructive/20',
+          'pointer-events-auto',
           canMove ? 'cursor-grab' : 'cursor-default'
         )}
-        onMouseDown={(e) => canMove && handleMouseDown(e, 'move')} // Only allow move if canMove
+        onMouseDown={(e) => handleMouseDown(e, 'move')} 
       >
         {canResizeLeft && (
           <div
