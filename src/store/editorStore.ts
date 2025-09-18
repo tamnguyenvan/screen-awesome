@@ -27,7 +27,6 @@ interface FrameStyles {
   borderRadius: number;
   shadow: number;
   borderWidth: number;
-  borderColor: string;
 }
 
 export interface ZoomRegion {
@@ -139,7 +138,6 @@ const initialFrameStyles: FrameStyles = {
   borderRadius: 16,
   shadow: 5,
   borderWidth: 0,
-  borderColor: '#ffffff',
 }
 
 const MINIMUM_REGION_DURATION = 0.1;

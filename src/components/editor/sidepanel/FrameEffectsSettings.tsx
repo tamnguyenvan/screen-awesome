@@ -1,6 +1,5 @@
 // src/components/editor/sidepanel/FrameEffectsSettings.tsx
 import { useEditorStore } from '../../../store/editorStore';
-import { Input } from '../../ui/input';
 import Slider from '../../ui/slider';
 import { ControlGroup } from './ControlGroup';
 
@@ -95,35 +94,6 @@ export function FrameEffectsSettings() {
               value={frameStyles.borderWidth}
               onChange={(value) => handleStyleChange("borderWidth", value)}
             />
-          </div>
-
-          <div className={`${frameStyles.borderWidth <= 0 ? 'opacity-50' : ''}`}>
-            <label className="flex items-center gap-2 text-sm font-medium text-sidebar-foreground mb-4">
-              <svg xmlns="http://www.w3.org/2000/svg" height="24px" viewBox="0 -960 960 960" width="24px" fill="currentColor">
-                <path d="M80 0v-160h800V0H80Zm160-320h56l312-311-29-29-28-28-311 312v56Zm-80 80v-170l448-447q11-11 25.5-17t30.5-6q16 0 31 6t27 18l55 56q12 11 17.5 26t5.5 31q0 15-5.5 29.5T777-687L330-240H160Zm560-504-56-56 56 56ZM608-631l-29-29-28-28 57 57Z"/>
-              </svg>
-              <span>Border Color</span>
-            </label>
-            <div className="flex items-center gap-3">
-              <Input
-                type="color"
-                name="borderColor"
-                value={frameStyles.borderColor}
-                onChange={(e) => handleStyleChange("borderColor", e.target.value)}
-                className="w-16 h-10 p-1 border border-sidebar-border rounded-lg bg-input cursor-pointer"
-                disabled={frameStyles.borderWidth <= 0}
-              />
-              <div className="flex-1">
-                <Input
-                  type="text"
-                  value={frameStyles.borderColor}
-                  onChange={(e) => handleStyleChange("borderColor", e.target.value)}
-                  className="text-xs font-mono"
-                  placeholder="#000000"
-                  disabled={frameStyles.borderWidth <= 0}
-                />
-              </div>
-            </div>
           </div>
         </div>
       </ControlGroup>

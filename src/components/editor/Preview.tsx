@@ -134,14 +134,13 @@ export const Preview = memo(({ videoRef }: { videoRef: React.RefObject<HTMLVideo
         {videoUrl ? (
           <div
             ref={transformContainerRef}
-            className="transition-transform duration-75 max-w-full max-h-full relative"
+            className={`transition-transform duration-75 max-w-full max-h-full relative overflow-hidden`}
             style={{
               aspectRatio: videoAspectRatio,
               borderRadius: `${frameStyles.borderRadius}px`,
               boxShadow: frameStyles.shadow > 0 ? `0 ${frameStyles.shadow}px ${frameStyles.shadow * 2}px rgba(0,0,0,0.${Math.min(frameStyles.shadow * 2, 50)})` : 'none',
-              border: frameStyles.borderWidth > 0 ? `${frameStyles.borderWidth}px solid ${frameStyles.borderColor}` : 'none',
-              overflow: 'hidden',
-            }}
+              '--border-thickness': `${frameStyles.borderWidth}px`,
+            } as React.CSSProperties}
           >
             <video
               ref={videoRef}
