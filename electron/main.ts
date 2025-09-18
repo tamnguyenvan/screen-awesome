@@ -64,6 +64,18 @@ let metadataStream: fsSync.WriteStream | null = null
 let pythonDataBuffer = ''
 let firstChunkWritten = true
 
+function calculateExportDimensions(resolutionKey: ResolutionKey, aspectRatio: string): { width: number; height: number } {
+  const baseHeight = RESOLUTIONS[resolutionKey].height; // e.g., 1080 for '1080p'
+  const [ratioW, ratioH] = aspectRatio.split(':').map(Number);
+  const aspectRatioValue = ratioW / ratioH;
+
+  const width = Math.round(baseHeight * aspectRatioValue);
+  // Đảm bảo chiều rộng là số chẵn để tương thích với nhiều codec video
+  const finalWidth = width % 2 === 0 ? width : width + 1;
+
+  return { width: finalWidth, height: baseHeight };
+}
+
 function getFFmpegPath(): string {
   // path to ffmpeg in production
   if (app.isPackaged) {
@@ -136,7 +148,7 @@ function createEditorWindow(videoPath: string, metadataPath: string) {
       webSecurity: VITE_DEV_SERVER_URL ? false : true,
     },
   })
-  
+
   // Maximize the window and show it when it's ready
   editorWin.maximize()
   editorWin.show()
@@ -538,37 +550,47 @@ async function handleStartRecording(_event: IpcMainInvokeEvent, options: {
         return { canceled: true, filePath: undefined };
       }
 
-      const ffmpegArgs = [
-        '-f', 'x11grab',
-        '-video_size', `${safeWidth}x${safeHeight}`,
-        '-i', `${display}+${intX},${intY}`,
-        '-c:v', 'libx264',
-        '-preset', 'ultrafast',
-        '-pix_fmt', 'yuv420p',
-      ];
-
-      log.info(`Starting WINDOW recording for geometry: ${safeWidth}x${safeHeight}+${intX},${intY}`);
-      return startActualRecording(ffmpegArgs);
-    }
-    else if (process.platform === 'win32') {
-      if (!windowTitle) {
-        log.error('Window recording started without a window title.');
-        dialog.showErrorBox('Recording Error', 'No window was selected for recording.');
+      if (process.platform === 'linux') {
+        const ffmpegArgs = [
+          '-f', 'x11grab',
+          '-video_size', `${safeWidth}x${safeHeight}`,
+          '-i', `${display}+${intX},${intY}`,
+          '-c:v', 'libx264',
+          '-preset', 'ultrafast',
+          '-pix_fmt', 'yuv420p',
+        ];
+        log.info(`Starting WINDOW recording for geometry: ${safeWidth}x${safeHeight}+${intX},${intY}`);
+        return startActualRecording(ffmpegArgs);
+      } else if (process.platform === 'win32') {
+        if (!windowTitle) {
+          log.error('Window recording started without a window title.');
+          dialog.showErrorBox('Recording Error', 'No window was selected for recording.');
+          return { canceled: true, filePath: undefined };
+        }
+        const ffmpegArgs = [
+          '-f', 'gdigrab',
+          '-i', `title=${windowTitle}`,
+          '-c:v', 'libx264',
+          '-preset', 'ultrafast',
+          '-pix_fmt', 'yuv420p',
+        ];
+        log.info(`Starting WINDOW recording for title: "${windowTitle}"`);
+        return startActualRecording(ffmpegArgs);
+      } else if (process.platform === 'darwin') {
+        const ffmpegArgs = [
+          '-f', 'avfoundation',
+          '-i', '1',
+          '-c:v', 'libx264',
+          '-preset', 'ultrafast',
+          '-pix_fmt', 'yuv420p',
+        ];
+        log.info('Starting SCREEN recording on macOS');
+        return startActualRecording(ffmpegArgs);
+      } else {
+        log.error('Window recording is not yet supported on this platform.');
+        dialog.showErrorBox('Feature Not Supported', 'Window recording is not yet implemented for this OS.');
         return { canceled: true, filePath: undefined };
       }
-      const ffmpegArgs = [
-        '-f', 'gdigrab',
-        '-i', `title=${windowTitle}`,
-        '-c:v', 'libx264',
-        '-preset', 'ultrafast',
-        '-pix_fmt', 'yuv420p',
-      ];
-      log.info(`Starting WINDOW recording for title: "${windowTitle}"`);
-      return startActualRecording(ffmpegArgs);
-    } else {
-      log.error('Window recording is not yet supported on this platform.');
-      dialog.showErrorBox('Feature Not Supported', 'Window recording is not yet implemented for this OS.');
-      return { canceled: true, filePath: undefined };
     }
   }
 
@@ -782,13 +804,13 @@ async function handleExportStart(
 
   // 2. Create a hidden window to act as worker
   renderWorker = new BrowserWindow({
-    show: false,
+    show: true,
     width: 1280,
     height: 720,
     webPreferences: {
       preload: path.join(__dirname, 'preload.mjs'),
       // Important: allow rendering without showing on screen
-      offscreen: true,
+      offscreen: false,
     },
   });
 
@@ -803,7 +825,11 @@ async function handleExportStart(
 
   // 4. Prepare arguments for FFmpeg
   const { resolution, fps, format } = exportSettings;
-  const { width: outputWidth, height: outputHeight } = RESOLUTIONS[resolution as ResolutionKey];
+  const { width: outputWidth, height: outputHeight } = calculateExportDimensions(
+    resolution as ResolutionKey,
+    projectState.aspectRatio // Lấy aspectRatio từ state của project
+  );
+  log.info(`[Main] Calculated export dimensions for ${resolution} ${projectState.aspectRatio}: ${outputWidth}x${outputHeight}`);
 
   const ffmpegArgs = [
     '-y', // Override output file if it exists
@@ -833,7 +859,7 @@ async function handleExportStart(
 
   // 5. Spawn FFmpeg process
   log.info('[Main] Spawning FFmpeg with args:', ffmpegArgs.join(' '));
-  const ffmpeg = spawn('ffmpeg', ffmpegArgs);
+  const ffmpeg = spawn(FFMPEG_PATH, ffmpegArgs);
   let ffmpegClosed = false;
 
   // Listen to FFmpeg error logs for debugging
@@ -898,12 +924,29 @@ app.whenReady().then(() => {
   // Custom protocol to serve media files securely ---
   protocol.registerFileProtocol('media', (request, callback) => {
     const url = request.url.replace('media://', '');
-    try {
-      return callback(decodeURIComponent(url));
-    } catch (error) {
-      console.error('Failed to register protocol', error);
-      return callback({ error: -6 }); // FILE_NOT_FOUND
+    const decodedUrl = decodeURIComponent(url);
+
+    // FIX: Handle both absolute paths (for videos) and relative paths (for assets).
+
+    // 1. Check if the decoded path is absolute and exists.
+    // This handles the video file path like /home/user/.screenawesome/recording.mp4
+    if (path.isAbsolute(decodedUrl) && fsSync.existsSync(decodedUrl)) {
+      return callback(decodedUrl);
     }
+
+    // 2. If not absolute, assume it's a resource relative to the public/dist folder.
+    // This handles wallpapers like 'wallpapers/images/wallpaper-0001.jpg'.
+    // process.env.VITE_PUBLIC correctly points to the 'public' folder in dev
+    // and the app's root ('dist' folder) in production.
+    const resourcePath = path.join(process.env.VITE_PUBLIC, decodedUrl);
+
+    if (fsSync.existsSync(resourcePath)) {
+      return callback(resourcePath);
+    }
+
+    // 3. If neither path is found, log an error and fail.
+    log.error(`[media protocol] Could not find file at absolute path "${decodedUrl}" or resource path "${resourcePath}"`);
+    return callback({ error: -6 }); // FILE_NOT_FOUND
   });
 
   // --- IPC Handlers for Recorder Window ---

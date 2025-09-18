@@ -62,7 +62,7 @@ interface MetaDataItem {
 }
 
 // --- State ---
-interface EditorState {
+export interface EditorState {
   videoPath: string | null;
   metadataPath: string | null;
   videoUrl: string | null;
@@ -85,7 +85,7 @@ interface EditorState {
 }
 
 // --- Actions ---
-interface EditorActions {
+export interface EditorActions {
   loadProject: (paths: { videoPath: string; metadataPath: string }) => Promise<void>;
   setVideoDimensions: (dims: { width: number; height: number }) => void;
   setDuration: (duration: number) => void;

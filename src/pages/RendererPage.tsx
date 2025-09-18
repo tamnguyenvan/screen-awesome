@@ -1,8 +1,7 @@
 // src/pages/RendererPage.tsx
 import log from 'electron-log/renderer';
-
 import { useEffect, useRef } from 'react';
-import { CutRegion, useEditorStore } from '../store/editorStore';
+import { CutRegion, useEditorStore, EditorState, EditorActions } from '../store/editorStore';
 import { calculateZoomTransform } from '../lib/transform';
 import { ExportSettings } from '../components/editor/ExportModal';
 
@@ -12,7 +11,12 @@ const RESOLUTIONS = {
   '2k': { width: 2560, height: 1440 },
 };
 
-const drawBackground = async (ctx: CanvasRenderingContext2D, width: number, height: number, backgroundState: ReturnType<typeof useEditorStore.getState>['frameStyles']['background']) => {
+const drawBackground = async (
+  ctx: CanvasRenderingContext2D,
+  width: number,
+  height: number,
+  backgroundState: ReturnType<typeof useEditorStore.getState>['frameStyles']['background']
+) => {
   ctx.clearRect(0, 0, width, height);
 
   switch (backgroundState.type) {
@@ -21,9 +25,24 @@ const drawBackground = async (ctx: CanvasRenderingContext2D, width: number, heig
       ctx.fillRect(0, 0, width, height);
       break;
     case 'gradient': {
-      const gradient = ctx.createLinearGradient(0, 0, width, height);
-      gradient.addColorStop(0, backgroundState.gradientStart || '#000000');
-      gradient.addColorStop(1, backgroundState.gradientEnd || '#ffffff');
+      const start = backgroundState.gradientStart || '#000000';
+      const end = backgroundState.gradientEnd || '#ffffff';
+      const direction = backgroundState.gradientDirection || 'to right';
+      let gradient;
+
+      if (direction.includes('circle')) {
+        gradient = ctx.createRadialGradient(width / 2, height / 2, 0, width / 2, height / 2, Math.max(width, height) / 2);
+      } else {
+        const points = {
+          'to bottom': [0, 0, 0, height], 'to top': [0, height, 0, 0], 'to right': [0, 0, width, 0],
+          'to left': [width, 0, 0, 0], 'to bottom right': [0, 0, width, height], 'to bottom left': [width, 0, 0, height],
+          'to top right': [0, height, width, 0], 'to top left': [width, height, 0, 0],
+        }[direction] || [0, 0, width, 0];
+        gradient = ctx.createLinearGradient(points[0], points[1], points[2], points[3]);
+      }
+
+      gradient.addColorStop(0, start);
+      gradient.addColorStop(1, end);
       ctx.fillStyle = gradient;
       ctx.fillRect(0, 0, width, height);
       break;
@@ -31,38 +50,37 @@ const drawBackground = async (ctx: CanvasRenderingContext2D, width: number, heig
     case 'image':
     case 'wallpaper': {
       if (!backgroundState.imageUrl) {
-        ctx.fillStyle = '#111';
-        ctx.fillRect(0, 0, width, height);
-        return;
+        ctx.fillStyle = '#111'; ctx.fillRect(0, 0, width, height); return;
       }
-      // Wrap image loading in a Promise
       await new Promise<void>((resolve, reject) => {
         const img = new Image();
         img.onload = () => {
-          // Logic to draw the image with `cover` ratio
-          const imgRatio = img.width / img.height;
-          const canvasRatio = width / height;
+          const imgRatio = img.width / img.height; const canvasRatio = width / height;
           let sx, sy, sWidth, sHeight;
-          if (imgRatio > canvasRatio) { // Image wider than canvas
-            sHeight = img.height;
-            sWidth = sHeight * canvasRatio;
-            sx = (img.width - sWidth) / 2;
-            sy = 0;
-          } else { // Image taller or equal to canvas
-            sWidth = img.width;
-            sHeight = sWidth / canvasRatio;
-            sx = 0;
-            sy = (img.height - sHeight) / 2;
+          if (imgRatio > canvasRatio) {
+            sHeight = img.height; sWidth = sHeight * canvasRatio;
+            sx = (img.width - sWidth) / 2; sy = 0;
+          } else {
+            sWidth = img.width; sHeight = sWidth / canvasRatio;
+            sx = 0; sy = (img.height - sHeight) / 2;
           }
           ctx.drawImage(img, sx, sy, sWidth, sHeight, 0, 0, width, height);
           resolve();
         };
+        img.onerror = (err) => {
+          log.error(`[RendererPage] Failed to load background image: ${img.src}`, err);
+          reject(err);
+        };
+
         if (!backgroundState.imageUrl) {
-          reject(new Error('Image URL is not defined'));
+          reject(new Error('No image URL provided'));
           return;
         }
-        img.onerror = reject;
-        img.src = backgroundState.imageUrl;
+        
+        // Use a relative path that Electron's protocol can resolve
+        img.src = backgroundState.imageUrl.startsWith('blob:')
+          ? backgroundState.imageUrl
+          : `media://${backgroundState.imageUrl}`;
       });
       break;
     }
@@ -72,10 +90,8 @@ const drawBackground = async (ctx: CanvasRenderingContext2D, width: number, heig
   }
 };
 
-
 type RenderStartPayload = {
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  projectState: any;
+  projectState: Omit<EditorState, keyof EditorActions>;
   exportSettings: ExportSettings;
 }
 
@@ -87,147 +103,168 @@ export function RendererPage() {
     log.info('[RendererPage] Component mounted. Setting up listeners.');
 
     const cleanup = window.electronAPI.onRenderStart(async ({ projectState, exportSettings }: RenderStartPayload) => {
-      log.info('[RendererPage] Received "render:start" event with job data:', { projectState, exportSettings });
-
       const canvas = canvasRef.current;
       const video = videoRef.current;
-      if (!canvas || !video) {
-        log.error('[RendererPage] Canvas or Video ref is not available.');
-        return;
-      }
 
-      const { resolution, fps } = exportSettings;
-      const { width: outputWidth, height: outputHeight } = RESOLUTIONS[resolution];
-      canvas.width = outputWidth;
-      canvas.height = outputHeight;
+      try {
+        log.info('[RendererPage] Received "render:start" event.', { exportSettings });
 
-      const ctx = canvas.getContext('2d', { alpha: false });
-      if (!ctx) {
-        log.error('[RendererPage] Failed to get 2D context from canvas.');
-        return;
-      }
+        if (!canvas || !video) throw new Error('Canvas or Video ref is not available.');
 
-      // Load state into Zustand store of this worker
-      useEditorStore.setState(projectState);
+        const { resolution, fps } = exportSettings;
+        const [ratioW, ratioH] = projectState.aspectRatio.split(':').map(Number);
+        const baseHeight = RESOLUTIONS[resolution as keyof typeof RESOLUTIONS].height;
+        const aspectValue = ratioW / ratioH;
+        let outputWidth = Math.round(baseHeight * aspectValue);
+        outputWidth = outputWidth % 2 === 0 ? outputWidth : outputWidth + 1;
+        const outputHeight = baseHeight;
 
-      // Prepare video element
-      video.src = `media://${projectState.videoPath}`;
-      video.muted = true;
+        canvas.width = outputWidth;
+        canvas.height = outputHeight;
 
-      // Wrapper Promise-based for video seek
-      const seek = (time: number): Promise<void> => {
-        // Fix: If video is already at the correct position (or very close),
-        // resolve immediately to avoid getting stuck because the 'seeked' event is not triggered.
-        if (Math.abs(video.currentTime - time) < 0.01) {
-          return Promise.resolve();
-        }
+        const ctx = canvas.getContext('2d', { alpha: false });
+        if (!ctx) throw new Error('Failed to get 2D context from canvas.');
 
-        return new Promise((resolve, reject) => {
-          const onSeeked = () => {
-            video.removeEventListener('seeked', onSeeked);
-            video.removeEventListener('error', onError);
-            resolve();
-          };
-          const onError = (e: Event) => {
-            video.removeEventListener('seeked', onSeeked);
-            video.removeEventListener('error', onError);
-            log.error('[RendererPage] Video seek error:', e);
-            reject(new Error('Failed to seek video'));
-          };
+        // Set state for transform calculations
+        useEditorStore.setState(projectState);
 
-          video.addEventListener('seeked', onSeeked);
-          video.addEventListener('error', onError);
-          video.currentTime = time;
+        // --- FIX: Wait for video to be ready before starting the loop ---
+        await new Promise<void>((resolve, reject) => {
+            const onCanPlay = () => {
+                video.removeEventListener('canplay', onCanPlay);
+                video.removeEventListener('error', onError);
+                log.info('[RendererPage] Video is ready to play.');
+                resolve();
+            };
+            const onError = (e: Event) => {
+                video.removeEventListener('canplay', onCanPlay);
+                video.removeEventListener('error', onError);
+                log.error('[RendererPage] Video loading error:', e);
+                reject(new Error('Failed to load video for rendering.'));
+            };
+
+            video.addEventListener('canplay', onCanPlay);
+            video.addEventListener('error', onError);
+
+            video.src = `media://${projectState.videoPath}`;
+            video.muted = true;
+            video.load(); // Explicitly start loading
         });
-      };
 
-      // --- RENDER LOOP WITH CHECK ---
-      const totalFrames = Math.floor(projectState.duration * fps);
-      log.info(`[RendererPage] Starting render for ${totalFrames} frames at ${fps} FPS.`);
+        const seek = (time: number): Promise<void> => {
+          if (Math.abs(video.currentTime - time) < 0.01) return Promise.resolve();
+          return new Promise((resolve, reject) => {
+            const onSeeked = () => { video.removeEventListener('seeked', onSeeked); video.removeEventListener('error', onError); resolve(); };
+            const onError = (e: Event) => { video.removeEventListener('seeked', onSeeked); video.removeEventListener('error', onError); log.error('[RendererPage] Video seek error:', e); reject(new Error('Failed to seek video')); };
+            video.addEventListener('seeked', onSeeked);
+            video.addEventListener('error', onError);
+            video.currentTime = time;
+          });
+        };
 
-      for (let frameIndex = 0; frameIndex < totalFrames; frameIndex++) {
-        const currentTime = frameIndex / fps;
+        const totalFrames = Math.floor(projectState.duration * fps);
+        log.info(`[RendererPage] Starting render for ${totalFrames} frames at ${fps} FPS.`);
 
-        // Logic to handle Cut Regions
-        const activeCutRegion = projectState.cutRegions.find(
-          (r: CutRegion) => currentTime >= r.startTime && currentTime < r.startTime + r.duration
-        );
-
-        if (activeCutRegion) {
-          const endOfCut = activeCutRegion.startTime + activeCutRegion.duration;
-          const newFrameIndex = Math.floor(endOfCut * fps) - 1;
-          log.info(`[RendererPage] Skipping cut region. Jumping from frame ${frameIndex} to ${newFrameIndex + 1}`);
-          frameIndex = newFrameIndex;
-          continue;
+        if (totalFrames <= 0) {
+          log.warn('[RendererPage] No frames to render (duration might be 0). Aborting render.');
+          window.electronAPI.finishRender();
+          return;
         }
 
-        log.info(`[RendererPage] Processing frame ${frameIndex + 1}/${totalFrames} at time ${currentTime.toFixed(3)}s...`);
+        const cutRegionsArray = Object.values(projectState.cutRegions);
 
-        // 1. Seek video to the correct position
-        await seek(currentTime);
+        for (let frameIndex = 0; frameIndex < totalFrames; frameIndex++) {
+          const currentTime = frameIndex / fps;
 
-        // Update store state to make `calculateZoomTransform` work correctly
-        useEditorStore.getState().setCurrentTime(currentTime);
-        const state = useEditorStore.getState();
+          const activeCutRegion = cutRegionsArray.find(
+            (r: CutRegion) => currentTime >= r.startTime && currentTime < r.startTime + r.duration
+          );
 
-        // 2. Render to Canvas
-        await drawBackground(ctx, outputWidth, outputHeight, state.frameStyles.background);
+          if (activeCutRegion) {
+            const endOfCut = activeCutRegion.startTime + activeCutRegion.duration;
+            frameIndex = Math.floor(endOfCut * fps) - 1; // Jump frameIndex to the end of the cut
+            continue;
+          }
 
-        ctx.save();
+          await seek(currentTime);
+          useEditorStore.getState().setCurrentTime(currentTime);
+          const state = useEditorStore.getState();
 
-        const paddingPercent = state.frameStyles.padding / 100;
-        const availableWidth = outputWidth * (1 - 2 * paddingPercent);
-        const availableHeight = outputHeight * (1 - 2 * paddingPercent);
+          await drawBackground(ctx, outputWidth, outputHeight, state.frameStyles.background);
+          ctx.save();
+          
+          const paddingPercent = state.frameStyles.padding / 100;
+          const availableWidth = outputWidth * (1 - 2 * paddingPercent);
+          const availableHeight = outputHeight * (1 - 2 * paddingPercent);
+          const videoAspectRatio = state.videoDimensions.width / state.videoDimensions.height;
+          let videoDisplayWidth, videoDisplayHeight;
+          if (availableWidth / availableHeight > videoAspectRatio) {
+            videoDisplayHeight = availableHeight;
+            videoDisplayWidth = videoDisplayHeight * videoAspectRatio;
+          } else {
+            videoDisplayWidth = availableWidth;
+            videoDisplayHeight = videoDisplayWidth / videoAspectRatio;
+          }
+          const paddingX = (outputWidth - videoDisplayWidth) / 2;
+          const paddingY = (outputHeight - videoDisplayHeight) / 2;
 
-        const videoAspectRatio = state.videoDimensions.width / state.videoDimensions.height;
-        let videoDisplayWidth, videoDisplayHeight;
+          ctx.shadowColor = `rgba(0,0,0,${Math.min(state.frameStyles.shadow * 0.015, 0.4)})`;
+          ctx.shadowBlur = state.frameStyles.shadow * 1.5;
+          ctx.shadowOffsetX = 0;
+          ctx.shadowOffsetY = state.frameStyles.shadow;
+          
+          const framePath = new Path2D();
+          framePath.roundRect(paddingX, paddingY, videoDisplayWidth, videoDisplayHeight, state.frameStyles.borderRadius);
+          ctx.fillStyle = 'rgba(0,0,0,1)';
+          ctx.fill(framePath);
+          ctx.shadowColor = 'transparent';
 
-        if (availableWidth / availableHeight > videoAspectRatio) {
-          videoDisplayHeight = availableHeight;
-          videoDisplayWidth = videoDisplayHeight * videoAspectRatio;
-        } else {
-          videoDisplayWidth = availableWidth;
-          videoDisplayHeight = videoDisplayWidth / videoAspectRatio;
+          const borderGradient = ctx.createLinearGradient(paddingX, paddingY, paddingX + videoDisplayWidth, paddingY + videoDisplayHeight);
+          borderGradient.addColorStop(0, 'rgba(255, 255, 255, 0.25)');
+          borderGradient.addColorStop(1, 'rgba(255, 255, 255, 0.05)');
+          ctx.fillStyle = borderGradient;
+          ctx.fill(framePath);
+          ctx.strokeStyle = 'rgba(255, 255, 255, 0.3)';
+          ctx.lineWidth = 1;
+          ctx.stroke(framePath);
+
+          const borderWidth = state.frameStyles.borderWidth;
+          const videoInnerRadius = Math.max(0, state.frameStyles.borderRadius - borderWidth);
+          const videoPath = new Path2D();
+          videoPath.roundRect(
+            paddingX + borderWidth, paddingY + borderWidth, 
+            videoDisplayWidth - (borderWidth * 2), videoDisplayHeight - (borderWidth * 2), 
+            videoInnerRadius
+          );
+          ctx.clip(videoPath);
+
+          const { scale, translateX, translateY } = calculateZoomTransform(currentTime);
+          const innerVideoWidth = videoDisplayWidth - (borderWidth * 2);
+          const innerVideoHeight = videoDisplayHeight - (borderWidth * 2);
+          const scaledVideoRenderWidth = innerVideoWidth * scale;
+          const scaledVideoRenderHeight = innerVideoHeight * scale;
+          const panX = (translateX / 100) * innerVideoWidth;
+          const panY = (translateY / 100) * innerVideoHeight;
+          const renderX = (paddingX + borderWidth) - (scaledVideoRenderWidth - innerVideoWidth) / 2 + panX;
+          const renderY = (paddingY + borderWidth) - (scaledVideoRenderHeight - innerVideoHeight) / 2 + panY;
+          ctx.drawImage(video, renderX, renderY, scaledVideoRenderWidth, scaledVideoRenderHeight);
+          
+          ctx.restore();
+
+          const imageData = ctx.getImageData(0, 0, outputWidth, outputHeight);
+          const frameBuffer = Buffer.from(imageData.data.buffer);
+          const progress = Math.round(((frameIndex + 1) / totalFrames) * 100);
+
+          window.electronAPI.sendFrameToMain({ frame: frameBuffer, progress });
         }
 
-        const videoX = (outputWidth - videoDisplayWidth) / 2;
-        const videoY = (outputHeight - videoDisplayHeight) / 2;
+        log.info('[RendererPage] All frames rendered. Sending "finishRender" signal.');
+        window.electronAPI.finishRender();
 
-        ctx.shadowColor = `rgba(0,0,0,${state.frameStyles.shadow / 100})`;
-        ctx.shadowBlur = state.frameStyles.shadow;
-        ctx.strokeStyle = state.frameStyles.borderColor;
-        ctx.lineWidth = state.frameStyles.borderWidth;
-
-        ctx.beginPath();
-        ctx.roundRect(videoX, videoY, videoDisplayWidth, videoDisplayHeight, state.frameStyles.borderRadius);
-        ctx.closePath();
-
-        if (state.frameStyles.borderWidth > 0) ctx.stroke();
-        ctx.clip();
-
-        const { scale, translateX, translateY } = calculateZoomTransform(currentTime);
-
-        const scaledVideoRenderWidth = videoDisplayWidth * scale;
-        const scaledVideoRenderHeight = videoDisplayHeight * scale;
-        const panX = (translateX / 100) * videoDisplayWidth;
-        const panY = (translateY / 100) * videoDisplayHeight;
-        const renderX = videoX - (scaledVideoRenderWidth - videoDisplayWidth) / 2 + panX;
-        const renderY = videoY - (scaledVideoRenderHeight - videoDisplayHeight) / 2 + panY;
-
-        ctx.drawImage(video, renderX, renderY, scaledVideoRenderWidth, scaledVideoRenderHeight);
-
-        ctx.restore();
-
-        // 3. Extract frame and send to main process
-        const imageData = ctx.getImageData(0, 0, outputWidth, outputHeight);
-        const frameBuffer = Buffer.from(imageData.data.buffer);
-        const progress = Math.round(((frameIndex + 1) / totalFrames) * 100);
-
-        window.electronAPI.sendFrameToMain({ frame: frameBuffer, progress });
+      } catch (error) {
+        log.error('[RendererPage] CRITICAL ERROR during render loop:', error);
+        window.electronAPI.finishRender(); // Signal finish even on error
       }
-
-      log.info('[RendererPage] All frames rendered. Sending "finishRender" signal.');
-      window.electronAPI.finishRender();
     });
 
     log.info('[RendererPage] Sending "render:ready" signal to main process.');
@@ -235,9 +272,7 @@ export function RendererPage() {
 
     return () => {
       log.info('[RendererPage] Component unmounted. Cleaning up listener.');
-      if (typeof cleanup === 'function') {
-        cleanup();
-      }
+      if (typeof cleanup === 'function') cleanup();
     };
   }, []);
 

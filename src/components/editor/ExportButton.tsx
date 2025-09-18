@@ -5,13 +5,14 @@ import { Button } from '../ui/button';
 interface ExportButtonProps {
   onClick: () => void;
   isExporting: boolean;
+  disabled?: boolean;
 }
 
-export function ExportButton({ onClick, isExporting }: ExportButtonProps) {
+export function ExportButton({ onClick, isExporting, disabled }: ExportButtonProps) {
   return (
     <Button
       onClick={onClick}
-      disabled={isExporting}
+      disabled={isExporting || disabled} // CẬP NHẬT LOGIC DISABLED
       className="btn-clean bg-primary hover:bg-primary/90 text-primary-foreground font-medium px-4 py-2 rounded-lg transition-colors duration-200 disabled:opacity-60 disabled:cursor-not-allowed"
     >
       {isExporting ? (

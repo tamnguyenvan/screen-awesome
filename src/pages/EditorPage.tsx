@@ -16,6 +16,7 @@ import { useKeyboardShortcuts } from '../hooks/useKeyboardShortcuts';
 export function EditorPage() {
   // Lấy state và actions từ store
   const { loadProject, toggleTheme, deleteRegion } = useEditorStore.getState();
+  const duration = useEditorStore(state => state.duration);
   const { undo, redo } = useEditorStore.temporal.getState();
   const videoRef = useRef<HTMLVideoElement>(null);
   const [isExportModalOpen, setExportModalOpen] = useState(false);
@@ -91,8 +92,7 @@ export function EditorPage() {
 
     const fullState = useEditorStore.getState();
 
-    // OPTIMIZATION: Convert Record back to Array for serialization to the render worker.
-    // The worker expects arrays.
+    // --- FIX: Convert region objects back to arrays before sending ---
     const plainState = {
       videoPath: fullState.videoPath,
       metadata: fullState.metadata,
@@ -100,8 +100,8 @@ export function EditorPage() {
       duration: fullState.duration,
       frameStyles: fullState.frameStyles,
       aspectRatio: fullState.aspectRatio,
-      zoomRegions: Object.values(fullState.zoomRegions),
-      cutRegions: Object.values(fullState.cutRegions),
+      zoomRegions: fullState.zoomRegions,
+      cutRegions: fullState.cutRegions,
     };
 
     setIsExporting(true);
@@ -143,10 +143,14 @@ export function EditorPage() {
           >
             {currentTheme === 'dark' ? <Sun className="w-4 h-4" /> : <Moon className="w-4 h-4" />}
           </button>
-          <ExportButton isExporting={isExporting} onClick={() => setExportModalOpen(true)} />
+          <ExportButton
+            isExporting={isExporting}
+            onClick={() => setExportModalOpen(true)}
+            disabled={duration <= 0}
+          />
         </div>
       </header>
-      
+
       {/* Layout chính không thay đổi */}
       <div className="flex flex-1 overflow-hidden">
         <div className="w-96 flex-shrink-0 bg-sidebar border-r border-sidebar-border overflow-hidden">
