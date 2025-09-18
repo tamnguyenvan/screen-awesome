@@ -33,8 +33,8 @@ export function EditorPage() {
 
   useKeyboardShortcuts(
     {
-      'Delete': handleDeleteSelectedRegion,
-      'Backspace': handleDeleteSelectedRegion,
+      'delete': handleDeleteSelectedRegion,
+      'backspace': handleDeleteSelectedRegion,
       'ctrl+z': (e) => { e.preventDefault(); undo(); },
       'ctrl+y': (e) => { e.preventDefault(); redo(); },
       'ctrl+shift+z': (e) => { e.preventDefault(); redo(); }, // Common alternative for redo
