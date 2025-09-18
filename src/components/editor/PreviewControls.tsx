@@ -1,13 +1,12 @@
 // src/components/editor/PreviewControls.tsx
 import React from 'react';
 // Thêm icon Trash2 và các component Tooltip
-import { Play, Pause, Rewind, Scissors, Plus, ZoomIn, Trash2 } from 'lucide-react';
+import { Play, Pause, Rewind, Scissors, Plus, ZoomIn, Trash2, Undo, Redo, RotateCcw } from 'lucide-react';
 import { useEditorStore, AspectRatio } from '../../store/editorStore';
 import { Button } from '../ui/button';
 import { cn } from '../../lib/utils';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '../ui/select';
 import Slider from '../ui/slider';
-import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '../ui/tooltip';
 
 interface PreviewControlsProps {
   videoRef: React.RefObject<HTMLVideoElement>;
@@ -30,11 +29,25 @@ export function PreviewControls({ videoRef }: PreviewControlsProps) {
     selectedRegionId, deleteRegion // Lấy thêm state và action cần thiết
   } = useEditorStore();
 
+  const { undo, redo, clear, pastStates, futureStates } = useEditorStore.temporal.getState();
+
   const handleRewind = () => {
     setCurrentTime(0);
     if (videoRef.current) {
       videoRef.current.currentTime = 0;
     }
+  }
+
+  const handleUndo = async () => {
+    undo();
+  }
+
+  const handleRedo = async () => {
+    redo();
+  }
+
+  const handleClear = async () => {
+    clear();
   }
 
   const handleDelete = () => {
@@ -69,27 +82,16 @@ export function PreviewControls({ videoRef }: PreviewControlsProps) {
           Add Cut
         </Button>
 
-        <TooltipProvider delayDuration={200}>
-          <Tooltip>
-            <TooltipTrigger asChild>
-              {/* Nút được bọc trong div để Tooltip hoạt động ngay cả khi nút bị disabled */}
-              <div> 
-                <Button
-                  variant="destructive"
-                  size="sm"
-                  onClick={handleDelete}
-                  disabled={!selectedRegionId}
-                  className="bg-destructive/10 hover:bg-destructive/20 text-destructive font-medium px-4 py-2 rounded-lg transition-all duration-200 disabled:opacity-40 disabled:cursor-not-allowed"
-                >
-                  <Trash2 className="w-4 h-4" />
-                </Button>
-              </div>
-            </TooltipTrigger>
-            <TooltipContent>
-              <p>Delete Selected Region (Del)</p>
-            </TooltipContent>
-          </Tooltip>
-        </TooltipProvider>
+        <Button
+          variant="destructive"
+          size="sm"
+          onClick={handleDelete}
+          disabled={!selectedRegionId}
+          className="bg-destructive/10 hover:bg-destructive/20 text-destructive font-medium px-4 py-2 rounded-lg transition-all duration-200 disabled:opacity-40 disabled:cursor-not-allowed"
+          title='Delete Selected Region (Del)'
+        >
+          <Trash2 className="w-4 h-4" />
+        </Button>
 
         {/* Timeline Zoom Control */}
         <div className="flex items-center gap-3 ml-4 px-4 py-2 bg-background/30 rounded-lg border border-border/30">
@@ -121,11 +123,30 @@ export function PreviewControls({ videoRef }: PreviewControlsProps) {
           <Rewind className="w-5 h-5" />
         </Button>
 
+        <Button variant="ghost" size="icon"
+          onClick={handleUndo} disabled={pastStates.length === 0} className="w-9 h-9"
+          title='Undo (Ctrl+Z)'
+        >
+          <Undo className="w-4 h-4" />
+        </Button>
+        <Button variant="ghost" size="icon"
+          onClick={handleRedo} disabled={futureStates.length === 0} className="w-9 h-9"
+          title='Redo (Ctrl+Y)'
+        >
+          <Redo className="w-4 h-4" />
+        </Button>
+        <Button variant="ghost" size="icon" onClick={handleClear} disabled={pastStates.length === 0} className="w-9 h-9"
+          title='Clear History (Ctrl+Shift+Z)'
+        >
+          <RotateCcw className="w-4 h-4" />
+        </Button>
+
         <Button
           variant="ghost"
           size="icon"
           className="w-14 h-14 rounded-full bg-primary/10 hover:bg-primary/20 transition-all duration-200 border-2 border-primary/20"
           onClick={togglePlay}
+          title='Play/Pause (Space)'
         >
           {isPlaying ? (
             <Pause className="w-6 h-6 text-primary" />

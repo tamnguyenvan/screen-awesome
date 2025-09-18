@@ -16,6 +16,7 @@ import { useKeyboardShortcuts } from '../hooks/useKeyboardShortcuts';
 export function EditorPage() {
   // Lấy state và actions từ store
   const { loadProject, toggleTheme, deleteRegion } = useEditorStore.getState();
+  const { undo, redo } = useEditorStore.temporal.getState();
   const videoRef = useRef<HTMLVideoElement>(null);
   const [isExportModalOpen, setExportModalOpen] = useState(false);
   const [isExporting, setIsExporting] = useState(false);
@@ -33,9 +34,12 @@ export function EditorPage() {
   useKeyboardShortcuts(
     {
       'Delete': handleDeleteSelectedRegion,
-      'Backspace': handleDeleteSelectedRegion, // Thêm Backspace cho tiện lợi
+      'Backspace': handleDeleteSelectedRegion,
+      'ctrl+z': (e) => { e.preventDefault(); undo(); },
+      'ctrl+y': (e) => { e.preventDefault(); redo(); },
+      'ctrl+shift+z': (e) => { e.preventDefault(); redo(); }, // Common alternative for redo
     },
-    [handleDeleteSelectedRegion]
+    [handleDeleteSelectedRegion, undo, redo]
   );
   // --- END: Thêm logic quản lý phím tắt ---
 

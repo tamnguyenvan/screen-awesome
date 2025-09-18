@@ -3,7 +3,9 @@
 import { create } from 'zustand';
 import { immer } from 'zustand/middleware/immer';
 import { useShallow } from 'zustand/react/shallow';
+import { temporal } from 'zundo';
 import { WALLPAPERS } from '../lib/constants';
+import { shallow } from 'zustand/shallow';
 
 // --- Types ---
 type BackgroundType = 'color' | 'gradient' | 'image' | 'wallpaper';
@@ -144,237 +146,248 @@ const MINIMUM_REGION_DURATION = 0.1;
 
 // --- Store Implementation ---
 export const useEditorStore = create(
-  immer<EditorState & EditorActions>((set, get) => ({
-    ...initialState,
-    frameStyles: initialFrameStyles,
+  temporal(
+    immer<EditorState & EditorActions>((set, get) => ({
+      ...initialState,
+      frameStyles: initialFrameStyles,
 
-    loadProject: async ({ videoPath, metadataPath }) => {
-      const videoUrl = `media://${videoPath}`;
-
-      set(state => {
-        Object.assign(state, initialState);
-        state.frameStyles = initialFrameStyles;
-        state.videoPath = videoPath;
-        state.metadataPath = metadataPath;
-        state.videoUrl = videoUrl;
-      });
-
-      try {
-        const metadataContent = await window.electronAPI.readFile(metadataPath);
-        const metadata: MetaDataItem[] = JSON.parse(metadataContent);
-        const processedMetadata = metadata.map(item => ({ ...item, timestamp: item.timestamp / 1000 }));
-        set(state => { state.metadata = processedMetadata });
-
-        const clicks = processedMetadata.filter(item => item.type === 'click' && item.pressed);
-        if (clicks.length === 0) return;
-
-        const mergedClickGroups: MetaDataItem[][] = [];
-        if (clicks.length > 0) {
-          let currentGroup = [clicks[0]];
-          for (let i = 1; i < clicks.length; i++) {
-            if (clicks[i].timestamp - currentGroup[currentGroup.length - 1].timestamp < 3.0) {
-              currentGroup.push(clicks[i]);
-            } else {
-              mergedClickGroups.push(currentGroup);
-              currentGroup = [clicks[i]];
-            }
-          }
-          mergedClickGroups.push(currentGroup);
-        }
-
-        const newZoomRegions: Record<string, ZoomRegion> = mergedClickGroups.reduce((acc, group, index) => {
-          const firstClick = group[0];
-          const lastClick = group[group.length - 1];
-          const startTime = Math.max(0, firstClick.timestamp - 0.25);
-          const duration = Math.max(3, (lastClick.timestamp - firstClick.timestamp) + 0.75);
-          const id = `auto-zoom-${Date.now()}-${index}`;
-
-          acc[id] = {
-            id,
-            type: 'zoom',
-            startTime,
-            duration,
-            zoomLevel: 2.0,
-            easing: 'ease-in-out',
-            targetX: firstClick.x,
-            targetY: firstClick.y,
-            zIndex: index + 1,
-          };
-          return acc;
-        }, {} as Record<string, ZoomRegion>);
+      loadProject: async ({ videoPath, metadataPath }) => {
+        const videoUrl = `media://${videoPath}`;
 
         set(state => {
-          state.zoomRegions = newZoomRegions;
-          state.nextZIndex = mergedClickGroups.length + 1;
+          Object.assign(state, initialState);
+          state.frameStyles = initialFrameStyles;
+          state.videoPath = videoPath;
+          state.metadataPath = metadataPath;
+          state.videoUrl = videoUrl;
         });
 
-      } catch (error) {
-        console.error("Failed to process metadata file:", error);
-      }
-    },
+        try {
+          const metadataContent = await window.electronAPI.readFile(metadataPath);
+          const metadata: MetaDataItem[] = JSON.parse(metadataContent);
+          const processedMetadata = metadata.map(item => ({ ...item, timestamp: item.timestamp / 1000 }));
+          set(state => { state.metadata = processedMetadata });
 
-    setVideoDimensions: (dims) => set(state => { state.videoDimensions = dims }),
+          const clicks = processedMetadata.filter(item => item.type === 'click' && item.pressed);
+          if (clicks.length === 0) return;
 
-    setDuration: (duration) => set(state => {
-      state.duration = duration;
-      
-      // FIX: After setting duration, iterate through existing regions
-      // and clamp any that might now be out of bounds. This is crucial
-      // for auto-generated regions created before duration was known.
-      if (duration > 0) {
-        Object.values(state.zoomRegions).forEach(region => {
-          const regionEndTime = region.startTime + region.duration;
-          if (regionEndTime > duration) {
-            const newDuration = duration - region.startTime;
-            region.duration = Math.max(MINIMUM_REGION_DURATION, newDuration);
+          const mergedClickGroups: MetaDataItem[][] = [];
+          if (clicks.length > 0) {
+            let currentGroup = [clicks[0]];
+            for (let i = 1; i < clicks.length; i++) {
+              if (clicks[i].timestamp - currentGroup[currentGroup.length - 1].timestamp < 3.0) {
+                currentGroup.push(clicks[i]);
+              } else {
+                mergedClickGroups.push(currentGroup);
+                currentGroup = [clicks[i]];
+              }
+            }
+            mergedClickGroups.push(currentGroup);
           }
-        });
-        Object.values(state.cutRegions).forEach(region => {
-          const regionEndTime = region.startTime + region.duration;
-          if (regionEndTime > duration) {
-            const newDuration = duration - region.startTime;
-            region.duration = Math.max(MINIMUM_REGION_DURATION, newDuration);
-          }
-        });
-      }
-    }),
 
-    setCurrentTime: (time) => set(state => {
-      state.currentTime = time;
-      const allZoomRegions = Object.values(state.zoomRegions);
-      const allCutRegions = Object.values(state.cutRegions);
+          const newZoomRegions: Record<string, ZoomRegion> = mergedClickGroups.reduce((acc, group, index) => {
+            const firstClick = group[0];
+            const lastClick = group[group.length - 1];
+            const startTime = Math.max(0, firstClick.timestamp - 0.25);
+            const duration = Math.max(3, (lastClick.timestamp - firstClick.timestamp) + 0.75);
+            const id = `auto-zoom-${Date.now()}-${index}`;
 
-      const newActiveRegion = allZoomRegions.find(r => time >= r.startTime && time < r.startTime + r.duration);
-      state.activeZoomRegionId = newActiveRegion?.id ?? null;
+            acc[id] = {
+              id,
+              type: 'zoom',
+              startTime,
+              duration,
+              zoomLevel: 2.0,
+              easing: 'ease-in-out',
+              targetX: firstClick.x,
+              targetY: firstClick.y,
+              zIndex: index + 1,
+            };
+            return acc;
+          }, {} as Record<string, ZoomRegion>);
 
-      const activeCutRegion = allCutRegions.find(r => time >= r.startTime && time < r.startTime + r.duration);
-      state.isCurrentlyCut = !!activeCutRegion;
-    }),
+          set(state => {
+            state.zoomRegions = newZoomRegions;
+            state.nextZIndex = mergedClickGroups.length + 1;
+          });
 
-    togglePlay: () => set(state => { state.isPlaying = !state.isPlaying; }),
-    setPlaying: (isPlaying) => set(state => { state.isPlaying = isPlaying; }),
+        } catch (error) {
+          console.error("Failed to process metadata file:", error);
+        }
+      },
 
-    updateFrameStyle: (style) => set(state => { Object.assign(state.frameStyles, style); }),
+      setVideoDimensions: (dims) => set(state => { state.videoDimensions = dims }),
 
-    updateBackground: (bg) => set((state) => {
-      const currentBg = state.frameStyles.background;
-      if (!bg.type || bg.type === currentBg.type) {
-        Object.assign(state.frameStyles.background, bg);
-        return;
-      }
-      const newBackgroundState: Background = { type: bg.type };
-      switch (bg.type) {
-        case 'color': newBackgroundState.color = '#ffffff'; break;
-        case 'gradient':
-          newBackgroundState.gradientStart = currentBg.gradientStart || '#6366f1';
-          newBackgroundState.gradientEnd = currentBg.gradientEnd || '#9ca9ff';
-          newBackgroundState.gradientDirection = currentBg.gradientDirection || 'to bottom right';
-          break;
-        case 'image':
-        case 'wallpaper':
-          newBackgroundState.imageUrl = WALLPAPERS[0].imageUrl;
-          newBackgroundState.thumbnailUrl = WALLPAPERS[0].thumbnailUrl;
-          break;
-      }
-      state.frameStyles.background = newBackgroundState;
-    }),
+      setDuration: (duration) => set(state => {
+        state.duration = duration;
 
-    setAspectRatio: (ratio) => set(state => { state.aspectRatio = ratio; }),
+        // FIX: After setting duration, iterate through existing regions
+        // and clamp any that might now be out of bounds. This is crucial
+        // for auto-generated regions created before duration was known.
+        if (duration > 0) {
+          Object.values(state.zoomRegions).forEach(region => {
+            const regionEndTime = region.startTime + region.duration;
+            if (regionEndTime > duration) {
+              const newDuration = duration - region.startTime;
+              region.duration = Math.max(MINIMUM_REGION_DURATION, newDuration);
+            }
+          });
+          Object.values(state.cutRegions).forEach(region => {
+            const regionEndTime = region.startTime + region.duration;
+            if (regionEndTime > duration) {
+              const newDuration = duration - region.startTime;
+              region.duration = Math.max(MINIMUM_REGION_DURATION, newDuration);
+            }
+          });
+        }
+      }),
 
-    addZoomRegion: () => {
-      const { metadata, currentTime, videoDimensions, duration, nextZIndex } = get();
-      if (duration === 0) return;
+      setCurrentTime: (time) => set(state => {
+        state.currentTime = time;
+        const allZoomRegions = Object.values(state.zoomRegions);
+        const allCutRegions = Object.values(state.cutRegions);
 
-      const lastMousePos = metadata.find(m => m.timestamp <= currentTime);
-      const id = `zoom-${Date.now()}`;
-      
-      const newRegion: ZoomRegion = {
-        id,
-        type: 'zoom',
-        startTime: currentTime,
-        duration: 3,
-        zoomLevel: 2,
-        easing: 'ease-in-out',
-        targetX: lastMousePos?.x || videoDimensions.width / 2,
-        targetY: lastMousePos?.y || videoDimensions.height / 2,
-        zIndex: nextZIndex,
-      };
+        const newActiveRegion = allZoomRegions.find(r => time >= r.startTime && time < r.startTime + r.duration);
+        state.activeZoomRegionId = newActiveRegion?.id ?? null;
 
-      // Clamp duration to video length
-      if (newRegion.startTime + newRegion.duration > duration) {
-        newRegion.duration = Math.max(MINIMUM_REGION_DURATION, duration - newRegion.startTime);
-      }
+        const activeCutRegion = allCutRegions.find(r => time >= r.startTime && time < r.startTime + r.duration);
+        state.isCurrentlyCut = !!activeCutRegion;
+      }),
 
-      set(state => {
-        state.zoomRegions[id] = newRegion;
-        state.nextZIndex++;
-      });
-    },
+      togglePlay: () => set(state => { state.isPlaying = !state.isPlaying; }),
+      setPlaying: (isPlaying) => set(state => { state.isPlaying = isPlaying; }),
 
-    addCutRegion: (regionData) => {
-      const { currentTime, duration, nextZIndex } = get();
-      if (duration === 0) return;
+      updateFrameStyle: (style) => set(state => { Object.assign(state.frameStyles, style); }),
 
-      const id = `cut-${Date.now()}`;
-      
-      const newRegion: CutRegion = {
-        id,
-        type: 'cut',
-        startTime: currentTime,
-        duration: 2,
-        zIndex: nextZIndex,
-        ...regionData,
-      };
+      updateBackground: (bg) => set((state) => {
+        const currentBg = state.frameStyles.background;
+        if (!bg.type || bg.type === currentBg.type) {
+          Object.assign(state.frameStyles.background, bg);
+          return;
+        }
+        const newBackgroundState: Background = { type: bg.type };
+        switch (bg.type) {
+          case 'color': newBackgroundState.color = '#ffffff'; break;
+          case 'gradient':
+            newBackgroundState.gradientStart = currentBg.gradientStart || '#6366f1';
+            newBackgroundState.gradientEnd = currentBg.gradientEnd || '#9ca9ff';
+            newBackgroundState.gradientDirection = currentBg.gradientDirection || 'to bottom right';
+            break;
+          case 'image':
+          case 'wallpaper':
+            newBackgroundState.imageUrl = WALLPAPERS[0].imageUrl;
+            newBackgroundState.thumbnailUrl = WALLPAPERS[0].thumbnailUrl;
+            break;
+        }
+        state.frameStyles.background = newBackgroundState;
+      }),
 
-      // Clamp duration to video length
-      if (newRegion.startTime + newRegion.duration > duration) {
-        newRegion.duration = Math.max(MINIMUM_REGION_DURATION, duration - newRegion.startTime);
-      }
+      setAspectRatio: (ratio) => set(state => { state.aspectRatio = ratio; }),
 
-      set(state => {
-        state.cutRegions[id] = newRegion;
-        if (!regionData?.trimType) {
+      addZoomRegion: () => {
+        const { metadata, currentTime, videoDimensions, duration, nextZIndex } = get();
+        if (duration === 0) return;
+
+        const lastMousePos = metadata.find(m => m.timestamp <= currentTime);
+        const id = `zoom-${Date.now()}`;
+
+        const newRegion: ZoomRegion = {
+          id,
+          type: 'zoom',
+          startTime: currentTime,
+          duration: 3,
+          zoomLevel: 2,
+          easing: 'ease-in-out',
+          targetX: lastMousePos?.x || videoDimensions.width / 2,
+          targetY: lastMousePos?.y || videoDimensions.height / 2,
+          zIndex: nextZIndex,
+        };
+
+        // Clamp duration to video length
+        if (newRegion.startTime + newRegion.duration > duration) {
+          newRegion.duration = Math.max(MINIMUM_REGION_DURATION, duration - newRegion.startTime);
+        }
+
+        set(state => {
+          state.zoomRegions[id] = newRegion;
           state.nextZIndex++;
+        });
+      },
+
+      addCutRegion: (regionData) => {
+        const { currentTime, duration, nextZIndex } = get();
+        if (duration === 0) return;
+
+        const id = `cut-${Date.now()}`;
+
+        const newRegion: CutRegion = {
+          id,
+          type: 'cut',
+          startTime: currentTime,
+          duration: 2,
+          zIndex: nextZIndex,
+          ...regionData,
+        };
+
+        // Clamp duration to video length
+        if (newRegion.startTime + newRegion.duration > duration) {
+          newRegion.duration = Math.max(MINIMUM_REGION_DURATION, duration - newRegion.startTime);
         }
-      });
-    },
 
-    updateRegion: (id, updates) => set(state => {
-      const region = state.zoomRegions[id] || state.cutRegions[id];
-      if (region) {
-        // Apply updates first to get the intended new values
-        Object.assign(region, updates);
-        
-        const videoDuration = state.duration;
-        if (videoDuration > 0) {
-          // Now, clamp the values to be within bounds
-          // 1. Clamp startTime to be within [0, videoDuration - MIN_DURATION]
-          region.startTime = Math.max(0, Math.min(region.startTime, videoDuration - MINIMUM_REGION_DURATION));
+        set(state => {
+          state.cutRegions[id] = newRegion;
+          if (!regionData?.trimType) {
+            state.nextZIndex++;
+          }
+        });
+      },
 
-          // 2. Clamp duration based on the new startTime
-          const maxPossibleDuration = videoDuration - region.startTime;
-          region.duration = Math.max(MINIMUM_REGION_DURATION, Math.min(region.duration, maxPossibleDuration));
+      updateRegion: (id, updates) => set(state => {
+        // Lấy region từ draft state. Mọi thay đổi trên 'region' giờ đây
+        // sẽ được immer theo dõi một cách an toàn.
+        const region = state.zoomRegions[id] || state.cutRegions[id];
+
+        if (region) {
+          // 1. Áp dụng các thay đổi vào draft region
+          Object.assign(region, updates);
+
+          // 2. Thực hiện logic clamping để đảm bảo giá trị luôn hợp lệ
+          // sau khi đã cập nhật.
+          const videoDuration = state.duration;
+          if (videoDuration > 0) {
+            // Kẹp startTime trong khoảng [0, duration - MIN_DURATION]
+            region.startTime = Math.max(0, Math.min(region.startTime, videoDuration - MINIMUM_REGION_DURATION));
+
+            // Kẹp duration dựa trên startTime mới
+            const maxPossibleDuration = videoDuration - region.startTime;
+            region.duration = Math.max(MINIMUM_REGION_DURATION, Math.min(region.duration, maxPossibleDuration));
+          }
         }
-      }
-    }),
+        // Không cần return hay gọi set() lần nữa.
+        // Immer sẽ tự động tạo state mới khi hàm này kết thúc.
+      }),
 
-    deleteRegion: (id) => set(state => {
-      delete state.zoomRegions[id];
-      delete state.cutRegions[id];
-      if (state.selectedRegionId === id) {
-        state.selectedRegionId = null;
-      }
-    }),
+      deleteRegion: (id) => set(state => {
+        delete state.zoomRegions[id];
+        delete state.cutRegions[id];
+        if (state.selectedRegionId === id) {
+          state.selectedRegionId = null;
+        }
+      }),
 
-    setSelectedRegionId: (id) => set(state => { state.selectedRegionId = id; }),
-    toggleTheme: () => set(state => { state.theme = state.theme === 'dark' ? 'light' : 'dark'; }),
-    setPreviewCutRegion: (region) => set(state => { state.previewCutRegion = region; }),
-    setTimelineZoom: (zoom) => set(state => { state.timelineZoom = zoom; }),
-    reset: () => set(state => {
-      Object.assign(state, initialState);
-      state.frameStyles = initialFrameStyles;
-    }),
-  }))
+      setSelectedRegionId: (id) => set(state => { state.selectedRegionId = id; }),
+      toggleTheme: () => set(state => { state.theme = state.theme === 'dark' ? 'light' : 'dark'; }),
+      setPreviewCutRegion: (region) => set(state => { state.previewCutRegion = region; }),
+      setTimelineZoom: (zoom) => set(state => { state.timelineZoom = zoom; }),
+      reset: () => set(state => {
+        Object.assign(state, initialState);
+        state.frameStyles = initialFrameStyles;
+      }),
+    })),
+    {
+      equality: shallow,
+    }
+  )
 );
 
 // --- OPTIMIZATION: Specialized hooks with selectors to prevent unnecessary re-renders ---
