@@ -14,9 +14,9 @@ RUN apt-get update && apt-get install -y \
     libnss3 \
     libxtst6 \
     pkg-config \
-    python3.10 \
-    python3.10-dev \
-    python3.10-venv \
+    python3.6 \
+    python3.6-dev \
+    python3.6-venv \
     python3-pip \
     && rm -rf /var/lib/apt/lists/*
 
@@ -26,7 +26,7 @@ RUN curl -fsSL https://deb.nodesource.com/setup_20.x | bash - \
     && npm install -g npm@latest
 
 # 3. Cài Python dependencies
-RUN python3.10 -m pip install --upgrade pip setuptools wheel \
+RUN python3.6 -m pip install --upgrade pip setuptools wheel \
     && pip install pynput pyinstaller
 
 WORKDIR /app
