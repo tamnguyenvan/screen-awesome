@@ -32,6 +32,7 @@ jobs:
       - name: Run Build inside Container
         run: |
           docker run --rm -v ${{ github.workspace }}:/app my-build-env bash -c "
+            export DEBUG=electron-builder &&
             cd /app &&
             npm ci &&
             npm version ${{ github.ref_name }} --no-git-tag-version &&
