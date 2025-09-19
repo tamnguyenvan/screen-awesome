@@ -26,6 +26,7 @@
     "react-dom": "^18.2.0",
     "tailwind-merge": "^3.3.1",
     "tailwindcss": "^4.1.13",
+    "zundo": "^2.0.0-beta.24",
     "zustand": "^5.0.8"
   },
   "devDependencies": {
@@ -47,45 +48,44 @@
   },
   "main": "dist-electron/main.js",
   "build": {
-  "appId": "com.screenawesome.app",
-  "productName": "ScreenAwesome",
-  "files": [
-    "dist/",
-    "dist-electron/",
-    "python/dist/",
-    "binaries/"
-  ],
-  "asarUnpack": [
-    "python/dist/**",
-    "binaries/**"
-  ],
-  "win": {
-    "target": [
-      "nsis"
+    "appId": "com.screenawesome.app",
+    "productName": "ScreenAwesome",
+    "files": [
+      "dist/",
+      "dist-electron/",
+      "python/dist/",
+      "binaries/"
     ],
-    "icon": "public/screenawesome-appicon.ico"
-  },
-  "mac": {
-    "target": [
-      "dmg",
-      "zip"
+    "asarUnpack": [
+      "python/dist/**",
+      "binaries/**"
     ],
-    "icon": "public/screenawesome-appicon.icns"
-  },
-  "linux": {
-    "target": [
-      "AppImage"
-    ],
-    "icon": "public/screenawesome-appicon.png",
-    "category": "Utility"
-  },
-  "nsis": {
-    "oneClick": false,
-    "allowToChangeInstallationDirectory": true
-  },
-  "directories": {
-    "buildResources": "public"
+    "win": {
+      "target": [
+        "nsis"
+      ],
+      "icon": "public/screenawesome-appicon.ico"
+    },
+    "mac": {
+      "target": [
+        "dmg",
+        "zip"
+      ],
+      "icon": "public/screenawesome-appicon.icns"
+    },
+    "linux": {
+      "target": [
+        "AppImage"
+      ],
+      "icon": "public/screenawesome-appicon.png",
+      "category": "Utility"
+    },
+    "nsis": {
+      "oneClick": false,
+      "allowToChangeInstallationDirectory": true
+    },
+    "directories": {
+      "buildResources": "public"
+    }
   }
-}
-
 }
