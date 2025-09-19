@@ -34,7 +34,7 @@ jobs:
           docker run --rm -v ${{ github.workspace }}:/app my-build-env bash -c "
             export DEBUG=electron-builder &&
             cd /app &&
-            npm ci &&
+            npm ci --force &&
             npm version ${{ github.ref_name }} --no-git-tag-version &&
             xvfb-run --auto-servernum npm run build -- --publish never
           "
