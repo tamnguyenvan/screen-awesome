@@ -24,9 +24,9 @@ jobs:
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@v3
 
-      # 3. Build Docker image (dựa trên Dockerfile.ubuntu18.04)
+      # 3. Build Docker image (dựa trên Dockerfile.ubuntu20.04)
       - name: Build Docker Image
-        run: docker build -t my-build-env -f dockerfiles/Dockerfile.ubuntu18.04 .
+        run: docker build -t my-build-env -f dockerfiles/Dockerfile.ubuntu20.04 .
 
       # 4. Run build bên trong container
       - name: Run Build inside Container
