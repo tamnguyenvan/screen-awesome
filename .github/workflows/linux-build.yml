@@ -33,27 +33,8 @@ jobs:
         run: |
           docker run --rm -v ${{ github.workspace }}:/app my-build-env bash -c "
             cd /app &&
-            # Cài Node.js
-            curl -fsSL https://deb.nodesource.com/setup_20.x | bash - &&
-            apt-get install -y nodejs &&
             npm ci &&
-            
-            # Cài Python deps
-            python3.8 -m pip install --upgrade pip &&
-            pip install pynput pyinstaller &&
-
-            # Cài X11 + ffmpeg
-            apt-get update &&
-            apt-get install -y xvfb libxss1 libnss3 libxtst6 curl &&
-            mkdir -p binaries/linux &&
-            curl -L -o ffmpeg.tar.xz https://johnvansickle.com/ffmpeg/builds/ffmpeg-git-amd64-static.tar.xz &&
-            tar -xf ffmpeg.tar.xz --strip-components=1 -C binaries/linux/ \$(tar -tf ffmpeg.tar.xz | head -n 1)ffmpeg &&
-            chmod +x binaries/linux/ffmpeg &&
-
-            # Đồng bộ version từ tag
             npm version ${{ github.ref_name }} --no-git-tag-version &&
-
-            # Build app với xvfb-run
             xvfb-run --auto-servernum npm run build -- --publish never
           "
 
