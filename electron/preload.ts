@@ -39,10 +39,38 @@ type RenderStartPayload = {
   exportSettings: any;
 }
 
+type WindowSource = {
+  id: string;
+  name: string;
+  thumbnailUrl: string;
+  geometry?: {
+    x: number;
+    y: number;
+    width: number;
+    height: number;
+  };
+}
+
+// --- Presets ---
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+type Preset = any;
+
+
 // Define API to be exposed to window object
 export const electronAPI = {
   // --- Recording ---
-  startRecording: (): Promise<RecordingResult> => ipcRenderer.invoke('recording:start'),
+  startRecording: (options: { 
+    source: 'area' | 'fullscreen' | 'window', 
+    geometry?: WindowSource['geometry'];
+    windowTitle?: string 
+  }): Promise<RecordingResult> => ipcRenderer.invoke('recording:start', options),
+
+  getDesktopSources: (): Promise<WindowSource[]> => ipcRenderer.invoke('desktop:get-sources'),
+  linuxCheckTools: (): Promise<{ [key: string]: boolean }> => ipcRenderer.invoke('linux:check-tools'),
+
+  setRecorderSize: (options: { width: number, height: number, center?: boolean }) => {
+    ipcRenderer.send('recorder:set-size', options);
+  },
 
   onRecordingFinished: (callback: (result: RecordingResult) => void) => {
     const listener = (_event: IpcRendererEvent, result: RecordingResult) => callback(result);
@@ -67,6 +95,7 @@ export const electronAPI = {
 
   // --- Export ---
   startExport: (payload: ExportPayload): Promise<void> => ipcRenderer.invoke('export:start', payload),
+  cancelExport: (): void => ipcRenderer.send('export:cancel'),
 
   onExportProgress: (callback: (payload: ProgressPayload) => void) => {
     const listener = (_event: IpcRendererEvent, payload: ProgressPayload) => callback(payload);
@@ -84,6 +113,8 @@ export const electronAPI = {
     return ipcRenderer.invoke('dialog:showSaveDialog', options);
   },
 
+  showItemInFolder: (path: string): void => ipcRenderer.send('shell:showItemInFolder', path),
+
   // --- Render Worker ---
   onRenderStart: (callback: (payload: RenderStartPayload) => void) => {
     const listener = (_event: IpcRendererEvent, payload: RenderStartPayload) => callback(payload);
@@ -99,6 +130,10 @@ export const electronAPI = {
   finishRender: () => {
     ipcRenderer.send('export:render-finished');
   },
+
+  // --- Presets ---
+  loadPresets: (): Promise<Record<string, Preset>> => ipcRenderer.invoke('presets:load'),
+  savePresets: (presets: Record<string, Preset>): Promise<{ success: boolean; error?: string }> => ipcRenderer.invoke('presets:save', presets),
 
   // --- Window Controls ---
   minimizeWindow: () => ipcRenderer.send('window:minimize'),

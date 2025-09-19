@@ -24,11 +24,11 @@ process.on('unhandledRejection', (reason, promise) => {
 
 import {
   app, BrowserWindow, ipcMain, Tray, Menu,
-  nativeImage, protocol, IpcMainInvokeEvent, dialog
+  nativeImage, protocol, IpcMainInvokeEvent, dialog, desktopCapturer, screen, shell
 } from 'electron'
 import { fileURLToPath, format as formatUrl } from 'node:url'
 import path from 'node:path'
-import { spawn, ChildProcessWithoutNullStreams } from 'node:child_process'
+import { spawn, ChildProcessWithoutNullStreams, exec } from 'node:child_process'
 import fs from 'node:fs/promises'
 import fsSync from 'node:fs'
 
@@ -54,6 +54,7 @@ let editorWin: BrowserWindow | null
 let countdownWin: BrowserWindow | null = null;
 let renderWorker: BrowserWindow | null = null;
 let savingWin: BrowserWindow | null = null;
+let selectionWin: BrowserWindow | null = null;
 let tray: Tray | null = null
 
 let pythonTracker: ChildProcessWithoutNullStreams | null = null
@@ -62,6 +63,54 @@ let metadataStream: fsSync.WriteStream | null = null
 
 let pythonDataBuffer = ''
 let firstChunkWritten = true
+
+function getPresetsFilePath() {
+  const userDataPath = app.getPath('userData');
+  log.info(`[Main] User data path: ${userDataPath}`);
+  return path.join(userDataPath, 'presets.json');
+}
+
+async function handleLoadPresets() {
+  const filePath = getPresetsFilePath();
+  log.info(`[Main] Loading presets from: ${filePath}`);
+  try {
+    if (fsSync.existsSync(filePath)) {
+      const data = await fs.readFile(filePath, 'utf-8');
+      const presets = JSON.parse(data);
+      log.info('[Main] Presets loaded successfully.');
+      return presets;
+    }
+    log.warn('[Main] presets.json not found. Returning empty object.');
+  } catch (error) {
+    log.error('[Main] Failed to load presets:', error);
+  }
+  return {}; // Return empty object if file doesn't exist or fails to parse
+}
+
+async function handleSavePresets(_event: IpcMainInvokeEvent, presets: unknown) {
+  const filePath = getPresetsFilePath();
+  log.info(`[Main] Saving presets to: ${filePath}`);
+  try {
+    await fs.writeFile(filePath, JSON.stringify(presets, null, 2));
+    log.info('[Main] Presets saved successfully.');
+    return { success: true };
+  } catch (error) {
+    log.error('[Main] Failed to save presets:', error);
+    return { success: false, error: (error as Error).message };
+  }
+}
+
+function calculateExportDimensions(resolutionKey: ResolutionKey, aspectRatio: string): { width: number; height: number } {
+  const baseHeight = RESOLUTIONS[resolutionKey].height; // e.g., 1080 for '1080p'
+  const [ratioW, ratioH] = aspectRatio.split(':').map(Number);
+  const aspectRatioValue = ratioW / ratioH;
+
+  const width = Math.round(baseHeight * aspectRatioValue);
+  // Đảm bảo chiều rộng là số chẵn để tương thích với nhiều codec video
+  const finalWidth = width % 2 === 0 ? width : width + 1;
+
+  return { width: finalWidth, height: baseHeight };
+}
 
 function getFFmpegPath(): string {
   // path to ffmpeg in production
@@ -129,11 +178,16 @@ function createEditorWindow(videoPath: string, metadataPath: string) {
     minHeight: 768,
     frame: false, // Frameless on Win/Linux
     titleBarStyle: 'hidden', // Keep traffic lights on macOS
+    show: false, // Don't show the window until it's ready
     webPreferences: {
       preload: path.join(__dirname, 'preload.mjs'),
       webSecurity: VITE_DEV_SERVER_URL ? false : true,
     },
   })
+
+  // Maximize the window and show it when it's ready
+  editorWin.maximize()
+  editorWin.show()
 
   let editorUrl: string;
   if (VITE_DEV_SERVER_URL) {
@@ -215,8 +269,8 @@ function cleanupAndSave(): Promise<void> {
 
 function createCountdownWindow() {
   countdownWin = new BrowserWindow({
-    width: 300,
-    height: 300,
+    width: 380,
+    height: 380,
     transparent: true,
     frame: false,
     alwaysOnTop: true,
@@ -238,6 +292,30 @@ function createCountdownWindow() {
   })
 }
 
+function createSelectionWindow() {
+  selectionWin = new BrowserWindow({
+    fullscreen: true,
+    transparent: true,
+    frame: false,
+    alwaysOnTop: true,
+    webPreferences: {
+      nodeIntegration: true, // Required for renderer.js to use require('electron')
+      contextIsolation: false,
+    }
+  });
+
+  const selectionUrl = VITE_DEV_SERVER_URL
+    ? path.join(process.env.APP_ROOT, 'public/selection/index.html')
+    : path.join(RENDERER_DIST, 'selection/index.html');
+
+  selectionWin.loadFile(selectionUrl);
+
+  selectionWin.on('closed', () => {
+    selectionWin = null;
+  });
+}
+
+
 async function ensureDirectoryExists(dirPath: string) {
   try {
     await fs.mkdir(dirPath, { recursive: true });
@@ -247,7 +325,7 @@ async function ensureDirectoryExists(dirPath: string) {
   }
 }
 
-async function handleStartRecording() {
+async function startActualRecording(ffmpegArgs: string[]) {
   const recordingDir = path.join(process.env.HOME || process.env.USERPROFILE || '.', '.screenawesome');
   await ensureDirectoryExists(recordingDir);
   const baseName = `ScreenAwesome-recording-${Date.now()}`
@@ -258,27 +336,22 @@ async function handleStartRecording() {
 
   createCountdownWindow()
 
+  // Python setup (no changes needed here)
   let pythonExecutable: string;
   let scriptArgs: string[] = [];
-
   if (app.isPackaged) {
-    // Production Environment: Run the executable file compiled by PyInstaller.
-    // process.resourcesPath points to the directory containing application resources.
     const executableName = process.platform === 'win32' ? 'tracker.exe' : 'tracker';
     pythonExecutable = path.join(process.resourcesPath, 'app.asar.unpacked', 'python', 'dist', 'tracker', executableName);
-    log.info(`[Production] Using PyInstaller executable at: ${pythonExecutable}`);
   } else {
-    // Development Environment: Run the script directly using Python from venv.
     pythonExecutable = path.join(process.env.APP_ROOT, 'venv/bin/python');
     const scriptPath = path.join(process.env.APP_ROOT, 'python/tracker.py');
     scriptArgs = [scriptPath];
-    log.info(`[Development] Using Python script: ${pythonExecutable} ${scriptArgs.join(' ')}`);
   }
 
   setTimeout(() => {
     countdownWin?.close()
 
-    // 1. Reset state before starting a new recording
+    // 1. Reset state
     pythonDataBuffer = ''
     firstChunkWritten = true
 
@@ -287,7 +360,6 @@ async function handleStartRecording() {
       pythonTracker = spawn(pythonExecutable, scriptArgs);
     } catch (error) {
       log.error('Failed to spawn Python process:', error);
-      // Có thể thêm logic thông báo lỗi cho người dùng ở đây
       return;
     }
 
@@ -296,22 +368,16 @@ async function handleStartRecording() {
     metadataStream.write('[\n')
 
     pythonTracker.stdout.on('data', (data) => {
-      // Append new data to buffer
+      // ... (logic xử lý data của python không đổi)
       pythonDataBuffer += data.toString('utf-8')
-
-      // Split buffer into lines
       const lines = pythonDataBuffer.split('\n')
-
-      // Keep the last line in buffer if it's incomplete
       const completeLines = lines.slice(0, -1)
       pythonDataBuffer = lines[lines.length - 1]
-
       if (completeLines.length > 0 && metadataStream) {
         completeLines.forEach((line) => {
           const trimmedLine = line.trim()
-          if (trimmedLine) { // Skip empty lines
+          if (trimmedLine) {
             if (!firstChunkWritten) {
-              // Add comma BEFORE writing new object (except the first one)
               metadataStream?.write(',\n')
             }
             metadataStream?.write(trimmedLine)
@@ -325,28 +391,18 @@ async function handleStartRecording() {
       console.error(`Python Tracker Error: ${data}`)
     })
 
-    // 4. Start FFmpeg
-    const display = process.env.DISPLAY || ':0.0'
-    const args = [
-      '-f', 'x11grab',
-      '-i', display,
-      '-c:v', 'libx264',
-      '-preset', 'ultrafast',
-      '-pix_fmt', 'yuv420p',
-      videoPath
-    ]
-
+    // 4. Start FFmpeg with the provided arguments
+    const finalArgs = [...ffmpegArgs, videoPath]; // Add output path
     log.info(`FFmpeg path: ${FFMPEG_PATH}`)
-    log.info(`Starting FFmpeg with args: ${args.join(' ')}`)
-    ffmpegProcess = spawn(FFMPEG_PATH, args)
+    log.info(`Starting FFmpeg with args: ${finalArgs.join(' ')}`)
+    ffmpegProcess = spawn(FFMPEG_PATH, finalArgs)
     ffmpegProcess.stderr.on('data', (data) => {
       log.info(`FFmpeg: ${data}`)
     })
 
     // 5. Create Tray Icon
-    const icon = nativeImage.createFromPath(path.join(process.env.VITE_PUBLIC, 'screenawesome-appicon.png'))
+    const icon = nativeImage.createFromPath(path.join(process.env.VITE_PUBLIC, 'screenawesome-appicon-tray.png'))
     tray = new Tray(icon)
-
     const contextMenu = Menu.buildFromTemplate([
       {
         label: 'Stop Recording',
@@ -366,9 +422,269 @@ async function handleStartRecording() {
     tray.setToolTip('ScreenAwesome is recording...')
     tray.setContextMenu(contextMenu)
 
-  }, 3800)
+  }, 3800) // Countdown delay
 
   return { canceled: false, filePath: videoPath }
+}
+
+async function checkLinuxTools(): Promise<{ [key: string]: boolean }> {
+  log.info('Checking Linux tools...');
+  if (process.platform !== 'linux') {
+    log.info(`Linux tools check skipped for platform ${process.platform}`);
+    return { wmctrl: true, xwininfo: true, import: true }; // Mặc định là true cho các OS khác
+  }
+  log.info(`Checking Linux tools: ${['wmctrl', 'xwininfo', 'import'].join(', ')}`);
+  const tools = ['wmctrl', 'xwininfo', 'import'];
+  const results: { [key: string]: boolean } = {};
+  for (const tool of tools) {
+    results[tool] = await new Promise((resolve) => {
+      exec(`command -v ${tool}`, (error) => {
+        if (error) {
+          log.warn(`Linux tool not found: ${tool}`);
+          resolve(false);
+        } else {
+          resolve(true);
+        }
+      });
+    });
+  }
+  log.info('Linux tools check results:', results);
+  return results;
+}
+
+const GRAY_PLACEHOLDER_URL = 'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mN88A8AAsUB4/Yo4OQAAAAASUVORK5CYII=';
+const EXCLUDED_WINDOW_NAMES = ['Screen Awesome'];
+
+async function handleGetDesktopSources() {
+  if (process.platform === 'linux') {
+    return new Promise((resolve, reject) => {
+      // Dùng -lG để lấy ID, geometry và title cùng lúc
+      log.info('Executing wmctrl -lG');
+      exec('wmctrl -lG', (error, stdout) => {
+        if (error) {
+          log.error('Failed to execute wmctrl:', error);
+          return reject(error);
+        }
+
+        const lines = stdout.trim().split('\n');
+        log.info('wmctrl -lG output:', lines);
+
+        const sourcesPromises = lines
+          .map(line => {
+            const match = line.match(/^(0x[0-9a-f]+)\s+[\d-]+\s+(\d+)\s+(\d+)\s+(\d+)\s+(\d+)\s+[\w-]+\s+(.*)$/);
+            if (!match) return null;
+
+            const [, id, x, y, width, height, name] = match;
+
+            // Lọc các cửa sổ không phù hợp (VD: panels, docks, chính app)
+            if (!name || EXCLUDED_WINDOW_NAMES.some(excludedName => name.includes(excludedName)) ||
+              parseInt(width) < 50 || parseInt(height) < 50) {
+              return null;
+            }
+
+            return new Promise(resolveSource => {
+              const geometry = {
+                x: parseInt(x),
+                y: parseInt(y),
+                width: parseInt(width),
+                height: parseInt(height)
+              };
+
+              // Thêm -resize 320x180! vào lệnh. 
+              // Dấu '!' buộc resize chính xác kích thước, không giữ tỷ lệ gốc,
+              // phù hợp cho thumbnail.
+              const command = `import -window ${id} -resize 320x180! png:-`;
+
+              console.log(`window ${id} ${name} command: ${command}`);
+
+              exec(command, { encoding: 'binary', maxBuffer: 10 * 1024 * 1024 }, (err, stdout) => {
+                let thumbnailUrl = GRAY_PLACEHOLDER_URL; // Mặc định là ảnh placeholder
+
+                if (err) {
+                  log.warn(`Failed to capture thumbnail for window ${id} (${name}), using placeholder. Error:`, err.message);
+                  // Không return null nữa, vẫn resolve để cửa sổ hiện ra
+                } else {
+                  const buffer = Buffer.from(stdout, 'binary');
+                  thumbnailUrl = `data:image/png;base64,${buffer.toString('base64')}`;
+                  log.info(`Captured thumbnail for window ${id} (${name})`);
+                }
+
+                resolveSource({
+                  id,
+                  name,
+                  thumbnailUrl,
+                  geometry,
+                });
+              });
+            });
+          })
+          .filter(p => p !== null);
+
+        Promise.all(sourcesPromises).then(sources => {
+          // Không cần lọc null nữa vì chúng ta luôn resolve một object
+          resolve(sources);
+        });
+      });
+    });
+  }
+
+  // Logic cũ cho Windows/macOS không đổi
+  const sources = await desktopCapturer.getSources({
+    types: ['window'],
+    thumbnailSize: { width: 320, height: 180 }
+  });
+
+  return sources
+    .filter(source => source.name && source.name !== 'ScreenAwesome')
+    .map(source => ({
+      id: source.id,
+      name: source.name,
+      thumbnailUrl: source.thumbnail.toDataURL(),
+    }));
+}
+
+async function handleStartRecording(_event: IpcMainInvokeEvent, options: {
+  source: 'fullscreen' | 'area' | 'window',
+  geometry?: { x: number, y: number, width: number, height: number }; // Thêm geometry
+  windowTitle?: string;
+}) {
+  const { source, geometry, windowTitle } = options;
+  const display = process.env.DISPLAY || ':0.0';
+
+  if (source === 'window') {
+    if (process.platform === 'linux') {
+      if (!geometry) {
+        log.error('Window recording on Linux started without geometry.');
+        dialog.showErrorBox('Recording Error', 'No window geometry was provided for recording.');
+        return { canceled: true, filePath: undefined };
+      }
+
+      const primaryDisplay = screen.getPrimaryDisplay();
+      const { width: screenWidth, height: screenHeight } = primaryDisplay.size;
+
+      // Ensure all geometry values are integers
+      const intX = Math.round(geometry.x);
+      const intY = Math.round(geometry.y);
+      let finalWidth = Math.round(geometry.width);
+      let finalHeight = Math.round(geometry.height);
+
+      // Clamp dimensions to ensure the capture area is within screen bounds
+      if (intX + finalWidth > screenWidth) {
+        finalWidth = screenWidth - intX;
+      }
+      if (intY + finalHeight > screenHeight) {
+        finalHeight = screenHeight - intY;
+      }
+
+      // Ensure width/height are even numbers for libx264 compatibility
+      const safeWidth = Math.floor(finalWidth / 2) * 2;
+      const safeHeight = Math.floor(finalHeight / 2) * 2;
+
+      if (safeWidth < 10 || safeHeight < 10) {
+        log.error('Selected window is too small to record.');
+        dialog.showErrorBox('Recording Error', 'The selected window is too small to record.');
+        return { canceled: true, filePath: undefined };
+      }
+
+      if (process.platform === 'linux') {
+        const ffmpegArgs = [
+          '-f', 'x11grab',
+          '-video_size', `${safeWidth}x${safeHeight}`,
+          '-i', `${display}+${intX},${intY}`,
+          '-c:v', 'libx264',
+          '-preset', 'ultrafast',
+          '-pix_fmt', 'yuv420p',
+        ];
+        log.info(`Starting WINDOW recording for geometry: ${safeWidth}x${safeHeight}+${intX},${intY}`);
+        return startActualRecording(ffmpegArgs);
+      } else if (process.platform === 'win32') {
+        if (!windowTitle) {
+          log.error('Window recording started without a window title.');
+          dialog.showErrorBox('Recording Error', 'No window was selected for recording.');
+          return { canceled: true, filePath: undefined };
+        }
+        const ffmpegArgs = [
+          '-f', 'gdigrab',
+          '-i', `title=${windowTitle}`,
+          '-c:v', 'libx264',
+          '-preset', 'ultrafast',
+          '-pix_fmt', 'yuv420p',
+        ];
+        log.info(`Starting WINDOW recording for title: "${windowTitle}"`);
+        return startActualRecording(ffmpegArgs);
+      } else if (process.platform === 'darwin') {
+        const ffmpegArgs = [
+          '-f', 'avfoundation',
+          '-i', '1',
+          '-c:v', 'libx264',
+          '-preset', 'ultrafast',
+          '-pix_fmt', 'yuv420p',
+        ];
+        log.info('Starting SCREEN recording on macOS');
+        return startActualRecording(ffmpegArgs);
+      } else {
+        log.error('Window recording is not yet supported on this platform.');
+        dialog.showErrorBox('Feature Not Supported', 'Window recording is not yet implemented for this OS.');
+        return { canceled: true, filePath: undefined };
+      }
+    }
+  }
+
+  if (source === 'area') {
+    // Hide the recorder and open selection window
+    recorderWin?.hide();
+    createSelectionWindow();
+
+    // Await for selection to be made
+    return new Promise((resolve) => {
+      ipcMain.once('selection:complete', (_event, geometry: { x: number; y: number; width: number; height: number }) => {
+        selectionWin?.close();
+
+        // Ensure width and height are even numbers for libx264 compatibility
+        const safeWidth = Math.floor(geometry.width / 2) * 2;
+        const safeHeight = Math.floor(geometry.height / 2) * 2;
+
+        // Check if the resulting size is too small to record
+        if (safeWidth < 10 || safeHeight < 10) {
+          log.error('Selected area is too small to record after adjustment.');
+          recorderWin?.show(); // Show recorder again
+          dialog.showErrorBox('Recording Error', 'The selected area is too small to record. Please select a larger area.');
+          resolve({ canceled: true, filePath: undefined });
+          return;
+        }
+
+        log.info(`Received selection geometry: ${JSON.stringify(geometry)}. Adjusted to: ${safeWidth}x${safeHeight}`);
+
+        const ffmpegArgs = [
+          '-f', 'x11grab',
+          // Use the adjusted safe dimensions
+          '-video_size', `${safeWidth}x${safeHeight}`,
+          '-i', `${display}+${geometry.x},${geometry.y}`,
+          '-c:v', 'libx264',
+          '-preset', 'ultrafast',
+          '-pix_fmt', 'yuv420p',
+        ];
+        resolve(startActualRecording(ffmpegArgs));
+      });
+
+      ipcMain.once('selection:cancel', () => {
+        log.info('Selection was cancelled.');
+        selectionWin?.close();
+        recorderWin?.show(); // Show recorder again
+        resolve({ canceled: true, filePath: undefined });
+      });
+    });
+
+  } else { // Default to fullscreen
+    const ffmpegArgs = [
+      '-f', 'x11grab',
+      '-i', display,
+      '-c:v', 'libx264',
+      '-preset', 'ultrafast',
+      '-pix_fmt', 'yuv420p',
+    ];
+    return startActualRecording(ffmpegArgs);
+  }
 }
 
 async function handleStopRecording(videoPath: string, metadataPath: string) {
@@ -464,6 +780,11 @@ function createRecorderWindow() {
 
   if (VITE_DEV_SERVER_URL) {
     recorderWin.loadURL(VITE_DEV_SERVER_URL)
+
+    // Open devtools when in development in detached mode
+    // recorderWin.webContents.openDevTools(
+    //   { mode: 'detach' }
+    // );
   } else {
     recorderWin.loadFile(path.join(RENDERER_DIST, 'index.html'))
   }
@@ -540,7 +861,11 @@ async function handleExportStart(
 
   // 4. Prepare arguments for FFmpeg
   const { resolution, fps, format } = exportSettings;
-  const { width: outputWidth, height: outputHeight } = RESOLUTIONS[resolution as ResolutionKey];
+  const { width: outputWidth, height: outputHeight } = calculateExportDimensions(
+    resolution as ResolutionKey,
+    projectState.aspectRatio // Lấy aspectRatio từ state của project
+  );
+  log.info(`[Main] Calculated export dimensions for ${resolution} ${projectState.aspectRatio}: ${outputWidth}x${outputHeight}`);
 
   const ffmpegArgs = [
     '-y', // Override output file if it exists
@@ -570,13 +895,35 @@ async function handleExportStart(
 
   // 5. Spawn FFmpeg process
   log.info('[Main] Spawning FFmpeg with args:', ffmpegArgs.join(' '));
-  const ffmpeg = spawn('ffmpeg', ffmpegArgs);
+  const ffmpeg = spawn(FFMPEG_PATH, ffmpegArgs);
   let ffmpegClosed = false;
 
   // Listen to FFmpeg error logs for debugging
   ffmpeg.stderr.on('data', (data) => {
     log.info(`[FFmpeg stderr]: ${data.toString()}`);
   });
+
+  // CHÚ THÍCH: Định nghĩa hàm xử lý việc hủy export.
+  const cancellationHandler = () => {
+    log.warn('[Main] Received "export:cancel" event. Terminating export.');
+
+    // Giết tiến trình FFmpeg ngay lập tức
+    if (!ffmpegClosed && ffmpeg) {
+      ffmpeg.kill('SIGKILL');
+      ffmpegClosed = true;
+    }
+
+    // Đóng cửa sổ render worker
+    if (renderWorker) {
+      renderWorker.close();
+      renderWorker = null;
+    }
+
+    // Xóa file output đang được tạo dở
+    if (fsSync.existsSync(outputPath)) {
+      fs.unlink(outputPath).then(() => log.info(`[Main] Deleted partial export file: ${outputPath}`));
+    }
+  };
 
   // 6. Listen to events from Worker through IPC
   // Listener receives frame data (Buffer) from worker
@@ -599,6 +946,9 @@ async function handleExportStart(
 
   ipcMain.on('export:frame-data', frameListener);
   ipcMain.on('export:render-finished', finishListener);
+  // CHÚ THÍCH: Sử dụng .once() để lắng nghe sự kiện hủy. Listener sẽ tự động bị gỡ bỏ sau khi được gọi.
+  ipcMain.once('export:cancel', cancellationHandler);
+
 
   // 7. Handle when FFmpeg process ends
   ffmpeg.on('close', (code) => {
@@ -607,18 +957,28 @@ async function handleExportStart(
     renderWorker?.close(); // Close worker window
     renderWorker = null;
 
-    // Send final result back to editor
-    if (code === 0) {
-      log.info(`[Main] Export successful. Sending 'export:complete' to editor.`);
-      window.webContents.send('export:complete', { success: true, outputPath });
+    // CHÚ THÍCH: Sửa đổi logic để xử lý trường hợp bị hủy.
+    // Nếu `code` là null, nghĩa là tiến trình đã bị giết bởi `cancellationHandler`.
+    if (code === null) {
+      log.info(`[Main] Export was cancelled. Sending 'export:complete' to editor.`);
+      window.webContents.send('export:complete', { success: false, error: 'Export cancelled by user.' });
     } else {
-      log.error(`[Main] Export failed. Sending 'export:complete' to editor with error.`);
-      window.webContents.send('export:complete', { success: false, error: `FFmpeg exited with code ${code}` });
+      // Logic cũ cho trường hợp thành công hoặc thất bại thông thường.
+      if (code === 0) {
+        log.info(`[Main] Export successful. Sending 'export:complete' to editor.`);
+        window.webContents.send('export:complete', { success: true, outputPath });
+      } else {
+        log.error(`[Main] Export failed. Sending 'export:complete' to editor with error.`);
+        window.webContents.send('export:complete', { success: false, error: `FFmpeg exited with code ${code}` });
+      }
     }
 
     // Important: Remove listeners to avoid memory leaks for subsequent exports
     ipcMain.removeListener('export:frame-data', frameListener);
     ipcMain.removeListener('export:render-finished', finishListener);
+    // CHÚ THÍCH: Gỡ bỏ listener hủy để tránh gọi nhầm trong lần export sau.
+    // (Không cần thiết nếu dùng .once() nhưng để đây cho rõ ràng)
+    ipcMain.removeListener('export:cancel', cancellationHandler);
   });
 
   // 8. Fix: Move data sending logic here, waiting for 'ready' signal from worker
@@ -635,11 +995,39 @@ app.whenReady().then(() => {
   // Custom protocol to serve media files securely ---
   protocol.registerFileProtocol('media', (request, callback) => {
     const url = request.url.replace('media://', '');
-    try {
-      return callback(decodeURIComponent(url));
-    } catch (error) {
-      console.error('Failed to register protocol', error);
-      return callback({ error: -6 }); // FILE_NOT_FOUND
+    const decodedUrl = decodeURIComponent(url);
+
+    // FIX: Handle both absolute paths (for videos) and relative paths (for assets).
+
+    // 1. Check if the decoded path is absolute and exists.
+    // This handles the video file path like /home/user/.screenawesome/recording.mp4
+    if (path.isAbsolute(decodedUrl) && fsSync.existsSync(decodedUrl)) {
+      return callback(decodedUrl);
+    }
+
+    // 2. If not absolute, assume it's a resource relative to the public/dist folder.
+    // This handles wallpapers like 'wallpapers/images/wallpaper-0001.jpg'.
+    // process.env.VITE_PUBLIC correctly points to the 'public' folder in dev
+    // and the app's root ('dist' folder) in production.
+    const resourcePath = path.join(process.env.VITE_PUBLIC, decodedUrl);
+
+    if (fsSync.existsSync(resourcePath)) {
+      return callback(resourcePath);
+    }
+
+    // 3. If neither path is found, log an error and fail.
+    log.error(`[media protocol] Could not find file at absolute path "${decodedUrl}" or resource path "${resourcePath}"`);
+    return callback({ error: -6 }); // FILE_NOT_FOUND
+  });
+
+  // --- IPC Handlers for Recorder Window ---
+  ipcMain.on('recorder:set-size', (_event, { width, height, center }: { width: number, height: number, center: boolean }) => {
+    if (recorderWin) {
+      log.info(`Resizing recorder window to ${width}x${height}`);
+      recorderWin.setSize(width, height, true); // true = animate
+      if (center) {
+        recorderWin.center();
+      }
     }
   });
 
@@ -660,10 +1048,20 @@ app.whenReady().then(() => {
     const window = BrowserWindow.fromWebContents(event.sender);
     window?.close();
   });
+  ipcMain.on('shell:showItemInFolder', (_event, filePath: string) => {
+    shell.showItemInFolder(filePath);
+  });
+
   ipcMain.handle('app:getPlatform', () => {
     return process.platform;
   });
 
+  // --- IPC Handlers for Presets ---
+  ipcMain.handle('presets:load', handleLoadPresets);
+  ipcMain.handle('presets:save', handleSavePresets);
+
+  ipcMain.handle('linux:check-tools', checkLinuxTools);
+  ipcMain.handle('desktop:get-sources', handleGetDesktopSources);
   ipcMain.handle('recording:start', handleStartRecording)
   ipcMain.handle('fs:readFile', handleReadFile);
   ipcMain.handle('export:start', handleExportStart);

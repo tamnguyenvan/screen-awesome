@@ -1,0 +1,90 @@
+// src/store/editorStore.ts
+
+// --- Types ---
+export type BackgroundType = 'color' | 'gradient' | 'image' | 'wallpaper';
+export type AspectRatio = '16:9' | '9:16' | '4:3' | '3:4' | '1:1';
+
+export interface Background {
+  type: BackgroundType;
+  color?: string;
+  gradientStart?: string;
+  gradientEnd?: string;
+  gradientDirection?: string;
+  imageUrl?: string;
+  thumbnailUrl?: string;
+}
+
+export interface FrameStyles {
+  padding: number;
+  background: Background;
+  borderRadius: number;
+  shadow: number;
+  borderWidth: number;
+}
+
+export interface Preset {
+  id: string;
+  name: string;
+  styles: FrameStyles;
+  aspectRatio: AspectRatio;
+}
+
+export interface ZoomRegion {
+  id: string;
+  type: 'zoom';
+  startTime: number;
+  duration: number;
+  zoomLevel: number;
+  easing: 'linear' | 'ease-in-out';
+  targetX: number;
+  targetY: number;
+  mode: 'auto' | 'fixed';
+  zIndex: number;
+}
+
+export interface CutRegion {
+  id: string;
+  type: 'cut';
+  startTime: number;
+  duration: number;
+  trimType?: 'start' | 'end';
+  zIndex: number;
+}
+
+export type TimelineRegion = ZoomRegion | CutRegion;
+
+export interface MetaDataItem {
+  timestamp: number;
+  x: number;
+  y: number;
+  type: 'click' | 'move' | 'scroll';
+  button?: string;
+  pressed?: boolean;
+}
+
+// --- State ---
+export interface EditorState {
+  videoPath: string | null;
+  metadataPath: string | null;
+  videoUrl: string | null;
+  videoDimensions: { width: number; height: number };
+  metadata: MetaDataItem[];
+  duration: number;
+  currentTime: number;
+  isPlaying: boolean;
+  frameStyles: FrameStyles;
+  aspectRatio: AspectRatio;
+  zoomRegions: Record<string, ZoomRegion>; // OPTIMIZATION: Array -> Record
+  cutRegions: Record<string, CutRegion>;   // OPTIMIZATION: Array -> Record
+  previewCutRegion: CutRegion | null;
+  selectedRegionId: string | null;
+  activeZoomRegionId: string | null;
+  isCurrentlyCut: boolean;
+  theme: 'light' | 'dark';
+  timelineZoom: number;
+  nextZIndex: number,
+  presets: Record<string, Preset>;
+  activePresetId: string | null;
+  presetSaveStatus: 'idle' | 'saving' | 'saved';
+}
+

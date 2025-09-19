@@ -1,121 +1,334 @@
 // src/pages/RecorderPage.tsx
 import { useState, useEffect } from 'react';
-import { Mic, Webcam, Monitor, Crop, RectangleHorizontal, Radio } from 'lucide-react';
+import { Mic, Webcam, Monitor, Crop, RectangleHorizontal, Radio, Loader2, RefreshCw, AlertTriangle, MousePointerClick } from 'lucide-react';
 import { Button } from '../components/ui/button';
 import { cn } from '../lib/utils';
 import "../index.css";
 
+const RECORDER_SIZE_DEFAULT = { width: 800, height: 80, center: true };
+const RECORDER_SIZE_WINDOW_PICKER = { width: 800, height: 800, center: true };
+
 type RecordingState = 'idle' | 'recording';
 type RecordingSource = 'area' | 'fullscreen' | 'window';
-type MicState = 'on' | 'off';
-type WebcamState = 'on' | 'off';
+
+type WindowSource = {
+  id: string;
+  name: string;
+  thumbnailUrl: string;
+  geometry?: {
+    x: number;
+    y: number;
+    width: number;
+    height: number;
+  };
+}
+
+const LinuxToolsWarning = ({ missingTools }: { missingTools: string[] }) => {
+  if (missingTools.length === 0) return null;
+
+  const getInstallCommands = () => (
+    <>
+      <p className="font-medium mt-3 text-amber-200">Installation:</p>
+      <div className="space-y-2 mt-2">
+        <div>
+          <p className="text-xs font-medium text-amber-300">Debian/Ubuntu:</p>
+          <code className="block mt-1 bg-black/40 px-3 py-2 rounded-md text-xs font-mono text-amber-100 border border-amber-500/20">
+            sudo apt install wmctrl x11-utils imagemagick
+          </code>
+        </div>
+        <div>
+          <p className="text-xs font-medium text-amber-300">Fedora/CentOS/RHEL:</p>
+          <code className="block mt-1 bg-black/40 px-3 py-2 rounded-md text-xs font-mono text-amber-100 border border-amber-500/20">
+            sudo dnf install wmctrl xorg-x11-utils ImageMagick
+          </code>
+        </div>
+        <div>
+          <p className="text-xs font-medium text-amber-300">Arch Linux:</p>
+          <code className="block mt-1 bg-black/40 px-3 py-2 rounded-md text-xs font-mono text-amber-100 border border-amber-500/20">
+            sudo pacman -S wmctrl xorg-xwininfo imagemagick
+          </code>
+        </div>
+      </div>
+    </>
+  );
+
+  return (
+    <div
+      className="absolute bottom-full left-1/2 -translate-x-1/2 mb-4 w-[480px] p-6 bg-card/95 border border-amber-500/30 rounded-xl shadow-2xl backdrop-blur-xl"
+      style={{ WebkitAppRegion: 'no-drag' }}
+    >
+      <div className="flex items-start gap-4">
+        <div className="flex-shrink-0 w-10 h-10 rounded-full bg-amber-500/20 flex items-center justify-center">
+          <AlertTriangle className="w-5 h-5 text-amber-400" />
+        </div>
+        <div className="flex-1 min-w-0">
+          <h4 className="font-semibold text-foreground mb-2">Missing Required Tools</h4>
+          <p className="text-sm text-muted-foreground leading-relaxed mb-1">
+            Window recording on Linux requires: <span className="font-medium text-amber-400">{missingTools.join(', ')}</span>
+          </p>
+          <p className="text-sm text-muted-foreground">
+            Please install them to enable this feature.
+          </p>
+          {getInstallCommands()}
+        </div>
+      </div>
+    </div>
+  );
+};
+
+function WindowPicker({ onSelect, onRefresh, sources, isLoading }: {
+  onSelect: (source: WindowSource) => void,
+  onRefresh: () => void,
+  sources: WindowSource[],
+  isLoading: boolean
+}) {
+  return (
+    <div
+      className="absolute bottom-full left-1/2 -translate-x-1/2 mb-4 w-[720px] h-72 p-6 bg-card/95 border border-border/50 rounded-xl shadow-2xl backdrop-blur-xl flex flex-col"
+      style={{ WebkitAppRegion: 'no-drag' }}
+    >
+      <div className="flex items-center justify-between mb-4 flex-shrink-0">
+        <h3 className="font-semibold text-foreground">Select a Window to Record</h3>
+        <Button 
+          variant="ghost" 
+          size="sm" 
+          onClick={onRefresh} 
+          disabled={isLoading}
+          className="text-muted-foreground hover:text-foreground"
+        >
+          <RefreshCw className={cn("w-4 h-4 mr-2", isLoading && "animate-spin")} />
+          Refresh
+        </Button>
+      </div>
+
+      {isLoading ? (
+        <div className="flex-1 flex flex-col items-center justify-center gap-3">
+          <Loader2 className="w-8 h-8 text-primary animate-spin" />
+          <p className="text-sm text-muted-foreground">Loading windows...</p>
+        </div>
+      ) : sources.length === 0 ? (
+        <div className="flex-1 flex flex-col items-center justify-center gap-3">
+          <div className="w-12 h-12 rounded-full bg-muted flex items-center justify-center">
+            <RectangleHorizontal className="w-6 h-6 text-muted-foreground" />
+          </div>
+          <p className="text-sm text-muted-foreground">No windows found</p>
+        </div>
+      ) : (
+        <div className="flex-1 overflow-y-auto">
+          <div className="grid grid-cols-3 gap-3 pr-2">
+            {sources.map(source => (
+              <button
+                key={source.id}
+                className="group relative aspect-video rounded-lg overflow-hidden border-2 border-border/30 hover:border-primary/60 focus:border-primary focus:ring-2 focus:ring-primary/20 outline-none transition-all duration-200 bg-muted/50"
+                onClick={() => onSelect(source)}
+              >
+                <img 
+                  src={source.thumbnailUrl} 
+                  alt={source.name} 
+                  className="w-full h-full object-cover" 
+                />
+                <div className="absolute inset-0 bg-gradient-to-t from-black/80 via-transparent to-transparent opacity-0 group-hover:opacity-100 transition-opacity duration-200" />
+                <div className="absolute inset-x-0 bottom-0 p-3">
+                  <p className="text-xs text-white font-medium truncate group-hover:text-white/90 transition-colors">
+                    {source.name}
+                  </p>
+                </div>
+              </button>
+            ))}
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
 
 export function RecorderPage() {
   const [recordingState, setRecordingState] = useState<RecordingState>('idle');
   const [source, setSource] = useState<RecordingSource>('fullscreen');
-  const [mic, setMic] = useState<MicState>('on');
-  const [webcam, setWebcam] = useState<WebcamState>('off');
+  const [windowSources, setWindowSources] = useState<WindowSource[]>([]);
+  const [isLoadingWindows, setIsLoadingWindows] = useState(false);
+  const [platform, setPlatform] = useState<NodeJS.Platform | null>(null);
+  const [missingLinuxTools, setMissingLinuxTools] = useState<string[]>([]);
+  const [linuxToolsChecked, setLinuxToolsChecked] = useState(false);
+
+  const checkAndFetchSources = async (currentPlatform: NodeJS.Platform) => {
+    setLinuxToolsChecked(false);
+    setMissingLinuxTools([]);
+    setWindowSources([]);
+
+    if (currentPlatform === 'linux') {
+      const toolStatus = await window.electronAPI.linuxCheckTools();
+      const missing = Object.entries(toolStatus)
+        .filter(([, installed]) => !installed)
+        .map(([tool]) => tool);
+
+      setMissingLinuxTools(missing);
+      setLinuxToolsChecked(true);
+
+      if (missing.length > 0) {
+        return;
+      }
+    }
+
+    setIsLoadingWindows(true);
+    try {
+      const sources = await window.electronAPI.getDesktopSources();
+      setWindowSources(sources);
+    } catch (error) {
+      console.error("Failed to get window sources:", error);
+    } finally {
+      setIsLoadingWindows(false);
+    }
+  };
 
   useEffect(() => {
-    const cleanup = window.electronAPI.onRecordingFinished((result) => {
-      console.log('Recording finished event received in renderer:', result);
-      setRecordingState('idle');
-      if (result.canceled) {
-        console.log('Recording was canceled from the tray menu.');
-      }
-    });
-    return () => cleanup();
-  }, []);
+    if (!platform) {
+      window.electronAPI.getPlatform().then(setPlatform);
+    }
 
-  const handleStart = async () => {
+    if (source === 'window') {
+      window.electronAPI.setRecorderSize(RECORDER_SIZE_WINDOW_PICKER);
+      if (platform) {
+        checkAndFetchSources(platform);
+      }
+    } else {
+      window.electronAPI.setRecorderSize(RECORDER_SIZE_DEFAULT);
+    }
+
+    const cleanup = window.electronAPI.onRecordingFinished(() => {
+      window.electronAPI.setRecorderSize(RECORDER_SIZE_DEFAULT);
+      setRecordingState('idle');
+    });
+
+    return () => cleanup();
+  }, [source, platform]);
+
+  const handleStart = async (options: { geometry?: WindowSource['geometry'], windowTitle?: string } = {}) => {
     try {
-      const result = await window.electronAPI.startRecording();
-      if (!result.canceled && result.filePath) {
-        setRecordingState('recording');
-        console.log('Recording started, saving to:', result.filePath);
-      } else {
-        console.log('Recording start was canceled by user.');
+      setRecordingState('recording');
+      const result = await window.electronAPI.startRecording({ source, ...options });
+      if (result.canceled) {
+        setRecordingState('idle');
       }
     } catch (error) {
       console.error('Failed to start recording:', error);
+      setRecordingState('idle');
     }
   };
 
   if (recordingState === 'recording') {
-    return null; // The window is hidden by the main process during recording
+    return null;
+  }
+
+  const isWindowMode = source === 'window';
+  const onLinux = platform === 'linux';
+  const showLinuxWarning = isWindowMode && onLinux && linuxToolsChecked && missingLinuxTools.length > 0;
+  const showWindowPicker = isWindowMode && !showLinuxWarning;
+
+  let buttonText = 'Record';
+  let buttonIcon = <Radio size={18} />;
+  let isButtonDisabled = false;
+
+  if (isWindowMode) {
+    isButtonDisabled = true;
+    if (showLinuxWarning) {
+      buttonText = 'Tools Missing';
+      buttonIcon = <AlertTriangle size={18} />;
+    } else {
+      buttonText = 'Select a Window';
+      buttonIcon = <MousePointerClick size={18} />;
+    }
   }
 
   return (
-    // Set the main container to be transparent to allow the window's vibrancy/blur effect to show through.
     <main
       className="flex items-center justify-center h-screen bg-transparent select-none p-4"
       style={{ WebkitAppRegion: 'drag' }}
     >
-      <div
-        className={cn(
-          "flex items-center p-2 gap-4 rounded-xl border",
-          "bg-card/90 border-border/60 text-card-foreground",
-          "shadow-2xl backdrop-blur-2xl"
+      <div className="relative">
+        {showLinuxWarning && <LinuxToolsWarning missingTools={missingLinuxTools} />}
+        
+        {showWindowPicker && (
+          <WindowPicker
+            sources={windowSources}
+            isLoading={isLoadingWindows}
+            onRefresh={() => platform && checkAndFetchSources(platform)}
+            onSelect={(selectedSource) => handleStart({ geometry: selectedSource.geometry, windowTitle: selectedSource.name })}
+          />
         )}
-        style={{ WebkitAppRegion: 'no-drag' }}
-      >
-        {/* Group 1: Recording Source */}
-        <div className="flex items-center p-1 bg-background/50 rounded-lg border border-border/50">
-          <SourceButton
-            label="Area"
-            icon={<Crop size={18} />}
-            isActive={source === 'area'}
-            onClick={() => setSource('area')}
-            disabled={true}
-          />
-          <SourceButton
-            label="Full Screen"
-            icon={<Monitor size={18} />}
-            isActive={source === 'fullscreen'}
-            onClick={() => setSource('fullscreen')}
-          />
-          <SourceButton
-            label="Window"
-            icon={<RectangleHorizontal size={18} />}
-            isActive={source === 'window'}
-            onClick={() => setSource('window')}
-            disabled={true}
-          />
-        </div>
 
-        <div className="w-px h-8 bg-border"></div>
+        <div
+          className={cn(
+            "relative flex items-center gap-3 px-4 py-3 rounded-xl border",
+            "bg-card/90 border-border/50 text-card-foreground",
+            "shadow-2xl backdrop-blur-xl"
+          )}
+          style={{ WebkitAppRegion: 'no-drag' }}
+        >
+          {/* Source Selection */}
+          <div className="flex items-center p-1 bg-muted/50 rounded-lg border border-border/30">
+            <SourceButton
+              label="Area" 
+              icon={<Crop size={16} />}
+              isActive={source === 'area'} 
+              onClick={() => setSource('area')}
+            />
+            <SourceButton
+              label="Full Screen" 
+              icon={<Monitor size={16} />}
+              isActive={source === 'fullscreen'} 
+              onClick={() => setSource('fullscreen')}
+            />
+            <SourceButton
+              label="Window" 
+              icon={<RectangleHorizontal size={16} />}
+              isActive={source === 'window'} 
+              onClick={() => setSource('window')}
+            />
+          </div>
 
-        {/* Group 2: Actions */}
-        <div className="flex items-center gap-2">
-          <DeviceButton
-            label="Microphone"
-            icon={<Mic size={20} />}
-            isActive={mic === 'on'}
-            onClick={() => setMic(mic === 'on' ? 'off' : 'on')}
-            disabled={true} // Functionality not implemented
-          />
-          <DeviceButton
-            label="Webcam"
-            icon={<Webcam size={20} />}
-            isActive={webcam === 'on'}
-            onClick={() => setWebcam(webcam === 'on' ? 'off' : 'on')}
-            disabled={true} // Functionality not implemented
-          />
-          <Button
-            onClick={handleStart}
-            className="flex items-center gap-2 px-6 h-10 text-base font-semibold"
-            size="lg"
-          >
-            <Radio size={20} />
-            <span>Record</span>
-          </Button>
+          {/* Divider */}
+          <div className="w-px h-8 bg-border/50"></div>
+
+          {/* Controls */}
+          <div className="flex items-center gap-2">
+            {/* Audio/Video buttons - disabled state */}
+            <Button 
+              variant="outline" 
+              size="sm" 
+              disabled
+              className="h-8 w-8 p-0 opacity-50"
+            >
+              <Mic size={16} />
+            </Button>
+            <Button 
+              variant="outline" 
+              size="sm" 
+              disabled
+              className="h-8 w-8 p-0 opacity-50"
+            >
+              <Webcam size={16} />
+            </Button>
+
+            {/* Record Button */}
+            <Button
+              onClick={() => handleStart()}
+              disabled={isButtonDisabled}
+              className={cn(
+                "flex items-center gap-2 px-6 h-9 font-semibold min-w-[160px] justify-center",
+                isButtonDisabled && showLinuxWarning && "bg-amber-500/20 hover:bg-amber-500/30 text-amber-300 border-amber-500/30"
+              )}
+            >
+              {buttonIcon}
+              <span className="text-sm">{buttonText}</span>
+            </Button>
+          </div>
         </div>
       </div>
     </main>
   );
 }
 
-// Helper component for source selection buttons (Area, Full Screen, Window)
 const SourceButton = ({ label, icon, isActive, ...props }: React.ButtonHTMLAttributes<HTMLButtonElement> & {
   label: string,
   icon: React.ReactNode,
@@ -125,32 +338,12 @@ const SourceButton = ({ label, icon, isActive, ...props }: React.ButtonHTMLAttri
     variant={isActive ? 'default' : 'ghost'}
     size="sm"
     className={cn(
-      "flex items-center gap-2 px-4 py-2 font-semibold transition-all duration-200",
-      !isActive && "text-muted-foreground"
+      "flex items-center gap-2 px-3 py-2 h-8 text-xs font-medium transition-all duration-200",
+      !isActive && "text-muted-foreground hover:text-foreground hover:bg-accent/50"
     )}
     {...props}
   >
     {icon}
     <span>{label}</span>
-  </Button>
-);
-
-// Helper component for device buttons (Mic, Webcam)
-const DeviceButton = ({ label, icon, isActive, ...props }: React.ButtonHTMLAttributes<HTMLButtonElement> & {
-  label: string,
-  icon: React.ReactNode,
-  isActive: boolean,
-}) => (
-  <Button
-    variant="outline"
-    size="icon"
-    aria-label={label}
-    className={cn(
-      "h-10 w-10 bg-background/50 border-border/50",
-      isActive && "bg-primary/20 text-primary border-primary/30 ring-2 ring-primary/20"
-    )}
-    {...props}
-  >
-    {icon}
   </Button>
 );

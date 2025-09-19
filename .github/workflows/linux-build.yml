@@ -6,7 +6,7 @@ on:
       - 'v*'
 
 permissions:
-  contents: write # Cần quyền này để tạo release và upload file
+  contents: write
 
 jobs:
   build-linux:
@@ -16,64 +16,49 @@ jobs:
       GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
     steps:
-      # 1. Checkout code từ repository
-      - name: '1. Checkout Repository'
+      # 1. Checkout code
+      - name: Checkout Repository
         uses: actions/checkout@v4
 
-      # 2. Cài đặt Node.js
-      - name: '2. Set up Node.js'
-        uses: actions/setup-node@v4
-        with:
-          node-version: '20'
-          cache: 'npm'
+      # 2. Set up Docker Buildx
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
 
-      # 3. Cài đặt Python
-      - name: '3. Set up Python'
-        uses: actions/setup-python@v5
-        with:
-          python-version: '3.11'
+      # 3. Build Docker image (dựa trên Dockerfile.ubuntu18.04)
+      - name: Build Docker Image
+        run: docker build -t my-build-env -f dockerfiles/Dockerfile.ubuntu18.04 .
 
-      # 4. Cài đặt các thư viện Python
-      - name: '4. Install Python dependencies'
+      # 4. Run build bên trong container
+      - name: Run Build inside Container
         run: |
-          python -m pip install --upgrade pip
-          pip install pynput pyinstaller
+          docker run --rm -v ${{ github.workspace }}:/app my-build-env bash -c "
+            cd /app &&
+            # Cài Node.js
+            curl -fsSL https://deb.nodesource.com/setup_20.x | bash - &&
+            apt-get install -y nodejs &&
+            npm ci &&
+            
+            # Cài Python deps
+            python3.8 -m pip install --upgrade pip &&
+            pip install pynput pyinstaller &&
 
-      # 5. Cài đặt các dependencies của Node.js
-      - name: '5. Install npm dependencies'
-        run: npm ci
+            # Cài X11 + ffmpeg
+            apt-get update &&
+            apt-get install -y xvfb libxss1 libnss3 libxtst6 curl &&
+            mkdir -p binaries/linux &&
+            curl -L -o ffmpeg.tar.xz https://johnvansickle.com/ffmpeg/builds/ffmpeg-git-amd64-static.tar.xz &&
+            tar -xf ffmpeg.tar.xz --strip-components=1 -C binaries/linux/ \$(tar -tf ffmpeg.tar.xz | head -n 1)ffmpeg &&
+            chmod +x binaries/linux/ffmpeg &&
 
-      # 6. Cài đặt môi trường X11 ảo (Xvfb)
-      # Bước này CẦN THIẾT để pyinstaller có thể build pynput với backend Xorg
-      - name: '6. Set up virtual X11 environment'
-        run: |
-          sudo apt-get update
-          sudo apt-get install -y xvfb libxss1 libnss3 libxtst6
+            # Đồng bộ version từ tag
+            npm version ${{ github.ref_name }} --no-git-tag-version &&
 
-      # 7. Tải và thiết lập FFmpeg
-      - name: '7. Download and set up FFmpeg'
-        run: |
-          echo "Setting up FFmpeg for Linux..."
-          mkdir -p binaries/linux
-          curl -L -o ffmpeg.tar.xz https://johnvansickle.com/ffmpeg/builds/ffmpeg-git-amd64-static.tar.xz
-          tar -xf ffmpeg.tar.xz --strip-components=1 -C binaries/linux/ $(tar -tf ffmpeg.tar.xz | head -n 1)ffmpeg
-          chmod +x binaries/linux/ffmpeg
-          rm ffmpeg.tar.xz
-          echo "FFmpeg setup complete. Verifying:"
-          ls -l binaries/linux
+            # Build app với xvfb-run
+            xvfb-run --auto-servernum npm run build -- --publish never
+          "
 
-      # 8. Cập nhật phiên bản ứng dụng từ Git Tag
-      - name: '8. Sync App Version with Git Tag'
-        run: npm version ${{ github.ref_name }} --no-git-tag-version
-
-      # 9. Build ứng dụng với môi trường X11 ảo
-      # Sửa lỗi chính: Sử dụng xvfb-run để gói lệnh build
-      # Nó sẽ tạo một màn hình ảo để pynput nhận diện và đóng gói đúng backend.
-      - name: '9. Build the Application'
-        run: xvfb-run --auto-servernum npm run build -- --publish never
-
-      # 10. Tạo Release và Upload Artifact
-      - name: '10. Create Release and Upload AppImage'
+      # 5. Upload release
+      - name: Create Release and Upload AppImage
         uses: softprops/action-gh-release@v2
         with:
           generate_release_notes: true
