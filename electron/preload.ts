@@ -90,6 +90,7 @@ export const electronAPI = {
 
   // --- Export ---
   startExport: (payload: ExportPayload): Promise<void> => ipcRenderer.invoke('export:start', payload),
+  cancelExport: (): void => ipcRenderer.send('export:cancel'),
 
   onExportProgress: (callback: (payload: ProgressPayload) => void) => {
     const listener = (_event: IpcRendererEvent, payload: ProgressPayload) => callback(payload);
@@ -106,6 +107,8 @@ export const electronAPI = {
   showSaveDialog: (options: Electron.SaveDialogOptions): Promise<Electron.SaveDialogReturnValue> => {
     return ipcRenderer.invoke('dialog:showSaveDialog', options);
   },
+
+  showItemInFolder: (path: string): void => ipcRenderer.send('shell:showItemInFolder', path),
 
   // --- Render Worker ---
   onRenderStart: (callback: (payload: RenderStartPayload) => void) => {

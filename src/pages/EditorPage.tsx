@@ -60,9 +60,9 @@ export function EditorPage() {
 
     // --- MODIFIED EXPORT COMPLETE LISTENER ---
     const cleanCompleteListener = window.electronAPI.onExportComplete(({ success, outputPath, error }) => {
-      setIsExporting(false); // The core process is done
-      setExportProgress(100); // Ensure bar is full
-      setExportResult({ success, outputPath, error }); // Set result to show success/error view in modal
+      setIsExporting(false); // Quá trình cốt lõi đã xong
+      setExportProgress(100); // Đảm bảo thanh tiến trình đầy
+      setExportResult({ success, outputPath, error }); // Đặt kết quả để hiển thị màn hình thành công/lỗi trong modal
     });
 
     return () => {
@@ -122,6 +122,10 @@ export function EditorPage() {
       setIsExporting(false);
     }
   }, []);
+
+  const handleCancelExport = () => {
+    window.electronAPI.cancelExport();
+  };
 
   const currentTheme = useEditorStore(state => state.theme);
 
@@ -190,6 +194,7 @@ export function EditorPage() {
         isOpen={isExportModalOpen}
         onClose={handleCloseExportModal}
         onStartExport={handleStartExport}
+        onCancelExport={handleCancelExport}
         isExporting={isExporting}
         progress={exportProgress}
         result={exportResult}

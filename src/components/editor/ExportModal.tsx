@@ -2,7 +2,7 @@
 import React, { useState } from 'react';
 import { Button } from '../ui/button';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '../ui/select';
-import { Upload, Loader2, CheckCircle2, XCircle } from 'lucide-react';
+import { Upload, Loader2, CheckCircle2, XCircle, Folder } from 'lucide-react';
 import { cn } from '../../lib/utils';
 
 export type ExportSettings = {
@@ -16,7 +16,7 @@ interface ExportModalProps {
   isOpen: boolean;
   onClose: () => void;
   onStartExport: (settings: ExportSettings) => void;
-  // New props to manage state
+  onCancelExport: () => void;
   isExporting: boolean;
   progress: number;
   result: { success: boolean; outputPath?: string; error?: string } | null;
@@ -93,7 +93,7 @@ const SettingsView = ({ onStartExport, onClose }: { onStartExport: (settings: Ex
   );
 };
 
-const ProgressView = ({ progress }: { progress: number }) => (
+const ProgressView = ({ progress, onCancel }: { progress: number, onCancel: () => void }) => (
   <div className="flex flex-col items-center text-center">
     <div className="w-12 h-12 rounded-full bg-primary/10 flex items-center justify-center mb-4">
       <Loader2 className="w-6 h-6 text-primary animate-spin" />
@@ -107,37 +107,57 @@ const ProgressView = ({ progress }: { progress: number }) => (
       />
     </div>
     <p className="text-sm font-medium text-primary mt-3">{Math.round(progress)}%</p>
+    <Button variant="outline" onClick={onCancel} className="btn-clean mt-6 w-full">
+      Cancel
+    </Button>
   </div>
 );
 
-const ResultView = ({ result, onClose }: { result: NonNullable<ExportModalProps['result']>, onClose: () => void }) => (
-  <div className="flex flex-col items-center text-center">
-    <div className={cn(
-      "w-12 h-12 rounded-full flex items-center justify-center mb-4",
-      result.success ? 'bg-green-500/10' : 'bg-red-500/10'
-    )}>
-      {result.success ? (
-        <CheckCircle2 className="w-6 h-6 text-green-500" />
-      ) : (
-        <XCircle className="w-6 h-6 text-red-500" />
-      )}
+const ResultView = ({ result, onClose }: { result: NonNullable<ExportModalProps['result']>, onClose: () => void }) => {
+  const handleOpenFolder = () => {
+    if (result.success && result.outputPath) {
+      window.electronAPI.showItemInFolder(result.outputPath);
+    }
+  };
+
+  return (
+    <div className="flex flex-col items-center text-center">
+      <div className={cn(
+        "w-12 h-12 rounded-full flex items-center justify-center mb-4",
+        result.success ? 'bg-green-500/10' : 'bg-red-500/10'
+      )}>
+        {result.success ? (
+          <CheckCircle2 className="w-6 h-6 text-green-500" />
+        ) : (
+          <XCircle className="w-6 h-6 text-red-500" />
+        )}
+      </div>
+      <h2 className="text-lg font-semibold text-foreground mb-1">
+        {result.success ? 'Export Successful' : 'Export Failed'}
+      </h2>
+      <p className="text-sm text-muted-foreground mb-6 max-w-xs break-words">
+        {result.success
+          ? `Your video has been saved to the selected location.`
+          : `${result.error || 'An unknown error occurred.'}`
+        }
+      </p>
+      <div className="flex w-full gap-3">
+        {result.success && (
+          <Button onClick={handleOpenFolder} variant="secondary" className="btn-clean flex-1">
+            <Folder className="w-4 h-4 mr-2" />
+            Open Folder
+          </Button>
+        )}
+        <Button onClick={onClose} className="btn-clean flex-1">Close</Button>
+      </div>
     </div>
-    <h2 className="text-lg font-semibold text-foreground mb-1">
-      {result.success ? 'Export Successful' : 'Export Failed'}
-    </h2>
-    <p className="text-sm text-muted-foreground mb-6 max-w-xs break-words">
-      {result.success
-        ? `Your video has been saved to the selected location.`
-        : `An error occurred: ${result.error || 'Unknown error'}`
-      }
-    </p>
-    <Button onClick={onClose} className="btn-clean w-full">Close</Button>
-  </div>
-);
+  );
+};
+
 
 // --- Main Modal Component ---
 
-export function ExportModal({ isOpen, onClose, onStartExport, isExporting, progress, result }: ExportModalProps) {
+export function ExportModal({ isOpen, onClose, onStartExport, onCancelExport, isExporting, progress, result }: ExportModalProps) {
   if (!isOpen) return null;
 
   const renderContent = () => {
@@ -145,7 +165,7 @@ export function ExportModal({ isOpen, onClose, onStartExport, isExporting, progr
       return <ResultView result={result} onClose={onClose} />;
     }
     if (isExporting) {
-      return <ProgressView progress={progress} />;
+      return <ProgressView progress={progress} onCancel={onCancelExport} />;
     }
     return <SettingsView onStartExport={onStartExport} onClose={onClose} />;
   };

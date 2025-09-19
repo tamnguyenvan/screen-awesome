@@ -24,7 +24,7 @@ process.on('unhandledRejection', (reason, promise) => {
 
 import {
   app, BrowserWindow, ipcMain, Tray, Menu,
-  nativeImage, protocol, IpcMainInvokeEvent, dialog, desktopCapturer, screen
+  nativeImage, protocol, IpcMainInvokeEvent, dialog, desktopCapturer, screen, shell
 } from 'electron'
 import { fileURLToPath, format as formatUrl } from 'node:url'
 import path from 'node:path'
@@ -867,6 +867,28 @@ async function handleExportStart(
     log.info(`[FFmpeg stderr]: ${data.toString()}`);
   });
 
+  // CHÚ THÍCH: Định nghĩa hàm xử lý việc hủy export.
+  const cancellationHandler = () => {
+    log.warn('[Main] Received "export:cancel" event. Terminating export.');
+
+    // Giết tiến trình FFmpeg ngay lập tức
+    if (!ffmpegClosed && ffmpeg) {
+      ffmpeg.kill('SIGKILL');
+      ffmpegClosed = true;
+    }
+
+    // Đóng cửa sổ render worker
+    if (renderWorker) {
+      renderWorker.close();
+      renderWorker = null;
+    }
+
+    // Xóa file output đang được tạo dở
+    if (fsSync.existsSync(outputPath)) {
+      fs.unlink(outputPath).then(() => log.info(`[Main] Deleted partial export file: ${outputPath}`));
+    }
+  };
+
   // 6. Listen to events from Worker through IPC
   // Listener receives frame data (Buffer) from worker
   const frameListener = (_event: IpcMainInvokeEvent, { frame, progress }: { frame: Buffer, progress: number }) => {
@@ -888,6 +910,9 @@ async function handleExportStart(
 
   ipcMain.on('export:frame-data', frameListener);
   ipcMain.on('export:render-finished', finishListener);
+  // CHÚ THÍCH: Sử dụng .once() để lắng nghe sự kiện hủy. Listener sẽ tự động bị gỡ bỏ sau khi được gọi.
+  ipcMain.once('export:cancel', cancellationHandler);
+
 
   // 7. Handle when FFmpeg process ends
   ffmpeg.on('close', (code) => {
@@ -896,18 +921,28 @@ async function handleExportStart(
     renderWorker?.close(); // Close worker window
     renderWorker = null;
 
-    // Send final result back to editor
-    if (code === 0) {
-      log.info(`[Main] Export successful. Sending 'export:complete' to editor.`);
-      window.webContents.send('export:complete', { success: true, outputPath });
+    // CHÚ THÍCH: Sửa đổi logic để xử lý trường hợp bị hủy.
+    // Nếu `code` là null, nghĩa là tiến trình đã bị giết bởi `cancellationHandler`.
+    if (code === null) {
+      log.info(`[Main] Export was cancelled. Sending 'export:complete' to editor.`);
+      window.webContents.send('export:complete', { success: false, error: 'Export cancelled by user.' });
     } else {
-      log.error(`[Main] Export failed. Sending 'export:complete' to editor with error.`);
-      window.webContents.send('export:complete', { success: false, error: `FFmpeg exited with code ${code}` });
+      // Logic cũ cho trường hợp thành công hoặc thất bại thông thường.
+      if (code === 0) {
+        log.info(`[Main] Export successful. Sending 'export:complete' to editor.`);
+        window.webContents.send('export:complete', { success: true, outputPath });
+      } else {
+        log.error(`[Main] Export failed. Sending 'export:complete' to editor with error.`);
+        window.webContents.send('export:complete', { success: false, error: `FFmpeg exited with code ${code}` });
+      }
     }
 
     // Important: Remove listeners to avoid memory leaks for subsequent exports
     ipcMain.removeListener('export:frame-data', frameListener);
     ipcMain.removeListener('export:render-finished', finishListener);
+    // CHÚ THÍCH: Gỡ bỏ listener hủy để tránh gọi nhầm trong lần export sau.
+    // (Không cần thiết nếu dùng .once() nhưng để đây cho rõ ràng)
+    ipcMain.removeListener('export:cancel', cancellationHandler);
   });
 
   // 8. Fix: Move data sending logic here, waiting for 'ready' signal from worker
@@ -977,6 +1012,10 @@ app.whenReady().then(() => {
     const window = BrowserWindow.fromWebContents(event.sender);
     window?.close();
   });
+  ipcMain.on('shell:showItemInFolder', (_event, filePath: string) => {
+    shell.showItemInFolder(filePath);
+  });
+
   ipcMain.handle('app:getPlatform', () => {
     return process.platform;
   });
