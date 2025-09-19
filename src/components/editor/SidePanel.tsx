@@ -25,6 +25,7 @@ function FrameSettingsPanel() {
       {/* Content */}
       <div className="flex-1 overflow-y-auto">
         <div className="p-6 space-y-8">
+          <div className="border-t border-sidebar-border -mx-6"></div>
           <BackgroundSettings />
           <FrameEffectsSettings />
         </div>

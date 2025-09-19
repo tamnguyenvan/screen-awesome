@@ -51,6 +51,11 @@ type WindowSource = {
   };
 }
 
+// --- Presets ---
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+type Preset = any;
+
+
 // Define API to be exposed to window object
 export const electronAPI = {
   // --- Recording ---
@@ -125,6 +130,10 @@ export const electronAPI = {
   finishRender: () => {
     ipcRenderer.send('export:render-finished');
   },
+
+  // --- Presets ---
+  loadPresets: (): Promise<Record<string, Preset>> => ipcRenderer.invoke('presets:load'),
+  savePresets: (presets: Record<string, Preset>): Promise<{ success: boolean; error?: string }> => ipcRenderer.invoke('presets:save', presets),
 
   // --- Window Controls ---
   minimizeWindow: () => ipcRenderer.send('window:minimize'),

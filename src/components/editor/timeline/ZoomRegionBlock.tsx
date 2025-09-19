@@ -1,6 +1,6 @@
 // src/components/editor/timeline/ZoomRegionBlock.tsx
 import { memo } from 'react';
-import { TimelineRegion, ZoomRegion } from '../../../store/editorStore';
+import { TimelineRegion, ZoomRegion } from '../../../types/store';
 import { cn } from '../../../lib/utils';
 import { Search } from 'lucide-react';
 

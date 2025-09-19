@@ -64,6 +64,42 @@ let metadataStream: fsSync.WriteStream | null = null
 let pythonDataBuffer = ''
 let firstChunkWritten = true
 
+function getPresetsFilePath() {
+  const userDataPath = app.getPath('userData');
+  log.info(`[Main] User data path: ${userDataPath}`);
+  return path.join(userDataPath, 'presets.json');
+}
+
+async function handleLoadPresets() {
+  const filePath = getPresetsFilePath();
+  log.info(`[Main] Loading presets from: ${filePath}`);
+  try {
+    if (fsSync.existsSync(filePath)) {
+      const data = await fs.readFile(filePath, 'utf-8');
+      const presets = JSON.parse(data);
+      log.info('[Main] Presets loaded successfully.');
+      return presets;
+    }
+    log.warn('[Main] presets.json not found. Returning empty object.');
+  } catch (error) {
+    log.error('[Main] Failed to load presets:', error);
+  }
+  return {}; // Return empty object if file doesn't exist or fails to parse
+}
+
+async function handleSavePresets(_event: IpcMainInvokeEvent, presets: unknown) {
+  const filePath = getPresetsFilePath();
+  log.info(`[Main] Saving presets to: ${filePath}`);
+  try {
+    await fs.writeFile(filePath, JSON.stringify(presets, null, 2));
+    log.info('[Main] Presets saved successfully.');
+    return { success: true };
+  } catch (error) {
+    log.error('[Main] Failed to save presets:', error);
+    return { success: false, error: (error as Error).message };
+  }
+}
+
 function calculateExportDimensions(resolutionKey: ResolutionKey, aspectRatio: string): { width: number; height: number } {
   const baseHeight = RESOLUTIONS[resolutionKey].height; // e.g., 1080 for '1080p'
   const [ratioW, ratioH] = aspectRatio.split(':').map(Number);
@@ -1019,6 +1055,10 @@ app.whenReady().then(() => {
   ipcMain.handle('app:getPlatform', () => {
     return process.platform;
   });
+
+  // --- IPC Handlers for Presets ---
+  ipcMain.handle('presets:load', handleLoadPresets);
+  ipcMain.handle('presets:save', handleSavePresets);
 
   ipcMain.handle('linux:check-tools', checkLinuxTools);
   ipcMain.handle('desktop:get-sources', handleGetDesktopSources);

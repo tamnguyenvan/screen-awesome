@@ -2,7 +2,8 @@
 import React from 'react';
 // Thêm icon Trash2 và các component Tooltip
 import { Play, Pause, Rewind, Scissors, Plus, ZoomIn, Trash2, Undo, Redo, RotateCcw } from 'lucide-react';
-import { useEditorStore, AspectRatio } from '../../store/editorStore';
+import { useEditorStore } from '../../store/editorStore';
+import { AspectRatio } from '../../types/store';
 import { Button } from '../ui/button';
 import { cn } from '../../lib/utils';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '../ui/select';

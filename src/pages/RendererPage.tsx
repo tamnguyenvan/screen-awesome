@@ -2,7 +2,8 @@
 
 import log from 'electron-log/renderer';
 import { useEffect, useRef } from 'react';
-import { CutRegion, useEditorStore, EditorState, EditorActions } from '../store/editorStore';
+import { useEditorStore, EditorActions } from '../store/editorStore';
+import { EditorState, CutRegion } from '../types/store';
 import { calculateZoomTransform } from '../lib/transform';
 import { ExportSettings } from '../components/editor/ExportModal';
 

@@ -1,6 +1,7 @@
 // src/components/editor/RegionSettingsPanel.tsx
 import { useState } from 'react';
-import { useEditorStore, TimelineRegion, ZoomRegion } from '../../store/editorStore';
+import { useEditorStore } from '../../store/editorStore';
+import { TimelineRegion, ZoomRegion } from '../../types/store';
 import { cn } from '../../lib/utils';
 import { Button } from '../ui/button';
 import { Trash2, Camera, Scissors, MousePointer, Video } from 'lucide-react';

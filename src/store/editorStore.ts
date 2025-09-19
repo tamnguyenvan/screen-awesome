@@ -6,84 +6,13 @@ import { useShallow } from 'zustand/react/shallow';
 import { temporal } from 'zundo';
 import { WALLPAPERS } from '../lib/constants';
 import { shallow } from 'zustand/shallow';
+import {
+  AspectRatio, Background, FrameStyles, Preset, ZoomRegion, CutRegion, TimelineRegion,
+  EditorState, MetaDataItem
+} from '../types/store';
 
 // --- Types ---
-type BackgroundType = 'color' | 'gradient' | 'image' | 'wallpaper';
-export type AspectRatio = '16:9' | '9:16' | '4:3' | '3:4' | '1:1';
-
-interface Background {
-  type: BackgroundType;
-  color?: string;
-  gradientStart?: string;
-  gradientEnd?: string;
-  gradientDirection?: string;
-  imageUrl?: string;
-  thumbnailUrl?: string;
-}
-
-interface FrameStyles {
-  padding: number;
-  background: Background;
-  borderRadius: number;
-  shadow: number;
-  borderWidth: number;
-}
-
-export interface ZoomRegion {
-  id: string;
-  type: 'zoom';
-  startTime: number;
-  duration: number;
-  zoomLevel: number;
-  easing: 'linear' | 'ease-in-out';
-  targetX: number;
-  targetY: number;
-  mode: 'auto' | 'fixed';
-  zIndex: number;
-}
-
-export interface CutRegion {
-  id: string;
-  type: 'cut';
-  startTime: number;
-  duration: number;
-  trimType?: 'start' | 'end';
-  zIndex: number;
-}
-
-export type TimelineRegion = ZoomRegion | CutRegion;
-
-interface MetaDataItem {
-  timestamp: number;
-  x: number;
-  y: number;
-  type: 'click' | 'move' | 'scroll';
-  button?: string;
-  pressed?: boolean;
-}
-
-// --- State ---
-export interface EditorState {
-  videoPath: string | null;
-  metadataPath: string | null;
-  videoUrl: string | null;
-  videoDimensions: { width: number; height: number };
-  metadata: MetaDataItem[];
-  duration: number;
-  currentTime: number;
-  isPlaying: boolean;
-  frameStyles: FrameStyles;
-  aspectRatio: AspectRatio;
-  zoomRegions: Record<string, ZoomRegion>; // OPTIMIZATION: Array -> Record
-  cutRegions: Record<string, CutRegion>;   // OPTIMIZATION: Array -> Record
-  previewCutRegion: CutRegion | null;
-  selectedRegionId: string | null;
-  activeZoomRegionId: string | null;
-  isCurrentlyCut: boolean;
-  theme: 'light' | 'dark';
-  timelineZoom: number;
-  nextZIndex: number,
-}
+let debounceTimer: NodeJS.Timeout;
 
 // --- Actions ---
 export interface EditorActions {
@@ -105,10 +34,16 @@ export interface EditorActions {
   toggleTheme: () => void;
   setTimelineZoom: (zoom: number) => void;
   reset: () => void;
+  _debouncedUpdatePreset: () => void;
+  initializePresets: () => Promise<void>;
+  applyPreset: (id: string) => void;
+  saveCurrentStyleAsPreset: (name: string) => void;
+  updateActivePreset: () => void;
+  deletePreset: (id: string) => void;
 }
 
 // --- Initial State ---
-const initialState: Omit<EditorState, 'frameStyles'> = {
+const initialProjectState = {
   videoPath: null,
   metadataPath: null,
   videoUrl: null,
@@ -117,16 +52,23 @@ const initialState: Omit<EditorState, 'frameStyles'> = {
   duration: 0,
   currentTime: 0,
   isPlaying: false,
-  aspectRatio: '16:9',
-  zoomRegions: {}, // OPTIMIZATION: Init as empty object
-  cutRegions: {},   // OPTIMIZATION: Init as empty object
+  aspectRatio: '16:9' as AspectRatio,
+  zoomRegions: {},
+  cutRegions: {},
   previewCutRegion: null,
   selectedRegionId: null,
   activeZoomRegionId: null,
   isCurrentlyCut: false,
-  theme: 'light',
   timelineZoom: 1,
   nextZIndex: 1,
+};
+
+// State toàn cục của ứng dụng, không bị reset bởi loadProject
+const initialAppState = {
+  theme: 'light' as 'light' | 'dark',
+  presets: {},
+  activePresetId: null,
+  presetSaveStatus: 'idle' as const,
 };
 
 const initialFrameStyles: FrameStyles = {
@@ -143,19 +85,42 @@ const initialFrameStyles: FrameStyles = {
 
 const MINIMUM_REGION_DURATION = 0.1;
 
+const LAST_PRESET_ID_KEY = 'screenawesome_lastActivePresetId';
+
+// Helper function to persist presets to the main process
+const _persistPresets = async (presets: Record<string, Preset>) => {
+  try {
+    await window.electronAPI.savePresets(presets);
+  } catch (error) {
+    console.error("Failed to save presets:", error);
+  }
+};
+
 // --- Store Implementation ---
 export const useEditorStore = create(
   temporal(
     immer<EditorState & EditorActions>((set, get) => ({
-      ...initialState,
+      ...initialProjectState,
+      ...initialAppState,
       frameStyles: initialFrameStyles,
 
       loadProject: async ({ videoPath, metadataPath }) => {
         const videoUrl = `media://${videoPath}`;
+        const lastActiveId = get().activePresetId;
+        const currentPresets = get().presets;
 
         set(state => {
-          Object.assign(state, initialState);
-          state.frameStyles = initialFrameStyles;
+          // --- FIX: CHỈ RESET STATE CỦA PROJECT, KHÔNG RESET PRESETS/THEME ---
+          Object.assign(state, initialProjectState);
+
+          // Khôi phục lại frame style từ preset đang active, nếu có
+          if (lastActiveId && currentPresets[lastActiveId]) {
+            state.frameStyles = JSON.parse(JSON.stringify(currentPresets[lastActiveId].styles));
+          } else {
+            state.frameStyles = initialFrameStyles; // Nếu không thì dùng style mặc định
+          }
+
+          // Cập nhật thông tin project mới
           state.videoPath = videoPath;
           state.metadataPath = metadataPath;
           state.videoUrl = videoUrl;
@@ -254,7 +219,14 @@ export const useEditorStore = create(
       togglePlay: () => set(state => { state.isPlaying = !state.isPlaying; }),
       setPlaying: (isPlaying) => set(state => { state.isPlaying = isPlaying; }),
 
-      updateFrameStyle: (style) => set(state => { Object.assign(state.frameStyles, style); }),
+      updateFrameStyle: (style) => {
+        set(state => {
+          Object.assign(state.frameStyles, style);
+          // BỎ DÒNG NÀY: state.activePresetId = null; 
+        });
+        // GỌI HÀM DEBOUNCE
+        get()._debouncedUpdatePreset();
+      },
 
       updateBackground: (bg) => set((state) => {
         const currentBg = state.frameStyles.background;
@@ -290,6 +262,8 @@ export const useEditorStore = create(
           // If type is not changing, just merge the properties
           Object.assign(state.frameStyles.background, bg);
         }
+
+        get()._debouncedUpdatePreset();
       }),
 
       setAspectRatio: (ratio) => set(state => { state.aspectRatio = ratio; }),
@@ -379,8 +353,137 @@ export const useEditorStore = create(
       toggleTheme: () => set(state => { state.theme = state.theme === 'dark' ? 'light' : 'dark'; }),
       setPreviewCutRegion: (region) => set(state => { state.previewCutRegion = region; }),
       setTimelineZoom: (zoom) => set(state => { state.timelineZoom = zoom; }),
+
+      _debouncedUpdatePreset: () => {
+        clearTimeout(debounceTimer);
+        debounceTimer = setTimeout(() => {
+          const { activePresetId, presets, frameStyles, aspectRatio } = get();
+          if (activePresetId && presets[activePresetId]) {
+            // 1. Chuyển sang trạng thái 'saving'
+            set({ presetSaveStatus: 'saving' });
+
+            // Cập nhật state nội bộ
+            set(state => {
+              state.presets[activePresetId].styles = JSON.parse(JSON.stringify(frameStyles));
+              state.presets[activePresetId].aspectRatio = aspectRatio;
+            });
+
+            // Gọi API lưu và xử lý kết quả
+            _persistPresets(get().presets)
+              .then(() => {
+                console.log(`Auto-saved preset: "${presets[activePresetId].name}"`);
+              })
+              .catch(err => {
+                console.error("Failed to auto-save preset:", err);
+                // Có thể thêm logic xử lý lỗi ở đây nếu cần
+              })
+              .finally(() => {
+                // 2. Chuyển sang trạng thái 'saved'
+                set({ presetSaveStatus: 'saved' });
+
+                // 3. Sau 1.5s, quay lại trạng thái 'idle'
+                setTimeout(() => {
+                  // Chỉ reset nếu trạng thái vẫn là 'saved'
+                  if (get().presetSaveStatus === 'saved') {
+                    set({ presetSaveStatus: 'idle' });
+                  }
+                }, 1500);
+              });
+          }
+        }, 1500);
+      },
+
+      initializePresets: async () => {
+        try {
+          let loadedPresets = await window.electronAPI.loadPresets();
+
+          // Logic này đã đúng: Nếu không có preset nào, tạo một cái mặc định.
+          if (Object.keys(loadedPresets).length === 0) {
+            const defaultId = `preset-default-${Date.now()}`;
+            loadedPresets = {
+              [defaultId]: {
+                id: defaultId,
+                name: 'Default',
+                styles: JSON.parse(JSON.stringify(initialFrameStyles)),
+                aspectRatio: '16:9',
+              }
+            };
+            // Lưu lại preset mặc định này vào file
+            await _persistPresets(loadedPresets);
+          }
+
+          // Đoạn code còn lại để set state...
+          const lastUsedId = localStorage.getItem(LAST_PRESET_ID_KEY);
+          set(state => {
+            state.presets = loadedPresets;
+            // Áp dụng preset cuối cùng được sử dụng nếu có
+            if (lastUsedId && loadedPresets[lastUsedId]) {
+              state.activePresetId = lastUsedId;
+              state.frameStyles = JSON.parse(JSON.stringify(loadedPresets[lastUsedId].styles));
+              state.aspectRatio = loadedPresets[lastUsedId].aspectRatio;
+            }
+          });
+
+        } catch (error) {
+          console.error("Could not initialize presets:", error);
+        }
+      },
+
+      applyPreset: (id) => {
+        const preset = get().presets[id];
+        if (preset) {
+          set(state => {
+            state.frameStyles = JSON.parse(JSON.stringify(preset.styles));
+            state.aspectRatio = preset.aspectRatio;
+            state.activePresetId = id;
+          });
+          localStorage.setItem(LAST_PRESET_ID_KEY, id);
+        }
+      },
+
+      saveCurrentStyleAsPreset: (name) => {
+        const id = `preset-${Date.now()}`;
+        const newPreset: Preset = {
+          id,
+          name,
+          styles: JSON.parse(JSON.stringify(get().frameStyles)),
+          aspectRatio: get().aspectRatio,
+        };
+        set(state => {
+          state.presets[id] = newPreset;
+          state.activePresetId = id;
+        });
+        localStorage.setItem(LAST_PRESET_ID_KEY, id);
+        _persistPresets(get().presets);
+      },
+
+      updateActivePreset: () => {
+        // Hàm này giờ có thể được đơn giản hóa vì logic đã nằm trong _debouncedUpdatePreset
+        // Tuy nhiên, giữ lại để có thể gọi thủ công nếu cần
+        const { activePresetId, presets, frameStyles, aspectRatio } = get();
+        if (activePresetId && presets[activePresetId]) {
+          set(state => {
+            state.presets[activePresetId].styles = JSON.parse(JSON.stringify(frameStyles));
+            state.presets[activePresetId].aspectRatio = aspectRatio;
+          });
+          _persistPresets(get().presets);
+        }
+      },
+
+      deletePreset: (id) => {
+        set(state => {
+          delete state.presets[id];
+          if (state.activePresetId === id) {
+            state.activePresetId = null;
+            localStorage.removeItem(LAST_PRESET_ID_KEY);
+          }
+        });
+        _persistPresets(get().presets);
+      },
       reset: () => set(state => {
-        Object.assign(state, initialState);
+        // Hàm reset này sẽ reset tất cả, bao gồm cả project và app state
+        Object.assign(state, initialProjectState);
+        Object.assign(state, initialAppState);
         state.frameStyles = initialFrameStyles;
       }),
     })),

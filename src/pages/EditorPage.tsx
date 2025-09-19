@@ -7,24 +7,25 @@ import { Timeline } from '../components/editor/Timeline';
 import { PreviewControls } from '../components/editor/PreviewControls';
 import { ExportButton } from '../components/editor/ExportButton';
 import { ExportModal, ExportSettings } from '../components/editor/ExportModal';
-// REMOVE THIS IMPORT
-// import { ExportProgressOverlay } from '../components/editor/ExportProgressOverlay';
 import { WindowControls } from '../components/editor/WindowControls';
-import { Moon, Sun } from 'lucide-react';
+import { PresetModal } from '../components/editor/PresetModal';
+import { Layers3, Moon, Sun, Loader2, Check } from 'lucide-react';
 import { cn } from '../lib/utils';
 import { useKeyboardShortcuts } from '../hooks/useKeyboardShortcuts';
+import { Button } from '../components/ui/button';
 
 export function EditorPage() {
   // Lấy state và actions từ store
-  const { loadProject, toggleTheme, deleteRegion } = useEditorStore.getState();
+  const { loadProject, toggleTheme, deleteRegion, initializePresets } = useEditorStore.getState();
+  const presetSaveStatus = useEditorStore(state => state.presetSaveStatus);
   const duration = useEditorStore(state => state.duration);
   const { undo, redo } = useEditorStore.temporal.getState();
   const videoRef = useRef<HTMLVideoElement>(null);
   const [isExportModalOpen, setExportModalOpen] = useState(false);
   const [isExporting, setIsExporting] = useState(false);
   const [exportProgress, setExportProgress] = useState(0);
-  // ADD NEW STATE FOR EXPORT RESULT
   const [exportResult, setExportResult] = useState<{ success: boolean; outputPath?: string; error?: string } | null>(null);
+  const [isPresetModalOpen, setPresetModalOpen] = useState(false);
   const [platform, setPlatform] = useState<NodeJS.Platform | null>(null);
 
   const handleDeleteSelectedRegion = useCallback(() => {
@@ -51,6 +52,7 @@ export function EditorPage() {
 
     const cleanup = window.electronAPI.onProjectOpen(async (payload) => {
       console.log('Received project to open:', payload);
+      await initializePresets();
       await loadProject(payload);
     });
 
@@ -70,7 +72,7 @@ export function EditorPage() {
       cleanProgressListener();
       cleanCompleteListener();
     };
-  }, [loadProject]);
+  }, [loadProject, initializePresets]);
 
   const handleStartExport = useCallback(async (settings: ExportSettings) => {
     // Don't close the modal, just start the export process.
@@ -140,6 +142,17 @@ export function EditorPage() {
     }, 250);
   };
 
+  const getPresetButtonContent = () => {
+    switch (presetSaveStatus) {
+      case 'saving':
+        return <><Loader2 className="w-4 h-4 mr-2 animate-spin" /> Saving...</>;
+      case 'saved':
+        return <><Check className="w-4 h-4 mr-2" /> Saved!</>;
+      default:
+        return <><Layers3 className="w-4 h-4 mr-2" /> Presets</>;
+    }
+  };
+
   return (
     <main className="h-screen w-screen bg-background flex flex-col overflow-hidden select-none">
       {/* Header */}
@@ -161,6 +174,17 @@ export function EditorPage() {
           >
             {currentTheme === 'dark' ? <Sun className="w-4 h-4" /> : <Moon className="w-4 h-4" />}
           </button>
+          <Button
+            variant="outline"
+            onClick={() => setPresetModalOpen(true)}
+            disabled={presetSaveStatus === 'saving'}
+            className={cn(
+              "btn-clean transition-all duration-300 w-[120px]",
+              presetSaveStatus === 'saved' && "bg-green-500/10 border-green-500/30 text-green-600 dark:text-green-400"
+            )}
+          >
+            {getPresetButtonContent()}
+          </Button>
           <ExportButton
             isExporting={isExporting}
             onClick={() => setExportModalOpen(true)}
@@ -198,6 +222,10 @@ export function EditorPage() {
         isExporting={isExporting}
         progress={exportProgress}
         result={exportResult}
+      />
+      <PresetModal
+        isOpen={isPresetModalOpen}
+        onClose={() => setPresetModalOpen(false)}
       />
     </main>
   );
