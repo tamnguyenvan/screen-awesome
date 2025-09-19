@@ -1,25 +1,104 @@
 // src/components/editor/RegionSettingsPanel.tsx
-import { useEditorStore, TimelineRegion } from '../../store/editorStore';
+import { useState } from 'react';
+import { useEditorStore, TimelineRegion, ZoomRegion } from '../../store/editorStore';
 import { cn } from '../../lib/utils';
 import { Button } from '../ui/button';
-import { Trash2, Camera, Scissors } from 'lucide-react';
-import { Input } from '../ui/input';
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '../ui/select';
+import { Trash2, Camera, Scissors, MousePointer, Video } from 'lucide-react';
 import Slider from '../ui/slider';
+import { FocusPointPicker } from './sidepanel/FocusPointPicker';
 
 interface RegionSettingsPanelProps {
   region: TimelineRegion;
 }
 
-export function RegionSettingsPanel({ region }: RegionSettingsPanelProps) {
-  // OPTIMIZATION: Actions don't cause re-renders, so we get them directly from the store's state
-  const { updateRegion, deleteRegion } = useEditorStore.getState();
+function ZoomSettings({ region }: { region: ZoomRegion }) {
+  const { updateRegion } = useEditorStore.getState();
+  const [activeTab, setActiveTab] = useState(region.mode);
 
   const handleValueChange = (name: string, value: string | number) => {
     const finalValue = typeof value === 'string' ? parseFloat(value) : value;
     updateRegion(region.id, { [name]: finalValue });
   };
-  
+
+  const handleModeChange = (newMode: 'auto' | 'fixed') => {
+    setActiveTab(newMode);
+    updateRegion(region.id, { mode: newMode });
+  };
+
+  return (
+    <div className="space-y-4">
+      <h3 className="text-sm font-semibold text-sidebar-foreground uppercase tracking-wide">Zoom Type</h3>
+      {/* Giao diện Tab */}
+      <div className="grid grid-cols-2 gap-2 p-1 bg-muted/50 rounded-lg">
+        <Button
+          variant={activeTab === 'auto' ? 'secondary' : 'ghost'}
+          onClick={() => handleModeChange('auto')}
+          className="h-auto py-2 flex items-center gap-2"
+        >
+          <MousePointer className="w-4 h-4" /> Auto
+        </Button>
+        <Button
+          variant={activeTab === 'fixed' ? 'secondary' : 'ghost'}
+          onClick={() => handleModeChange('fixed')}
+          className="h-auto py-2 flex items-center gap-2"
+        >
+          <Video className="w-4 h-4" /> Fixed
+        </Button>
+      </div>
+
+      {/* Nội dung Tab */}
+      <div className="mt-4 space-y-4">
+        {activeTab === 'auto' && (
+          <div className="p-4 bg-primary/5 border border-primary/20 rounded-lg">
+            <div className="flex items-start gap-3">
+              <MousePointer className="w-5 h-5 text-primary flex-shrink-0 mt-0.5" />
+              <div>
+                <p className="text-sm font-medium text-foreground mb-1">Auto Tracking</p>
+                <p className="text-xs text-muted-foreground">Zoom will automatically follow the mouse cursor in this area.</p>
+              </div>
+            </div>
+          </div>
+        )}
+
+        {activeTab === 'fixed' && (
+          <FocusPointPicker
+            regionId={region.id}
+            targetX={region.targetX}
+            targetY={region.targetY}
+            startTime={region.startTime}
+            onTargetChange={({ x, y }) => updateRegion(region.id, { targetX: x, targetY: y })}
+          />
+        )}
+
+        {/* Cài đặt chung cho cả hai mode */}
+        <div>
+          <div className="flex items-center justify-between mb-3">
+            <label className="text-sm font-medium text-sidebar-foreground">Zoom Level</label>
+            <span className="text-sm font-mono text-primary font-semibold bg-primary/10 px-2 py-1 rounded">
+              {region.zoomLevel.toFixed(1)}x
+            </span>
+          </div>
+          <Slider
+            min={1}
+            max={5}
+            step={0.1}
+            value={region.zoomLevel}
+            onChange={(value) => handleValueChange('zoomLevel', value)}
+          />
+          <div className="flex justify-between text-xs text-muted-foreground mt-1">
+            <span>1x</span>
+            <span>5x</span>
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+export function RegionSettingsPanel({ region }: RegionSettingsPanelProps) {
+  // OPTIMIZATION: Actions don't cause re-renders, so we get them directly from the store's state
+  const { deleteRegion } = useEditorStore.getState();
+
   const handleDelete = () => {
     deleteRegion(region.id);
     // Note: setSelectedRegionId(null) is now handled inside deleteRegion to avoid stale selections
@@ -47,9 +126,9 @@ export function RegionSettingsPanel({ region }: RegionSettingsPanelProps) {
               </p>
             </div>
           </div>
-          <Button 
-            variant="destructive" 
-            size="icon" 
+          <Button
+            variant="destructive"
+            size="icon"
             onClick={handleDelete}
             className="w-9 h-9 bg-destructive/10 hover:bg-destructive text-destructive hover:text-destructive-foreground transition-all duration-200"
           >
@@ -60,72 +139,9 @@ export function RegionSettingsPanel({ region }: RegionSettingsPanelProps) {
 
       {/* Content */}
       <div className="flex-1 p-6 space-y-6 overflow-y-auto">
-        {/* Timing Controls */}
-        <div className="space-y-4">
-          <h3 className="text-sm font-semibold text-sidebar-foreground uppercase tracking-wide">Timing</h3>
-          
-          <div className="space-y-4">
-            <Input
-              type="number"
-              label="Start Time"
-              value={region.startTime.toFixed(2)}
-              onChange={(e) => handleValueChange('startTime', e.target.value)}
-              step="0.01"
-              min="0"
-              suffix="s"
-            />
-            
-            <Input
-              type="number"
-              label="Duration"
-              value={region.duration.toFixed(2)}
-              onChange={(e) => handleValueChange('duration', e.target.value)}
-              step="0.01"
-              min="0.1"
-              suffix="s"
-            />
-          </div>
-        </div>
-
         {/* Zoom-specific Controls */}
         {region.type === 'zoom' && (
-          <div className="space-y-4">
-            <h3 className="text-sm font-semibold text-sidebar-foreground uppercase tracking-wide">Zoom Settings</h3>
-            
-            <div>
-              <div className="flex items-center justify-between mb-3">
-                <label className="text-sm font-medium text-sidebar-foreground">Zoom Level</label>
-                <span className="text-sm font-mono text-primary font-semibold bg-primary/10 px-2 py-1 rounded">
-                  {region.zoomLevel.toFixed(1)}x
-                </span>
-              </div>
-              <Slider
-                min={1}
-                max={5}
-                step={0.1}
-                value={region.zoomLevel}
-                onChange={(value) => handleValueChange('zoomLevel', value)}
-                className="w-full h-2 bg-muted rounded-full appearance-none cursor-pointer accent-primary slider"
-              />
-              <div className="flex justify-between text-xs text-muted-foreground mt-1">
-                <span>1x</span>
-                <span>5x</span>
-              </div>
-            </div>
-            
-            <Select 
-              value={region.easing} 
-              onValueChange={(value) => updateRegion(region.id, { easing: value as 'linear' | 'ease-in-out' })}
-            >
-              <SelectTrigger label="Animation">
-                <SelectValue placeholder="Select animation type" />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="linear">Linear</SelectItem>
-                <SelectItem value="ease-in-out">Ease In/Out</SelectItem>
-              </SelectContent>
-            </Select>
-          </div>
+          <ZoomSettings region={region} />
         )}
 
         {/* Cut Region Info */}

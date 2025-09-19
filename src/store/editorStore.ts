@@ -38,7 +38,8 @@ export interface ZoomRegion {
   easing: 'linear' | 'ease-in-out';
   targetX: number;
   targetY: number;
-  zIndex: number; // ADD THIS
+  mode: 'auto' | 'fixed';
+  zIndex: number;
 }
 
 export interface CutRegion {
@@ -199,6 +200,7 @@ export const useEditorStore = create(
               easing: 'ease-in-out',
               targetX: firstClick.x,
               targetY: firstClick.y,
+              mode: 'auto',
               zIndex: index + 1,
             };
             return acc;
@@ -308,6 +310,7 @@ export const useEditorStore = create(
           easing: 'ease-in-out',
           targetX: lastMousePos?.x || videoDimensions.width / 2,
           targetY: lastMousePos?.y || videoDimensions.height / 2,
+          mode: 'auto',
           zIndex: nextZIndex,
         };
 
