@@ -97,6 +97,9 @@ let metadataStream: fsSync.WriteStream | null = null
 let pythonDataBuffer = ''
 let firstChunkWritten = true
 
+let framesSentCount = 0; // NEW: Counter for frames actually sent during export
+
+
 async function handleLoadPresets() {
   log.info('[Main] Loading presets from electron-store.');
   const presets = store.get('presets');
@@ -954,6 +957,9 @@ async function handleExportStart(
 
   // --- Start new strategy: Use Render Worker ---
 
+  // NEW: Reset framesSentCount for each new export
+  framesSentCount = 0;
+
   // 1. Clean up old worker if exists (to handle previous export errors)
   if (renderWorker) {
     renderWorker.close();
@@ -1052,6 +1058,7 @@ async function handleExportStart(
     // Write buffer of frame to FFmpeg stdin for processing
     if (!ffmpegClosed && ffmpeg.stdin.writable) {
       ffmpeg.stdin.write(frame);
+      framesSentCount++; // NEW: Increment counter
     }
     // Send progress to main editor window to update UI
     window.webContents.send('export:progress', { progress, stage: 'Rendering...' });
@@ -1074,7 +1081,7 @@ async function handleExportStart(
   // 7. Handle when FFmpeg process ends
   ffmpeg.on('close', (code) => {
     ffmpegClosed = true;
-    log.info(`[Main] FFmpeg process exited with code ${code}.`);
+    log.info(`[Main] FFmpeg process exited with code ${code}. Sent ${framesSentCount} frames.`); // NEW: Log frames sent
     renderWorker?.close(); // Close worker window
     renderWorker = null;
 
@@ -1083,6 +1090,13 @@ async function handleExportStart(
     if (code === null) {
       log.info(`[Main] Export was cancelled. Sending 'export:complete' to editor.`);
       window.webContents.send('export:complete', { success: false, error: 'Export cancelled by user.' });
+    } else if (code === 0 && framesSentCount === 0) { // NEW: Code 0 but no frames = empty output failure
+      log.error(`[Main] Export failed: Output file is empty (FFmpeg exited with code 0 but no frames were rendered).`);
+      // NEW: Delete empty output file here to avoid leaving it behind.
+      if (fsSync.existsSync(outputPath)) {
+          fs.unlink(outputPath).then(() => log.info(`[Main] Deleted empty output file: ${outputPath}`));
+      }
+      window.webContents.send('export:complete', { success: false, error: 'No video frames were rendered. Ensure no "cut" regions cover the entire video.' });
     } else {
       // Logic cũ cho trường hợp thành công hoặc thất bại thông thường.
       if (code === 0) {

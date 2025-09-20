@@ -116,7 +116,7 @@ const drawBackground = async (
         const finalUrl = backgroundState.imageUrl.startsWith('blob:')
           ? backgroundState.imageUrl
           : `media://${backgroundState.imageUrl}`;
-          
+
         img.src = finalUrl;
       });
       break;
@@ -135,7 +135,7 @@ type RenderStartPayload = {
 export function RendererPage() {
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const videoRef = useRef<HTMLVideoElement>(null);
-    const webcamVideoRef = useRef<HTMLVideoElement>(null);
+  const webcamVideoRef = useRef<HTMLVideoElement>(null);
 
   useEffect(() => {
     log.info('[RendererPage] Component mounted. Setting up listeners.');
@@ -155,7 +155,7 @@ export function RendererPage() {
         const [ratioW, ratioH] = projectState.aspectRatio.split(':').map(Number);
         const baseHeight = RESOLUTIONS[resolution as keyof typeof RESOLUTIONS].height;
         const aspectValue = ratioW / ratioH;
-        
+
         // Calculate width and ensure it's even for FFmpeg compatibility
         let outputWidth = Math.round(baseHeight * aspectValue);
         outputWidth = outputWidth % 2 === 0 ? outputWidth : outputWidth + 1;
@@ -174,7 +174,7 @@ export function RendererPage() {
         // Calculate webcam coordinates with padding
         const padding = outputHeight * 0.02; // 2% padding
         let webcamX, webcamY;
-        switch(webcamPosition.pos) {
+        switch (webcamPosition.pos) {
           case 'top-left':
             webcamX = padding;
             webcamY = padding;
@@ -255,7 +255,7 @@ export function RendererPage() {
             videoElement.addEventListener('canplay', onCanPlay);
             videoElement.addEventListener('error', onError);
 
-            videoElement.src = source === 'main' 
+            videoElement.src = source === 'main'
               ? `media://${projectState.videoPath}`
               : `media://${projectState.webcamVideoPath}`;
             videoElement.muted = true;
@@ -277,7 +277,7 @@ export function RendererPage() {
         }
 
         // Helper to seek videos accurately and in sync
-        const seekVideos = (time: number): Promise<void> => {
+        const seekVideos = async (time: number): Promise<void> => {
           const seekPromises = [
             new Promise<void>((resolve) => {
               if (Math.abs(video.currentTime - time) < 0.01) {
@@ -326,11 +326,12 @@ export function RendererPage() {
             );
           }
 
-          return Promise.all(seekPromises).then(() => {});
+          return Promise.all(seekPromises).then(() => { });
         };
 
         // 3. Start Render Loop
-        const totalFrames = Math.floor(projectState.duration * fps);
+        const cutRegionsArray = Object.values(projectState.cutRegions);
+        const totalFrames = Math.ceil(projectState.duration * fps); // SỬA: Dùng Math.ceil để không bỏ sót frame cuối
         log.info(`[RendererPage] Starting render for ${totalFrames} frames at ${fps} FPS.`);
 
         if (totalFrames <= 0) {
@@ -339,21 +340,23 @@ export function RendererPage() {
           return;
         }
 
-        const cutRegionsArray = Object.values(projectState.cutRegions);
+        let framesActuallyRendered = 0;
 
         for (let frameIndex = 0; frameIndex < totalFrames; frameIndex++) {
           const currentTime = frameIndex / fps;
 
+          if (currentTime > projectState.duration) {
+            break;
+          }
+
           // Skip cut regions
-          const activeCutRegion = cutRegionsArray.find(
-            (r: CutRegion) => currentTime >= r.startTime && currentTime < r.startTime + r.duration
+          const isInCutRegion = cutRegionsArray.some(
+            (r: CutRegion) => currentTime >= r.startTime && currentTime < (r.startTime + r.duration)
           );
 
-          if (activeCutRegion) {
-            const endOfCut = activeCutRegion.startTime + activeCutRegion.duration;
-            // Jump frameIndex to the frame just before the end of the cut
-            frameIndex = Math.floor(endOfCut * fps) - 1; 
-            continue;
+          // Nếu frame nằm trong vùng cắt, bỏ qua và đi đến frame tiếp theo
+          if (isInCutRegion) {
+            continue; // Bỏ qua frame này
           }
 
           // Prepare for rendering
@@ -455,7 +458,7 @@ export function RendererPage() {
             // Vẽ frame hiện tại của video webcam
             ctx.drawImage(webcamVideo, webcamX, webcamY, webcamWidth, webcamHeight);
             ctx.restore();
-        }
+          }
 
           // 6. Extract and Send Frame Data
           const imageData = ctx.getImageData(0, 0, outputWidth, outputHeight);
@@ -463,9 +466,10 @@ export function RendererPage() {
           const progress = Math.round(((frameIndex + 1) / totalFrames) * 100);
 
           window.electronAPI.sendFrameToMain({ frame: frameBuffer, progress });
+          framesActuallyRendered++; // NEW: Increment counter
         }
 
-        log.info('[RendererPage] All frames rendered. Sending "finishRender" signal.');
+        log.info(`[RendererPage] All frames processed. Sent ${framesActuallyRendered} frames. Sending "finishRender" signal.`);
         window.electronAPI.finishRender();
 
       } catch (error) {
@@ -485,10 +489,11 @@ export function RendererPage() {
   }, []);
 
   return (
-    <div style={{ display: 'none' }}>
+    <div>
       <h1>Renderer Worker</h1>
       <canvas ref={canvasRef}></canvas>
       <video ref={videoRef}></video>
+      <video ref={webcamVideoRef}></video>
     </div>
   );
 }

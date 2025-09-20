@@ -101,6 +101,10 @@ export function EditorPage() {
       aspectRatio: fullState.aspectRatio,
       zoomRegions: fullState.zoomRegions,
       cutRegions: fullState.cutRegions,
+      webcamVideoPath: fullState.webcamVideoPath,
+      webcamPosition: fullState.webcamPosition,
+      webcamStyles: fullState.webcamStyles,
+      isWebcamVisible: fullState.isWebcamVisible,
     };
 
     setExportResult(null);
