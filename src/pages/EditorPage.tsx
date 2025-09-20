@@ -186,7 +186,7 @@ export function EditorPage() {
 
       {/* Main Layout */}
       <div className="flex flex-1 overflow-hidden">
-        <div className="w-96 flex-shrink-0 bg-sidebar border-r border-sidebar-border overflow-hidden">
+        <div className="w-[28rem] flex-shrink-0 bg-sidebar border-r border-sidebar-border overflow-hidden">
           <SidePanel />
         </div>
         <div className="flex-1 flex flex-col overflow-hidden bg-background">

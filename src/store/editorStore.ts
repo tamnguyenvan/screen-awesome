@@ -8,7 +8,8 @@ import { WALLPAPERS } from '../lib/constants';
 import { shallow } from 'zustand/shallow';
 import {
   AspectRatio, Background, FrameStyles, Preset, ZoomRegion, CutRegion, TimelineRegion,
-  EditorState, MetaDataItem
+  EditorState, MetaDataItem, WebcamStyles,
+  WebcamPosition
 } from '../types/store';
 
 // --- Types ---
@@ -16,7 +17,7 @@ let debounceTimer: NodeJS.Timeout;
 
 // --- Actions ---
 export interface EditorActions {
-  loadProject: (paths: { videoPath: string; metadataPath: string }) => Promise<void>;
+  loadProject: (paths: { videoPath: string; metadataPath: string; webcamVideoPath?: string }) => Promise<void>;
   setVideoDimensions: (dims: { width: number; height: number }) => void;
   setDuration: (duration: number) => void;
   setCurrentTime: (time: number) => void;
@@ -41,6 +42,12 @@ export interface EditorActions {
   saveCurrentStyleAsPreset: (name: string) => void;
   updateActivePreset: () => void;
   deletePreset: (id: string) => void;
+
+  // webcam
+  setWebcamPosition: (position: WebcamPosition) => void;
+  setWebcamVisibility: (isVisible: boolean) => void;
+  // NEW: Thêm action để cập nhật style của webcam
+  updateWebcamStyle: (style: Partial<WebcamStyles>) => void;
 }
 
 // --- Initial State ---
@@ -62,6 +69,12 @@ const initialProjectState = {
   isCurrentlyCut: false,
   timelineZoom: 1,
   nextZIndex: 1,
+  webcamVideoPath: null,
+  webcamVideoUrl: null,
+  isWebcamVisible: false,
+  webcamPosition: { pos: 'bottom-right' } as WebcamPosition,
+  // MODIFIED: Sử dụng webcamStyles object với giá trị mặc định mới
+  webcamStyles: { size: 15, shadow: 15 },
 };
 
 // State toàn cục của ứng dụng, không bị reset bởi loadProject
@@ -105,8 +118,10 @@ export const useEditorStore = create(
       ...initialAppState,
       frameStyles: initialFrameStyles,
 
-      loadProject: async ({ videoPath, metadataPath }) => {
+      // ... (các actions khác không thay đổi) ...
+      loadProject: async ({ videoPath, metadataPath, webcamVideoPath }) => {
         const videoUrl = `media://${videoPath}`;
+        const webcamVideoUrl = webcamVideoPath ? `media://${webcamVideoPath}` : null;
         const lastActiveId = get().activePresetId;
         const currentPresets = get().presets;
 
@@ -125,6 +140,9 @@ export const useEditorStore = create(
           state.videoPath = videoPath;
           state.metadataPath = metadataPath;
           state.videoUrl = videoUrl;
+          state.webcamVideoPath = webcamVideoPath || null;
+          state.webcamVideoUrl = webcamVideoUrl;
+          state.isWebcamVisible = !!webcamVideoUrl;
         });
 
         try {
@@ -491,6 +509,13 @@ export const useEditorStore = create(
         Object.assign(state, initialProjectState);
         Object.assign(state, initialAppState);
         state.frameStyles = initialFrameStyles;
+      }),
+
+      setWebcamPosition: (position) => set({ webcamPosition: position }),
+      setWebcamVisibility: (isVisible) => set({ isWebcamVisible: isVisible }),
+      // NEW: Triển khai action cập nhật style webcam
+      updateWebcamStyle: (style) => set(state => {
+        Object.assign(state.webcamStyles, style);
       }),
     })),
     {

@@ -62,6 +62,16 @@ export interface MetaDataItem {
   pressed?: boolean;
 }
 
+export interface WebcamPosition {
+  pos: 'top-left' | 'top-right' | 'bottom-left' | 'bottom-right';
+}
+
+export interface WebcamStyles {
+  size: number; // percentage of container height
+  shadow: number; // 0-50 for shadow strength
+}
+
+
 // --- State ---
 export interface EditorState {
   videoPath: string | null;
@@ -86,5 +96,11 @@ export interface EditorState {
   presets: Record<string, Preset>;
   activePresetId: string | null;
   presetSaveStatus: 'idle' | 'saving' | 'saved';
-}
 
+  // webcam
+  webcamVideoPath: string | null;
+  webcamVideoUrl: string | null;
+  isWebcamVisible: boolean;
+  webcamPosition: WebcamPosition;
+  webcamStyles: WebcamStyles;
+}

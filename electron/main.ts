@@ -57,7 +57,6 @@ const schema = {
   }
 };
 
-// NEW: Khởi tạo store với schema đã định nghĩa
 const store = new Store({ schema });
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url))
@@ -196,7 +195,7 @@ function createSavingWindow() {
 }
 
 // --- Editor Window Creation ---
-function createEditorWindow(videoPath: string, metadataPath: string) {
+function createEditorWindow(videoPath: string, metadataPath: string, webcamVideoPath: string | undefined) {
   const { x, y, width, height } = store.get('windowBounds') as { x?: number; y?: number; width: number; height: number; };
 
   editorWin = new BrowserWindow({
@@ -262,7 +261,7 @@ function createEditorWindow(videoPath: string, metadataPath: string) {
   // Send project files to the editor window once it's ready
   editorWin.webContents.on('did-finish-load', () => {
     log.info(`[Main] Editor window finished loading. Sending project data...`);
-    editorWin?.webContents.send('project:open', { videoPath, metadataPath });
+    editorWin?.webContents.send('project:open', { videoPath, metadataPath, webcamVideoPath });
   });
 
   // if (process.env.NODE_ENV === 'development') {
@@ -378,11 +377,14 @@ async function ensureDirectoryExists(dirPath: string) {
   }
 }
 
-async function startActualRecording(ffmpegArgs: string[]) {
+async function startActualRecording(inputArgs: string[], hasWebcam: boolean) {
   const recordingDir = path.join(process.env.HOME || process.env.USERPROFILE || '.', '.screenawesome');
   await ensureDirectoryExists(recordingDir);
-  const baseName = `ScreenAwesome-recording-${Date.now()}`
-  const videoPath = path.join(recordingDir, `${baseName}.mp4`);
+  const baseName = `ScreenAwesome-recording-${Date.now()}`;
+
+  // THAY ĐỔI: Tạo đường dẫn riêng cho screen và webcam
+  const screenVideoPath = path.join(recordingDir, `${baseName}-screen.mp4`);
+  const webcamVideoPath = hasWebcam ? path.join(recordingDir, `${baseName}-webcam.mp4`) : undefined;
   const metadataPath = path.join(recordingDir, `${baseName}.json`);
 
   recorderWin?.hide()
@@ -445,10 +447,23 @@ async function startActualRecording(ffmpegArgs: string[]) {
     })
 
     // 4. Start FFmpeg with the provided arguments
-    const finalArgs = [...ffmpegArgs, videoPath]; // Add output path
+    const finalArgs = [...inputArgs];
+    if (hasWebcam) {
+      // Input 0 là webcam, Input 1 là màn hình.
+      // Chúng ta muốn file chính (đầu tiên) là video màn hình.
+      finalArgs.push(
+        '-map', '1:v', '-c:v', 'libx264', '-preset', 'ultrafast', '-pix_fmt', 'yuv420p', screenVideoPath,
+        '-map', '0:v', '-c:v', 'libx264', '-preset', 'ultrafast', '-pix_fmt', 'yuv420p', webcamVideoPath!
+      );
+    } else {
+      // Chỉ có một input (màn hình)
+      finalArgs.push(
+        '-map', '0:v', '-c:v', 'libx264', '-preset', 'ultrafast', '-pix_fmt', 'yuv420p', screenVideoPath
+      );
+    }
     log.info(`FFmpeg path: ${FFMPEG_PATH}`)
     log.info(`Starting FFmpeg with args: ${finalArgs.join(' ')}`)
-    ffmpegProcess = spawn(FFMPEG_PATH, finalArgs)
+    ffmpegProcess = spawn(FFMPEG_PATH, finalArgs);
     ffmpegProcess.stderr.on('data', (data) => {
       log.info(`FFmpeg: ${data}`)
     })
@@ -460,15 +475,15 @@ async function startActualRecording(ffmpegArgs: string[]) {
       {
         label: 'Stop Recording',
         click: async () => {
-          await handleStopRecording(videoPath, metadataPath)
-          recorderWin?.webContents.send('recording-finished', { canceled: false, filePath: videoPath });
+          await handleStopRecording(screenVideoPath, webcamVideoPath, metadataPath)
+          recorderWin?.webContents.send('recording-finished', { canceled: false, screenVideoPath, webcamVideoPath });
         },
       },
       {
         label: 'Cancel Recording',
         click: async () => {
-          await handleCancelRecording(videoPath, metadataPath)
-          recorderWin?.webContents.send('recording-finished', { canceled: true, filePath: undefined });
+          await handleCancelRecording(screenVideoPath, webcamVideoPath, metadataPath)
+          recorderWin?.webContents.send('recording-finished', { canceled: true });
         },
       },
     ])
@@ -477,7 +492,7 @@ async function startActualRecording(ffmpegArgs: string[]) {
 
   }, 3800) // Countdown delay
 
-  return { canceled: false, filePath: videoPath }
+  return { canceled: false, screenVideoPath, webcamVideoPath };
 }
 
 async function checkLinuxTools(): Promise<{ [key: string]: boolean }> {
@@ -600,10 +615,35 @@ async function handleStartRecording(_event: IpcMainInvokeEvent, options: {
   source: 'fullscreen' | 'area' | 'window',
   geometry?: { x: number, y: number, width: number, height: number };
   windowTitle?: string;
-  displayId?: number; // THÊM: displayId để chọn màn hình
+  displayId?: number;
+  webcam?: { deviceId: string; deviceLabel: string; index: number };
 }) {
-  const { source, geometry, windowTitle, displayId } = options; // THÊM displayId
+  const { source, geometry, windowTitle, displayId, webcam } = options;
   const display = process.env.DISPLAY || ':0.0';
+  const baseFfmpegArgs: string[] = [];
+  let webcamInputAdded = false;
+
+  // --- Xử lý đầu vào Webcam ---
+  // MODIFIED: This is the core fix. Use the correct identifier for each platform.
+  if (webcam) {
+    log.info('[Main] Adding webcam input:', webcam.deviceLabel);
+    switch (process.platform) {
+      case 'linux':
+        // On Linux, we need the device path, which we construct from the index.
+        // The first camera found is almost always /dev/video0, the second /dev/video1, etc.
+        baseFfmpegArgs.push('-f', 'v4l2', '-i', `/dev/video${webcam.index}`);
+        break;
+      case 'win32':
+        // On Windows, dshow uses the human-readable device name (the label).
+        baseFfmpegArgs.push('-f', 'dshow', '-i', `video=${webcam.deviceLabel}`);
+        break;
+      case 'darwin':
+        // On macOS, avfoundation uses the device index.
+        baseFfmpegArgs.push('-f', 'avfoundation', '-i', `${webcam.index}:none`);
+        break;
+    }
+    webcamInputAdded = true;
+  }
 
   if (source === 'window') {
     if (process.platform === 'linux') {
@@ -641,56 +681,39 @@ async function handleStartRecording(_event: IpcMainInvokeEvent, options: {
       }
 
       if (process.platform === 'linux') {
-        const ffmpegArgs = [
-          '-f', 'x11grab',
-          '-video_size', `${safeWidth}x${safeHeight}`,
-          '-i', `${display}+${intX},${intY}`,
-          '-c:v', 'libx264',
-          '-preset', 'ultrafast',
-          '-pix_fmt', 'yuv420p',
-        ];
         log.info(`Starting WINDOW recording for geometry: ${safeWidth}x${safeHeight}+${intX},${intY}`);
-        return startActualRecording(ffmpegArgs);
+        const { x, y, width, height } = geometry;
+        baseFfmpegArgs.push('-f', 'x11grab', '-video_size', `${width}x${height}`, '-i', `${display}+${x},${y}`);
       } else if (process.platform === 'win32') {
         if (!windowTitle) {
           log.error('Window recording started without a window title.');
           dialog.showErrorBox('Recording Error', 'No window was selected for recording.');
           return { canceled: true, filePath: undefined };
         }
-        const ffmpegArgs = [
-          '-f', 'gdigrab',
-          '-i', `title=${windowTitle}`,
-          '-c:v', 'libx264',
-          '-preset', 'ultrafast',
-          '-pix_fmt', 'yuv420p',
-        ];
         log.info(`Starting WINDOW recording for title: "${windowTitle}"`);
-        return startActualRecording(ffmpegArgs);
+        baseFfmpegArgs.push('-f', 'gdigrab', '-i', `title=${windowTitle}`);
       } else if (process.platform === 'darwin') {
-        const ffmpegArgs = [
-          '-f', 'avfoundation',
-          '-i', '1',
-          '-c:v', 'libx264',
-          '-preset', 'ultrafast',
-          '-pix_fmt', 'yuv420p',
-        ];
-        log.info('Starting SCREEN recording on macOS');
-        return startActualRecording(ffmpegArgs);
+        // const ffmpegArgs = [
+        //   '-f', 'avfoundation',
+        //   '-i', '1',
+        //   '-c:v', 'libx264',
+        //   '-preset', 'ultrafast',
+        //   '-pix_fmt', 'yuv420p',
+        // ];
+        // log.info('Starting SCREEN recording on macOS');
       } else {
         log.error('Window recording is not yet supported on this platform.');
         dialog.showErrorBox('Feature Not Supported', 'Window recording is not yet implemented for this OS.');
         return { canceled: true, filePath: undefined };
       }
     }
-  }
-
-  if (source === 'area') {
+  } else if (source === 'area') {
     // Hide the recorder and open selection window
     recorderWin?.hide();
     createSelectionWindow();
 
     // Await for selection to be made
-    return new Promise((resolve) => {
+    const selectedGeometry = await new Promise<{ x: number; y: number; width: number; height: number } | undefined>((resolve) => {
       ipcMain.once('selection:complete', (_event, geometry: { x: number; y: number; width: number; height: number }) => {
         selectionWin?.close();
 
@@ -703,104 +726,75 @@ async function handleStartRecording(_event: IpcMainInvokeEvent, options: {
           log.error('Selected area is too small to record after adjustment.');
           recorderWin?.show(); // Show recorder again
           dialog.showErrorBox('Recording Error', 'The selected area is too small to record. Please select a larger area.');
-          resolve({ canceled: true, filePath: undefined });
+          // resolve({ canceled: true, filePath: undefined });
+          resolve(undefined);
           return;
         }
 
         log.info(`Received selection geometry: ${JSON.stringify(geometry)}. Adjusted to: ${safeWidth}x${safeHeight}`);
 
-        const ffmpegArgs = [
-          '-f', 'x11grab',
-          // Use the adjusted safe dimensions
-          '-video_size', `${safeWidth}x${safeHeight}`,
-          '-i', `${display}+${geometry.x},${geometry.y}`,
-          '-c:v', 'libx264',
-          '-preset', 'ultrafast',
-          '-pix_fmt', 'yuv420p',
-        ];
-        resolve(startActualRecording(ffmpegArgs));
+        // const ffmpegArgs = [
+        //   '-f', 'x11grab',
+        //   // Use the adjusted safe dimensions
+        //   '-video_size', `${safeWidth}x${safeHeight}`,
+        //   '-i', `${display}+${geometry.x},${geometry.y}`,
+        //   '-c:v', 'libx264',
+        //   '-preset', 'ultrafast',
+        //   '-pix_fmt', 'yuv420p',
+        // ];
+        // resolve(startActualRecording(ffmpegArgs));
+        resolve(geometry);
       });
 
       ipcMain.once('selection:cancel', () => {
         log.info('Selection was cancelled.');
         selectionWin?.close();
         recorderWin?.show(); // Show recorder again
-        resolve({ canceled: true, filePath: undefined });
+        resolve(undefined);
       });
     });
 
-  } else { // Default to fullscreen
-    const allDisplays = screen.getAllDisplays();
-    let targetDisplay = allDisplays.find(d => d.id === displayId);
-
-    if (!targetDisplay) {
-      log.warn(`[Main] Display with ID ${displayId} not found. Defaulting to primary display.`);
-      targetDisplay = screen.getPrimaryDisplay();
+    if (!selectedGeometry) {
+      return { canceled: true, filePath: undefined };
     }
 
-    log.info(`[Main] Starting FULLSCREEN recording for display:`, targetDisplay.id, targetDisplay.bounds);
+    baseFfmpegArgs.push(
+      '-f', 'x11grab',
+      '-video_size', `${selectedGeometry.width}x${selectedGeometry.height}`,
+      '-i', `${display}+${selectedGeometry.x},${selectedGeometry.y}`,
+      '-c:v', 'libx264',
+      '-preset', 'ultrafast',
+      '-pix_fmt', 'yuv420p',
+    );
 
+    return startActualRecording(baseFfmpegArgs, webcamInputAdded);
+  } else {
+    const allDisplays = screen.getAllDisplays();
+    const targetDisplay = allDisplays.find(d => d.id === displayId) || screen.getPrimaryDisplay();
     const { x, y, width, height } = targetDisplay.bounds;
-    // Đảm bảo width/height là số chẵn
     const safeWidth = Math.floor(width / 2) * 2;
     const safeHeight = Math.floor(height / 2) * 2;
 
-    let ffmpegArgs: string[] = [];
-
-    // Xây dựng command cho từng hệ điều hành
+    // FIX: Nối các đối số vào `baseFfmpegArgs`
     switch (process.platform) {
       case 'linux':
-        ffmpegArgs = [
-          '-f', 'x11grab',
-          '-video_size', `${safeWidth}x${safeHeight}`,
-          '-i', `${display}+${x},${y}`,
-          '-c:v', 'libx264',
-          '-preset', 'ultrafast',
-          '-pix_fmt', 'yuv420p',
-        ];
+        baseFfmpegArgs.push('-f', 'x11grab', '-video_size', `${safeWidth}x${safeHeight}`, '-i', `${display}+${x},${y}`);
         break;
-
       case 'win32':
-        ffmpegArgs = [
-          '-f', 'gdigrab',
-          '-offset_x', x.toString(),
-          '-offset_y', y.toString(),
-          '-video_size', `${safeWidth}x${safeHeight}`,
-          '-i', 'desktop',
-          '-c:v', 'libx264',
-          '-preset', 'ultrafast',
-          '-pix_fmt', 'yuv420p',
-        ];
+        baseFfmpegArgs.push('-f', 'gdigrab', '-offset_x', x.toString(), '-offset_y', y.toString(), '-video_size', `${safeWidth}x${safeHeight}`, '-i', 'desktop');
         break;
-
       case 'darwin': {
-        // Trên macOS, chúng ta dùng index của màn hình
         const displayIndex = allDisplays.findIndex(d => d.id === targetDisplay!.id);
-        const videoInputIndex = displayIndex >= 0 ? displayIndex : 0;
-        log.info(`[Main] macOS using display index: ${videoInputIndex}`);
-
-        ffmpegArgs = [
-          '-f', 'avfoundation',
-          // Định dạng "video_index:audio_index". Dùng ":" để chỉ định chỉ video.
-          '-i', `${videoInputIndex}:`,
-          '-c:v', 'libx264',
-          '-preset', 'ultrafast',
-          '-pix_fmt', 'yuv420p',
-        ];
+        baseFfmpegArgs.push('-f', 'avfoundation', '-i', `${displayIndex >= 0 ? displayIndex : 0}:none`);
         break;
       }
-
-      default:
-        log.error(`Fullscreen recording is not supported on ${process.platform}`);
-        dialog.showErrorBox('Unsupported Platform', 'Fullscreen recording is not supported on this operating system.');
-        return { canceled: true, filePath: undefined };
     }
-
-    return startActualRecording(ffmpegArgs);
   }
+
+  return startActualRecording(baseFfmpegArgs, webcamInputAdded);
 }
 
-async function handleStopRecording(videoPath: string, metadataPath: string) {
+async function handleStopRecording(screenVideoPath: string, webcamVideoPath: string | undefined, metadataPath: string) {
   log.info('Stopping recording, preparing to save...');
 
   // 1. Destroy tray icon so user cannot click it
@@ -820,16 +814,20 @@ async function handleStopRecording(videoPath: string, metadataPath: string) {
 
   // 5. Open editor window
   if (!editorWin) {
-    createEditorWindow(videoPath, metadataPath);
+    createEditorWindow(screenVideoPath, metadataPath, webcamVideoPath);
   } else {
-    editorWin.webContents.send('project:open', { videoPath, metadataPath });
+    editorWin.webContents.send('project:open', {
+      videoPath: screenVideoPath,
+      webcamVideoPath,
+      metadataPath
+    });
     editorWin.focus();
   }
   // Close recorder window
   recorderWin?.close();
 }
 
-async function handleCancelRecording(videoPath: string, metadataPath: string) {
+async function handleCancelRecording(screenVideoPath: string, webcamVideoPath: string | undefined, metadataPath: string) {
   log.info('Cancelling recording and deleting files...');
 
   // Stop processes without waiting for saving
@@ -851,7 +849,8 @@ async function handleCancelRecording(videoPath: string, metadataPath: string) {
   try {
     // Wait a bit for the system to release file lock
     setTimeout(async () => {
-      if (fsSync.existsSync(videoPath)) await fs.unlink(videoPath);
+      if (fsSync.existsSync(screenVideoPath)) await fs.unlink(screenVideoPath);
+      if (webcamVideoPath && fsSync.existsSync(webcamVideoPath)) await fs.unlink(webcamVideoPath);
       if (fsSync.existsSync(metadataPath)) await fs.unlink(metadataPath);
       log.info('Temporary files deleted.');
     }, 100);

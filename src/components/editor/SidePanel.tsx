@@ -1,31 +1,77 @@
 // src/components/editor/SidePanel.tsx
 import { useEditorStore } from '../../store/editorStore';
 import { RegionSettingsPanel } from './RegionSettingsPanel';
-import { Palette } from 'lucide-react';
+import { Palette, Video, AudioLines, Settings } from 'lucide-react';
 import { BackgroundSettings } from './sidepanel/BackgroundSettings';
 import { FrameEffectsSettings } from './sidepanel/FrameEffectsSettings';
+import { CameraSettings } from './sidepanel/CameraSettings';
 import { useShallow } from 'zustand/react/shallow';
+import { useEffect, useState, useMemo } from 'react';
+import { cn } from '../../lib/utils';
+import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '../ui/tooltip';
 
+// Định nghĩa các tab có thể có
+type SidePanelTab = 'general' | 'camera' | 'audio' | 'settings';
+
+// Component nút bấm cho thanh điều hướng
+interface TabButtonProps {
+  label: string;
+  icon: React.ReactNode;
+  isActive: boolean;
+  onClick: () => void;
+  disabled?: boolean;
+}
+
+function TabButton({ label, icon, isActive, onClick, disabled }: TabButtonProps) {
+  return (
+    <TooltipProvider delayDuration={300}>
+      <Tooltip>
+        <TooltipTrigger asChild>
+          <button
+            onClick={onClick}
+            disabled={disabled}
+            className={cn(
+              'w-full flex flex-col items-center justify-center p-3 rounded-lg transition-colors',
+              'hover:bg-accent/50 focus:outline-none focus:ring-2 focus:ring-ring focus:ring-offset-2 ring-offset-sidebar',
+              isActive
+                ? 'bg-accent text-primary'
+                : 'text-muted-foreground hover:text-foreground',
+              disabled && 'opacity-50 cursor-not-allowed hover:bg-transparent'
+            )}
+            aria-label={label}
+          >
+            <div className="w-6 h-6 flex items-center justify-center">
+              {icon}
+            </div>
+          </button>
+        </TooltipTrigger>
+        <TooltipContent side="left" className="capitalize">
+          <p>{label}</p>
+        </TooltipContent>
+      </Tooltip>
+    </TooltipProvider>
+  );
+}
+
+// Component cho cài đặt Frame chung
 function FrameSettingsPanel() {
   return (
     <div className="h-full flex flex-col">
       {/* Header */}
-      <div className="p-6 border-b border-sidebar-border bg-gradient-to-r from-sidebar to-sidebar-accent/10">
-        <div className="flex items-center gap-3 mb-2">
-          <div className="w-12 h-12 rounded-xl bg-gradient-to-br from-primary/10 to-primary/5 flex items-center justify-center shadow-inner border border-primary/10">
-            <Palette className="w-6 h-6 text-primary" />
+      <div className="p-6 border-b border-sidebar-border">
+        <div className="flex items-center gap-3">
+          <div className="w-10 h-10 rounded-lg bg-primary/10 flex items-center justify-center">
+            <Palette className="w-5 h-5 text-primary" />
           </div>
           <div>
-            <h2 className="text-xl font-bold text-sidebar-foreground">Frame Style</h2>
-            <p className="text-sm text-muted-foreground">Customize your video appearance</p>
+            <h2 className="text-lg font-semibold text-sidebar-foreground">General Settings</h2>
+            <p className="text-sm text-muted-foreground">Customize your video's appearance</p>
           </div>
         </div>
       </div>
-
       {/* Content */}
       <div className="flex-1 overflow-y-auto">
         <div className="p-6 space-y-8">
-          <div className="border-t border-sidebar-border -mx-6"></div>
           <BackgroundSettings />
           <FrameEffectsSettings />
         </div>
@@ -34,23 +80,145 @@ function FrameSettingsPanel() {
   );
 }
 
+// Component cho cài đặt Audio
+function AudioSettingsPanel() {
+  return (
+    <div className="h-full flex flex-col">
+      <div className="p-6 border-b border-sidebar-border">
+        <div className="flex items-center gap-3">
+          <div className="w-10 h-10 rounded-lg bg-primary/10 flex items-center justify-center">
+            <AudioLines className="w-5 h-5 text-primary" />
+          </div>
+          <div>
+            <h2 className="text-lg font-semibold text-sidebar-foreground">Audio Settings</h2>
+            <p className="text-sm text-muted-foreground">Adjust volume and effects</p>
+          </div>
+        </div>
+      </div>
+      <div className="flex-1 p-6 flex items-center justify-center">
+        <p className="text-muted-foreground text-sm">Audio controls coming soon.</p>
+      </div>
+    </div>
+  );
+}
+
+// Component placeholder cho cài đặt chung của App
+function AppSettingsPanel() {
+  return (
+    <div className="h-full flex flex-col">
+      <div className="p-6 border-b border-sidebar-border">
+        <div className="flex items-center gap-3">
+          <div className="w-10 h-10 rounded-lg bg-primary/10 flex items-center justify-center">
+            <Settings className="w-5 h-5 text-primary" />
+          </div>
+          <div>
+            <h2 className="text-lg font-semibold text-sidebar-foreground">App Settings</h2>
+            <p className="text-sm text-muted-foreground">Configure the application</p>
+          </div>
+        </div>
+      </div>
+      <div className="flex-1 p-6 flex items-center justify-center">
+        <p className="text-muted-foreground text-sm">Application settings coming soon.</p>
+      </div>
+    </div>
+  );
+}
+
 export function SidePanel() {
-  // OPTIMIZATION: Select only the necessary state and use shallow comparison
-  const { selectedRegionId, zoomRegions, cutRegions } = useEditorStore(
+  const [activeTab, setActiveTab] = useState<SidePanelTab>('general');
+
+  // Lấy các state cần thiết từ store
+  const { selectedRegionId, zoomRegions, cutRegions, webcamVideoUrl, setSelectedRegionId } = useEditorStore(
     useShallow(state => ({
       selectedRegionId: state.selectedRegionId,
       zoomRegions: state.zoomRegions,
       cutRegions: state.cutRegions,
-    })));
+      webcamVideoUrl: state.webcamVideoUrl,
+      setSelectedRegionId: state.setSelectedRegionId,
+    }))
+  );
 
-  // OPTIMIZATION: O(1) lookup instead of O(n) find()
-  const selectedRegion = selectedRegionId
-    ? zoomRegions[selectedRegionId] || cutRegions[selectedRegionId]
-    : null;
+  // Tối ưu hóa việc tìm region được chọn bằng useMemo
+  const selectedRegion = useMemo(() => {
+    if (!selectedRegionId) return null;
+    return zoomRegions[selectedRegionId] || cutRegions[selectedRegionId];
+  }, [selectedRegionId, zoomRegions, cutRegions]);
 
-  if (selectedRegion) {
-    return <RegionSettingsPanel region={selectedRegion} />;
-  }
+  // Tự động chuyển về tab 'general' khi một region được chọn
+  useEffect(() => {
+    if (selectedRegion) {
+      setActiveTab('general');
+    }
+  }, [selectedRegion]);
+  
+  // Xử lý khi nhấn phím Escape
+  useEffect(() => {
+    const handleKeyDown = (event: KeyboardEvent) => {
+      if (event.key === 'Escape' && selectedRegionId) {
+        setSelectedRegionId(null);
+      }
+    };
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  }, [selectedRegionId, setSelectedRegionId]);
 
-  return <FrameSettingsPanel />;
+  // Hàm render nội dung chính dựa trên tab đang hoạt động
+  const renderContent = () => {
+    switch (activeTab) {
+      case 'general':
+        // Logic hiển thị động cho tab General
+        return selectedRegion
+          ? <RegionSettingsPanel region={selectedRegion} />
+          : <FrameSettingsPanel />;
+      case 'camera':
+        return <CameraSettings />;
+      case 'audio':
+        return <AudioSettingsPanel />;
+      case 'settings':
+        return <AppSettingsPanel />;
+      default:
+        return <FrameSettingsPanel />;
+    }
+  };
+
+  return (
+    <div className="h-full flex">
+      {/* Main content area */}
+      <div className="flex-1 overflow-y-auto bg-sidebar">
+        {renderContent()}
+      </div>
+
+      {/* Vertical Tab Navigator (Luôn hiển thị) */}
+      <div className="w-[64px] flex-shrink-0 p-3 border-l border-sidebar-border bg-sidebar/80">
+        <div className="flex flex-col items-center space-y-2">
+          <TabButton
+            label="General"
+            icon={<Palette className="w-5 h-5" />}
+            isActive={activeTab === 'general'}
+            onClick={() => setActiveTab('general')}
+          />
+          <TabButton
+            label="Camera"
+            icon={<Video className="w-5 h-5" />}
+            isActive={activeTab === 'camera'}
+            onClick={() => setActiveTab('camera')}
+            disabled={!webcamVideoUrl}
+          />
+          <TabButton
+            label="Audio"
+            icon={<AudioLines className="w-5 h-5" />}
+            isActive={activeTab === 'audio'}
+            onClick={() => setActiveTab('audio')}
+          />
+          <div className="flex-1"></div> {/* Spacer */}
+          <TabButton
+            label="Settings"
+            icon={<Settings className="w-5 h-5" />}
+            isActive={activeTab === 'settings'}
+            onClick={() => setActiveTab('settings')}
+          />
+        </div>
+      </div>
+    </div>
+  );
 }

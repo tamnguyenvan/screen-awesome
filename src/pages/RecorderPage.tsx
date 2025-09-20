@@ -1,8 +1,9 @@
 // src/pages/RecorderPage.tsx
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import {
   Mic, Webcam, Monitor, SquareDashed, Loader2,
-  RefreshCw, AlertTriangle, MousePointerClick, Video, AppWindowMac, X, GripVertical
+  RefreshCw, AlertTriangle, MousePointerClick, Video, AppWindowMac, X, GripVertical,
+  VideoOff
 } from 'lucide-react';
 import { Button } from '../components/ui/button';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '../components/ui/select';
@@ -30,7 +31,11 @@ type DisplayInfo = {
   isPrimary: boolean;
 }
 
-// --- New Panel Components (No longer absolutely positioned) ---
+type WebcamDevice = {
+  deviceId: string;
+  label: string;
+  kind: 'videoinput';
+};
 
 const LinuxToolsWarningPanel = ({ missingTools }: { missingTools: string[] }) => {
   if (missingTools.length === 0) return null;
@@ -161,6 +166,10 @@ export function RecorderPage() {
   const [linuxToolsChecked, setLinuxToolsChecked] = useState(false);
   const [displays, setDisplays] = useState<DisplayInfo[]>([]);
   const [selectedDisplayId, setSelectedDisplayId] = useState<string>('');
+  const [webcams, setWebcams] = useState<WebcamDevice[]>([]);
+  const [selectedWebcamId, setSelectedWebcamId] = useState<string>('none');
+  const webcamPreviewRef = useRef<HTMLVideoElement>(null);
+  const webcamStreamRef = useRef<MediaStream | null>(null);
 
   useEffect(() => {
     window.electronAPI.getPlatform().then(setPlatform);
@@ -191,6 +200,66 @@ export function RecorderPage() {
     }
   }, [source, platform]);
 
+  useEffect(() => {
+    fetchWebcams();
+  }, []);
+
+  const fetchWebcams = async () => {
+    try {
+      await navigator.mediaDevices.getUserMedia({ video: true, audio: false });
+    } catch (err) { console.warn("Could not get webcam permission:", err); }
+
+    const devices = (await navigator.mediaDevices.enumerateDevices()).filter(d => d.kind === 'videoinput') as WebcamDevice[];
+    setWebcams(devices);
+
+    const savedWebcamId = localStorage.getItem('screenawesome_selectedWebcamId');
+    if (savedWebcamId && devices.some(d => d.deviceId === savedWebcamId)) {
+      setSelectedWebcamId(savedWebcamId);
+    } else {
+      setSelectedWebcamId('none');
+    }
+  };
+
+  useEffect(() => {
+    const videoEl = webcamPreviewRef.current;
+
+    // Cleanup function to stop any existing stream
+    const stopStream = () => {
+      if (webcamStreamRef.current) {
+        webcamStreamRef.current.getTracks().forEach(track => track.stop());
+        webcamStreamRef.current = null;
+      }
+      if (videoEl) {
+        videoEl.srcObject = null;
+      }
+    };
+
+    if (selectedWebcamId === 'none' || !videoEl) {
+      stopStream();
+      return;
+    }
+
+    const startStream = async () => {
+      // Stop previous stream before starting a new one
+      stopStream();
+      try {
+        const stream = await navigator.mediaDevices.getUserMedia({ video: { deviceId: { exact: selectedWebcamId } } });
+        // Store the new stream in our ref
+        webcamStreamRef.current = stream;
+        if (videoEl) {
+          videoEl.srcObject = stream;
+        }
+      } catch (error) {
+        console.error("Failed to start webcam preview stream:", error);
+      }
+    };
+
+    startStream();
+
+    // The return function will be called on cleanup (component unmount or dependency change)
+    return stopStream;
+  }, [selectedWebcamId]);
+
   const checkAndFetchSources = async (currentPlatform: NodeJS.Platform) => {
     setLinuxToolsChecked(false);
     setMissingLinuxTools([]);
@@ -220,21 +289,60 @@ export function RecorderPage() {
   };
 
   const handleStart = async (options: { geometry?: WindowSource['geometry'], windowTitle?: string } = {}) => {
+    // ---- START OF FIX ----
+    // Stop the preview stream BEFORE telling the main process to start recording.
+    // This releases the webcam so FFmpeg can use it.
+    if (webcamStreamRef.current) {
+      console.log("Stopping webcam preview stream to release device...");
+      webcamStreamRef.current.getTracks().forEach(track => track.stop());
+      webcamStreamRef.current = null;
+      if (webcamPreviewRef.current) {
+        webcamPreviewRef.current.srcObject = null;
+      }
+    }
+    // ---- END OF FIX ----
+
     try {
       setRecordingState('recording');
+      let webcamPayload;
+      if (selectedWebcamId !== 'none' && webcams.length > 0) {
+        const selectedDevice = webcams.find(d => d.deviceId === selectedWebcamId);
+        const selectedDeviceIndex = webcams.findIndex(d => d.deviceId === selectedWebcamId);
+
+        if (selectedDevice && selectedDeviceIndex > -1) {
+          webcamPayload = {
+            deviceId: selectedDevice.deviceId,
+            deviceLabel: selectedDevice.label,
+            index: selectedDeviceIndex
+          };
+        }
+      }
+
       const result = await window.electronAPI.startRecording({
         source,
         displayId: source === 'fullscreen' ? Number(selectedDisplayId) : undefined,
+        webcam: webcamPayload,
         ...options
       });
       if (result.canceled) {
         setRecordingState('idle');
+        // If recording was cancelled, re-fetch webcams to re-enable preview
+        fetchWebcams();
       }
-    } catch (error) {
+    }
+    catch (error) {
       console.error('Failed to start recording:', error);
       setRecordingState('idle');
+      // If there was an error, re-fetch webcams to re-enable preview
+      fetchWebcams();
     }
   };
+
+  const handleWebcamChange = (deviceId: string) => {
+    setSelectedWebcamId(deviceId);
+    localStorage.setItem('screenawesome_selectedWebcamId', deviceId);
+  };
+
 
   if (recordingState === 'recording') {
     return null;
@@ -350,21 +458,41 @@ export function RecorderPage() {
 
             {/* Controls */}
             <div className="flex items-center gap-3" style={{ WebkitAppRegion: 'no-drag' }}>
-              <Button
-                onClick={() => handleStart()}
-                disabled={isButtonDisabled}
-                variant="default"
-                size="icon"
-                className={cn(
-                  "h-12 w-12",
-                  isButtonDisabled && showLinuxWarning && "bg-amber-500/20 hover:bg-amber-500/30 text-amber-300 border border-amber-500/30",
-                  isButtonDisabled && !showLinuxWarning && "opacity-50"
-                )}
-              >
-                {buttonIcon}
-              </Button>
+              <div className="flex items-center" style={{ WebkitAppRegion: 'no-drag' }}>
+                <Select value={selectedWebcamId} onValueChange={handleWebcamChange}>
+                  <SelectTrigger className="w-12 h-10 ...">
+                    <SelectValue asChild>
+                      {selectedWebcamId !== 'none'
+                        ? <Webcam size={18} className="text-primary" />
+                        : <VideoOff size={18} className="text-muted-foreground" />
+                      }
+                    </SelectValue>
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="none">Don't record camera</SelectItem>
+                    {webcams.map(cam => (
+                      <SelectItem key={cam.deviceId} value={cam.deviceId}>{cam.label || `Camera ...`}</SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
               <Button variant="secondary" size="icon" disabled className="h-10 w-10 opacity-50"><Mic size={18} /></Button>
-              <Button variant="secondary" size="icon" disabled className="h-10 w-10 opacity-50"><Webcam size={18} /></Button>
+
+              <div className="pl-2" style={{ WebkitAppRegion: 'no-drag' }}>
+                <Button
+                  onClick={() => handleStart()}
+                  disabled={isButtonDisabled}
+                  variant="default"
+                  size="icon"
+                  className={cn(
+                    "h-12 w-12",
+                    isButtonDisabled && showLinuxWarning && "bg-amber-500/20 hover:bg-amber-500/30 text-amber-300 border border-amber-500/30",
+                    isButtonDisabled && !showLinuxWarning && "opacity-50"
+                  )}
+                >
+                  {buttonIcon}
+                </Button>
+              </div>
             </div>
           </div>
         </div>
@@ -383,6 +511,12 @@ export function RecorderPage() {
           />
         )}
 
+        {/* MODIFIED: Cập nhật style cho webcam preview */}
+        {selectedWebcamId !== 'none' && (
+          <div className="mt-4 w-48 aspect-square rounded-2xl overflow-hidden shadow-2xl bg-black">
+            <video ref={webcamPreviewRef} autoPlay playsInline muted className="w-full h-full object-cover" />
+          </div>
+        )}
       </div>
     </div>
   );

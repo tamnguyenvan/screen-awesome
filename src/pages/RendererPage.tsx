@@ -135,6 +135,7 @@ type RenderStartPayload = {
 export function RendererPage() {
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const videoRef = useRef<HTMLVideoElement>(null);
+    const webcamVideoRef = useRef<HTMLVideoElement>(null);
 
   useEffect(() => {
     log.info('[RendererPage] Component mounted. Setting up listeners.');
@@ -142,6 +143,7 @@ export function RendererPage() {
     const cleanup = window.electronAPI.onRenderStart(async ({ projectState, exportSettings }: RenderStartPayload) => {
       const canvas = canvasRef.current;
       const video = videoRef.current;
+      const webcamVideo = webcamVideoRef.current;
 
       try {
         log.info('[RendererPage] Received "render:start" event.', { exportSettings });
@@ -161,6 +163,36 @@ export function RendererPage() {
 
         canvas.width = outputWidth;
         canvas.height = outputHeight;
+
+        // MODIFIED: Cập nhật toàn bộ logic tính toán layout của webcam
+        // Webcam layout calculations
+        const { webcamPosition, webcamStyles, isWebcamVisible } = projectState;
+        const webcamHeight = outputHeight * (webcamStyles.size / 100);
+        const webcamWidth = webcamHeight; // Make it a square
+        const webcamRadius = webcamHeight * 0.15; // 15% radius for squircle
+
+        // Calculate webcam coordinates with padding
+        const padding = outputHeight * 0.02; // 2% padding
+        let webcamX, webcamY;
+        switch(webcamPosition.pos) {
+          case 'top-left':
+            webcamX = padding;
+            webcamY = padding;
+            break;
+          case 'top-right':
+            webcamX = outputWidth - webcamWidth - padding;
+            webcamY = padding;
+            break;
+          case 'bottom-left':
+            webcamX = padding;
+            webcamY = outputHeight - webcamHeight - padding;
+            break;
+          case 'bottom-right':
+          default:
+            webcamX = outputWidth - webcamWidth - padding;
+            webcamY = outputHeight - webcamHeight - padding;
+            break;
+        }
 
         // Use alpha: false for performance as we always draw a background
         const ctx = canvas.getContext('2d', { alpha: false });
@@ -203,39 +235,98 @@ export function RendererPage() {
         const innerRadius = Math.max(0, frameStyles.borderRadius - borderWidth);
 
 
-        // 2. Load Video and Wait
-        await new Promise<void>((resolve, reject) => {
-            const onCanPlay = () => {
-                video.removeEventListener('canplay', onCanPlay);
-                video.removeEventListener('error', onError);
-                log.info('[RendererPage] Video is ready to play.');
-                resolve();
-            };
-            const onError = (e: Event) => {
-                video.removeEventListener('canplay', onCanPlay);
-                video.removeEventListener('error', onError);
-                log.error('[RendererPage] Video loading error:', e);
-                reject(new Error('Failed to load video for rendering.'));
-            };
-
-            video.addEventListener('canplay', onCanPlay);
-            video.addEventListener('error', onError);
-
-            video.src = `media://${projectState.videoPath}`;
-            video.muted = true;
-            video.load();
-        });
-
-        // Helper to seek video accurately
-        const seek = (time: number): Promise<void> => {
-          if (Math.abs(video.currentTime - time) < 0.01) return Promise.resolve();
+        // 2. Load Videos and Wait
+        const loadVideo = (videoElement: HTMLVideoElement, source: string): Promise<void> => {
           return new Promise((resolve, reject) => {
-            const onSeeked = () => { video.removeEventListener('seeked', onSeeked); video.removeEventListener('error', onError); resolve(); };
-            const onError = (e: Event) => { video.removeEventListener('seeked', onSeeked); video.removeEventListener('error', onError); log.error('[RendererPage] Video seek error:', e); reject(new Error('Failed to seek video')); };
-            video.addEventListener('seeked', onSeeked);
-            video.addEventListener('error', onError);
-            video.currentTime = time;
+            const onCanPlay = () => {
+              videoElement.removeEventListener('canplay', onCanPlay);
+              videoElement.removeEventListener('error', onError);
+              log.info(`[RendererPage] ${source === 'main' ? 'Main video' : 'Webcam video'} is ready to play.`);
+              resolve();
+            };
+
+            const onError = (e: Event) => {
+              videoElement.removeEventListener('canplay', onCanPlay);
+              videoElement.removeEventListener('error', onError);
+              log.error(`[RendererPage] ${source === 'main' ? 'Main video' : 'Webcam video'} loading error:`, e);
+              reject(new Error(`Failed to load ${source === 'main' ? 'main video' : 'webcam video'} for rendering.`));
+            };
+
+            videoElement.addEventListener('canplay', onCanPlay);
+            videoElement.addEventListener('error', onError);
+
+            videoElement.src = source === 'main' 
+              ? `media://${projectState.videoPath}`
+              : `media://${projectState.webcamVideoPath}`;
+            videoElement.muted = true;
+            videoElement.load();
           });
+        };
+
+        // Load both videos in parallel
+        try {
+          const loadPromises = [
+            loadVideo(video, 'main'),
+            projectState.webcamVideoPath && webcamVideo ? loadVideo(webcamVideo, 'webcam') : Promise.resolve()
+          ];
+          await Promise.all(loadPromises);
+          log.info('[RendererPage] All videos loaded successfully');
+        } catch (error) {
+          log.error('[RendererPage] Error loading videos:', error);
+          throw error;
+        }
+
+        // Helper to seek videos accurately and in sync
+        const seekVideos = (time: number): Promise<void> => {
+          const seekPromises = [
+            new Promise<void>((resolve) => {
+              if (Math.abs(video.currentTime - time) < 0.01) {
+                resolve();
+                return;
+              }
+              const onSeeked = () => {
+                video.removeEventListener('seeked', onSeeked);
+                video.removeEventListener('error', onError);
+                resolve();
+              };
+              const onError = (e: Event) => {
+                video.removeEventListener('seeked', onSeeked);
+                video.removeEventListener('error', onError);
+                log.error('[RendererPage] Main video seek error:', e);
+                resolve(); // Don't reject on seek error, continue with current time
+              };
+              video.addEventListener('seeked', onSeeked);
+              video.addEventListener('error', onError);
+              video.currentTime = time;
+            })
+          ];
+
+          if (projectState.webcamVideoPath && webcamVideo) {
+            seekPromises.push(
+              new Promise<void>((resolve) => {
+                if (Math.abs(webcamVideo.currentTime - time) < 0.01) {
+                  resolve();
+                  return;
+                }
+                const onWebcamSeeked = () => {
+                  webcamVideo.removeEventListener('seeked', onWebcamSeeked);
+                  webcamVideo.removeEventListener('error', onWebcamError);
+                  resolve();
+                };
+                const onWebcamError = (e: Event) => {
+                  webcamVideo.removeEventListener('seeked', onWebcamSeeked);
+                  webcamVideo.removeEventListener('error', onWebcamError);
+                  log.error('[RendererPage] Webcam video seek error:', e);
+                  resolve(); // Don't reject on seek error, continue with current time
+                };
+                webcamVideo.addEventListener('seeked', onWebcamSeeked);
+                webcamVideo.addEventListener('error', onWebcamError);
+                webcamVideo.currentTime = time;
+              })
+            );
+          }
+
+          return Promise.all(seekPromises).then(() => {});
         };
 
         // 3. Start Render Loop
@@ -266,7 +357,7 @@ export function RendererPage() {
           }
 
           // Prepare for rendering
-          await seek(currentTime);
+          await seekVideos(currentTime);
           state.setCurrentTime(currentTime); // Update store for zoom calculations
 
           // --- BEGIN FRAME RENDERING ---
@@ -352,6 +443,19 @@ export function RendererPage() {
           // --- END FRAME RENDERING ---
 
           ctx.restore(); // Restore context state (removes zoom/pan transform)
+
+          // MODIFIED: Cập nhật logic vẽ webcam
+          if (isWebcamVisible && projectState.webcamVideoPath && webcamVideo) {
+            ctx.save();
+            // Tạo clipping path bo tròn cho webcam
+            const webcamPath = new Path2D();
+            webcamPath.roundRect(webcamX, webcamY, webcamWidth, webcamHeight, webcamRadius);
+            ctx.clip(webcamPath);
+
+            // Vẽ frame hiện tại của video webcam
+            ctx.drawImage(webcamVideo, webcamX, webcamY, webcamWidth, webcamHeight);
+            ctx.restore();
+        }
 
           // 6. Extract and Send Frame Data
           const imageData = ctx.getImageData(0, 0, outputWidth, outputHeight);

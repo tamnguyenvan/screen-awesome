@@ -10,6 +10,7 @@ type RecordingResult = {
 type ProjectPayload = {
   videoPath: string;
   metadataPath: string;
+  webcamVideoPath?: string;
 }
 
 type ExportPayload = {
@@ -62,17 +63,18 @@ type DisplayInfo = {
   isPrimary: boolean;
 }
 
-
 // Define API to be exposed to window object
 export const electronAPI = {
   // --- Recording ---
   startRecording: (options: { 
     source: 'area' | 'fullscreen' | 'window', 
     geometry?: WindowSource['geometry'];
-    windowTitle?: string, 
+    windowTitle?: string; 
     displayId?: number,
+    webcam?: { deviceId: string; deviceLabel: string; index: number };
   }): Promise<RecordingResult> => ipcRenderer.invoke('recording:start', options),
   getDisplays: (): Promise<DisplayInfo[]> => ipcRenderer.invoke('desktop:get-displays'),
+  getWebcams: (): Promise<Electron.DesktopCapturerSource[]> => ipcRenderer.invoke('desktop:get-webcams'),
 
   getDesktopSources: (): Promise<WindowSource[]> => ipcRenderer.invoke('desktop:get-sources'),
   linuxCheckTools: (): Promise<{ [key: string]: boolean }> => ipcRenderer.invoke('linux:check-tools'),

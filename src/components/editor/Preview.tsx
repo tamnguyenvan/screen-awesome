@@ -5,6 +5,7 @@ import { useEditorStore, usePlaybackState } from '../../store/editorStore';
 import { calculateZoomTransform } from '../../lib/transform';
 import { Film } from 'lucide-react';
 import { useShallow } from 'zustand/react/shallow';
+import { cn } from '../../lib/utils';
 
 const generateBackgroundStyle = (backgroundState: ReturnType<typeof useEditorStore.getState>['frameStyles']['background']) => {
   // ... (no changes in this function, keeping it for brevity)
@@ -33,14 +34,22 @@ const generateBackgroundStyle = (backgroundState: ReturnType<typeof useEditorSto
 };
 
 export const Preview = memo(({ videoRef }: { videoRef: React.RefObject<HTMLVideoElement> }) => {
-  const { frameStyles, videoUrl, aspectRatio, videoDimensions, cutRegions } = useEditorStore(
+  // MODIFIED: Thay thế webcamSize bằng webcamStyles
+  const { frameStyles, videoUrl, aspectRatio, videoDimensions, cutRegions,
+    webcamVideoUrl, webcamPosition, isWebcamVisible, webcamStyles
+  } = useEditorStore(
     useShallow(state => ({
       frameStyles: state.frameStyles,
       videoUrl: state.videoUrl,
       aspectRatio: state.aspectRatio,
       videoDimensions: state.videoDimensions,
       cutRegions: state.cutRegions,
+      webcamVideoUrl: state.webcamVideoUrl,
+      webcamPosition: state.webcamPosition,
+      isWebcamVisible: state.isWebcamVisible,
+      webcamStyles: state.webcamStyles,
     })));
+
   const { setPlaying, setCurrentTime, setDuration, setVideoDimensions } = useEditorStore(
     useShallow(state => ({
       setPlaying: state.setPlaying,
@@ -51,6 +60,20 @@ export const Preview = memo(({ videoRef }: { videoRef: React.RefObject<HTMLVideo
   const { isPlaying, isCurrentlyCut } = usePlaybackState();
 
   const frameContainerRef = useRef<HTMLDivElement>(null);
+  const webcamVideoRef = useRef<HTMLVideoElement>(null);
+
+  useEffect(() => {
+    const video = videoRef.current;
+    if (!video) return;
+    const webcamVideo = webcamVideoRef.current;
+    if (isPlaying) {
+      video.play();
+      webcamVideo?.play();
+    } else {
+      video.pause();
+      webcamVideo?.pause();
+    }
+  }, [isPlaying, videoRef]);
 
   useEffect(() => {
     let animationFrameId: number;
@@ -99,34 +122,35 @@ export const Preview = memo(({ videoRef }: { videoRef: React.RefObject<HTMLVideo
 
   const backgroundStyle = useMemo(() => generateBackgroundStyle(frameStyles.background), [frameStyles.background]);
   const cssAspectRatio = useMemo(() => aspectRatio.replace(':', ' / '), [aspectRatio]);
-  
+
   const { videoDisplayWidth, videoDisplayHeight } = useMemo(() => {
-      if (!videoDimensions.width || !videoDimensions.height) {
-        return { videoDisplayWidth: '100%', videoDisplayHeight: '100%' };
-      }
-      const [vpWidth, vpHeight] = aspectRatio.split(':').map(Number);
-      const viewportAspectRatio = vpWidth / vpHeight;
-      const nativeVideoAspectRatio = videoDimensions.width / videoDimensions.height;
-      if (nativeVideoAspectRatio > viewportAspectRatio) {
-        return { videoDisplayWidth: '100%', videoDisplayHeight: 'auto' };
-      } else {
-        return { videoDisplayWidth: 'auto', videoDisplayHeight: '100%' };
-      }
+    if (!videoDimensions.width || !videoDimensions.height) {
+      return { videoDisplayWidth: '100%', videoDisplayHeight: '100%' };
+    }
+    const [vpWidth, vpHeight] = aspectRatio.split(':').map(Number);
+    const viewportAspectRatio = vpWidth / vpHeight;
+    const nativeVideoAspectRatio = videoDimensions.width / videoDimensions.height;
+    if (nativeVideoAspectRatio > viewportAspectRatio) {
+      return { videoDisplayWidth: '100%', videoDisplayHeight: 'auto' };
+    } else {
+      return { videoDisplayWidth: 'auto', videoDisplayHeight: '100%' };
+    }
   }, [aspectRatio, videoDimensions]);
 
   const handleTimeUpdate = () => {
-    // ... (no changes in this function)
     if (!videoRef.current) return;
     const endTrimRegion = Object.values(cutRegions).find(r => r.trimType === 'end');
     if (endTrimRegion && videoRef.current.currentTime >= endTrimRegion.startTime) {
       videoRef.current.currentTime = endTrimRegion.startTime;
       videoRef.current.pause();
     }
+    if (webcamVideoRef.current) {
+      webcamVideoRef.current.currentTime = videoRef.current.currentTime;
+    }
     setCurrentTime(videoRef.current.currentTime);
   };
 
   const handleLoadedMetadata = () => {
-    // ... (no changes in this function)
     if (videoRef.current) {
       setDuration(videoRef.current.duration);
       setVideoDimensions({ width: videoRef.current.videoWidth, height: videoRef.current.videoHeight });
@@ -168,6 +192,32 @@ export const Preview = memo(({ videoRef }: { videoRef: React.RefObject<HTMLVideo
     zIndex: 1,
   }), [frameStyles.borderRadius, frameStyles.borderWidth]);
 
+  // NEW: Tính toán style động cho webcam dựa trên state
+  const webcamDynamicStyle = useMemo(() => {
+    const shadow = webcamStyles.shadow;
+    const shadowOpacity = Math.min(shadow * 0.015, 0.4);
+    const shadowBlur = shadow * 1.5;
+    const shadowY = shadow;
+    return {
+      height: `${webcamStyles.size}%`,
+      filter: `drop-shadow(0px ${shadowY}px ${shadowBlur}px rgba(0, 0, 0, ${shadowOpacity}))`,
+    };
+  }, [webcamStyles]);
+
+  // MODIFIED: Cập nhật class cho webcam, bỏ border, đổi thành hình vuông bo góc
+  const webcamWrapperClasses = cn(
+    'absolute z-20 aspect-square overflow-hidden rounded-2xl', // Change to square, squircle, no border
+    'transition-all duration-300 ease-in-out', // For smooth hide/show and position changes
+    {
+      'top-4 left-4': webcamPosition.pos === 'top-left',
+      'top-4 right-4': webcamPosition.pos === 'top-right',
+      'bottom-4 left-4': webcamPosition.pos === 'bottom-left',
+      'bottom-4 right-4': webcamPosition.pos === 'bottom-right',
+      'opacity-0 scale-95': !isWebcamVisible, // Add a subtle scale for the transition
+      'opacity-100 scale-100': isWebcamVisible,
+    }
+  );
+
   return (
     <div
       className="transition-all duration-300 ease-out flex items-center justify-center relative overflow-hidden"
@@ -205,6 +255,19 @@ export const Preview = memo(({ videoRef }: { videoRef: React.RefObject<HTMLVideo
                 onEnded={() => setPlaying(false)}
               />
             </div>
+            
+            {/* MODIFIED: Áp dụng class và style mới cho webcam */}
+            {webcamVideoUrl && (
+              <div className={webcamWrapperClasses} style={webcamDynamicStyle}>
+                <video
+                  ref={webcamVideoRef}
+                  src={webcamVideoUrl}
+                  muted
+                  playsInline
+                  className="w-full h-full object-cover"
+                />
+              </div>
+            )}
           </div>
         ) : (
           <div className="w-full h-full bg-gradient-to-br from-slate-50/10 to-slate-100/5 border-2 border-dashed border-white/20 rounded-xl flex flex-col items-center justify-center text-white/70 gap-4 backdrop-blur-sm">
