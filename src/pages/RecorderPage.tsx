@@ -5,12 +5,9 @@ import {
   RefreshCw, AlertTriangle, MousePointerClick, Video, AppWindowMac, X, GripVertical
 } from 'lucide-react';
 import { Button } from '../components/ui/button';
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '../components/ui/select';
 import { cn } from '../lib/utils';
 import "../index.css";
-
-// MODIFIED: Increased default height for a more spacious feel.
-const RECORDER_SIZE_DEFAULT = { width: 800, height: 90 };
-const RECORDER_SIZE_WINDOW_PICKER = { width: 800, height: 800 };
 
 type RecordingState = 'idle' | 'recording';
 type RecordingSource = 'area' | 'fullscreen' | 'window';
@@ -27,7 +24,15 @@ type WindowSource = {
   };
 }
 
-const LinuxToolsWarning = ({ missingTools }: { missingTools: string[] }) => {
+type DisplayInfo = {
+  id: number;
+  name: string;
+  isPrimary: boolean;
+}
+
+// --- New Panel Components (No longer absolutely positioned) ---
+
+const LinuxToolsWarningPanel = ({ missingTools }: { missingTools: string[] }) => {
   if (missingTools.length === 0) return null;
 
   const getInstallCommands = () => (
@@ -58,7 +63,7 @@ const LinuxToolsWarning = ({ missingTools }: { missingTools: string[] }) => {
 
   return (
     <div
-      className="absolute bottom-full left-1/2 -translate-x-1/2 mb-4 w-[480px] p-6 bg-card/90 border border-amber-500/30 rounded-lg shadow-2xl backdrop-blur-xl"
+      className="w-full max-w-[480px] p-6 mt-4 bg-card/95 border border-amber-500/30 rounded-lg shadow-2xl backdrop-blur-xl"
       style={{ WebkitAppRegion: 'no-drag' }}
     >
       <div className="flex items-start gap-4">
@@ -80,7 +85,7 @@ const LinuxToolsWarning = ({ missingTools }: { missingTools: string[] }) => {
   );
 };
 
-function WindowPicker({ onSelect, onRefresh, sources, isLoading }: {
+function WindowPickerPanel({ onSelect, onRefresh, sources, isLoading }: {
   onSelect: (source: WindowSource) => void,
   onRefresh: () => void,
   sources: WindowSource[],
@@ -88,7 +93,7 @@ function WindowPicker({ onSelect, onRefresh, sources, isLoading }: {
 }) {
   return (
     <div
-      className="absolute bottom-full left-1/2 -translate-x-1/2 mb-4 w-[720px] h-72 p-4 bg-card border border-border/50 rounded-lg shadow-2xl backdrop-blur-xl flex flex-col"
+      className="w-full max-w-[720px] mt-4 h-72 p-4 bg-card/95 border border-border/50 rounded-lg shadow-2xl backdrop-blur-xl flex flex-col"
       style={{ WebkitAppRegion: 'no-drag' }}
     >
       <div className="flex items-center justify-between mb-3 flex-shrink-0 px-2">
@@ -154,6 +159,37 @@ export function RecorderPage() {
   const [platform, setPlatform] = useState<NodeJS.Platform | null>(null);
   const [missingLinuxTools, setMissingLinuxTools] = useState<string[]>([]);
   const [linuxToolsChecked, setLinuxToolsChecked] = useState(false);
+  const [displays, setDisplays] = useState<DisplayInfo[]>([]);
+  const [selectedDisplayId, setSelectedDisplayId] = useState<string>('');
+
+  useEffect(() => {
+    window.electronAPI.getPlatform().then(setPlatform);
+
+    // Lấy danh sách màn hình
+    window.electronAPI.getDisplays().then(fetchedDisplays => {
+      setDisplays(fetchedDisplays);
+      const primary = fetchedDisplays.find(d => d.isPrimary);
+      if (primary) {
+        setSelectedDisplayId(String(primary.id));
+      } else if (fetchedDisplays.length > 0) {
+        setSelectedDisplayId(String(fetchedDisplays[0].id));
+      }
+    });
+
+    const cleanup = window.electronAPI.onRecordingFinished(() => {
+      // Không cần setRecorderSize nữa
+      setRecordingState('idle');
+    });
+
+    return () => cleanup();
+  }, []);
+
+  // Sửa đổi: useEffect chỉ để fetch sources, không resize
+  useEffect(() => {
+    if (source === 'window' && platform) {
+      checkAndFetchSources(platform);
+    }
+  }, [source, platform]);
 
   const checkAndFetchSources = async (currentPlatform: NodeJS.Platform) => {
     setLinuxToolsChecked(false);
@@ -169,9 +205,7 @@ export function RecorderPage() {
       setMissingLinuxTools(missing);
       setLinuxToolsChecked(true);
 
-      if (missing.length > 0) {
-        return;
-      }
+      if (missing.length > 0) return;
     }
 
     setIsLoadingWindows(true);
@@ -185,32 +219,14 @@ export function RecorderPage() {
     }
   };
 
-  useEffect(() => {
-    if (!platform) {
-      window.electronAPI.getPlatform().then(setPlatform);
-    }
-
-    if (source === 'window') {
-      window.electronAPI.setRecorderSize(RECORDER_SIZE_WINDOW_PICKER);
-      if (platform) {
-        checkAndFetchSources(platform);
-      }
-    } else {
-      window.electronAPI.setRecorderSize(RECORDER_SIZE_DEFAULT);
-    }
-
-    const cleanup = window.electronAPI.onRecordingFinished(() => {
-      window.electronAPI.setRecorderSize(RECORDER_SIZE_DEFAULT);
-      setRecordingState('idle');
-    });
-
-    return () => cleanup();
-  }, [source, platform]);
-
   const handleStart = async (options: { geometry?: WindowSource['geometry'], windowTitle?: string } = {}) => {
     try {
       setRecordingState('recording');
-      const result = await window.electronAPI.startRecording({ source, ...options });
+      const result = await window.electronAPI.startRecording({
+        source,
+        displayId: source === 'fullscreen' ? Number(selectedDisplayId) : undefined,
+        ...options
+      });
       if (result.canceled) {
         setRecordingState('idle');
       }
@@ -242,12 +258,124 @@ export function RecorderPage() {
   }
 
   return (
-    <main className="flex items-center justify-center h-screen bg-transparent select-none p-4">
-      <div className="relative">
-        {showLinuxWarning && <LinuxToolsWarning missingTools={missingLinuxTools} />}
+    // Container chính chiếm toàn bộ cửa sổ 800x800 trong suốt
+    <div className="relative h-screen w-screen bg-transparent select-none">
+
+      {/* Wrapper nội dung: Căn giữa trên cùng */}
+      <div className="absolute top-0 left-0 right-0 flex flex-col items-center pt-8">
+
+        {/* --- 1. Control Bar Chính --- */}
+        <div
+          className={cn(
+            "relative flex items-stretch gap-4 p-2 rounded-xl", // Thêm 'relative' vào đây
+            "bg-transparent text-card-foreground",
+          )}
+          style={{ WebkitAppRegion: 'drag' }}
+        >
+          {/* Nút đóng (Close Button) */}
+          <button
+            onClick={() => window.electronAPI.closeWindow()}
+            style={{ WebkitAppRegion: 'no-drag' }}
+            className={cn(
+              "absolute -top-1 -right-1 z-20 flex items-center justify-center w-6 h-6 rounded-full",
+              "bg-card border border-border hover:bg-destructive text-muted-foreground hover:text-white shadow-lg"
+            )}
+            aria-label="Close Recorder"
+          >
+            <X className="w-4 h-4" />
+          </button>
+
+          <div
+            className={cn(
+              "flex items-stretch gap-4 p-2 rounded-xl",
+              "bg-card border border-border text-card-foreground",
+              "shadow-lg backdrop-blur-xl"
+            )}
+            style={{ WebkitAppRegion: 'drag' }}
+          >
+            {/* Tay nắm kéo (Drag Handle) */}
+            <div className="flex items-center justify-center pl-2 pr-1 cursor-grab" style={{ WebkitAppRegion: 'drag' }}>
+              <GripVertical className="w-5 h-5 text-muted-foreground/50" />
+            </div>
+
+            {/* Source Selection */}
+            <div className="flex items-center p-1 bg-muted rounded-lg border border-border" style={{ WebkitAppRegion: 'no-drag' }}>
+              <SourceButton
+                label="Full Screen"
+                icon={<Monitor size={16} />}
+                isActive={source === 'fullscreen'}
+                onClick={() => setSource('fullscreen')}
+              />
+              <SourceButton
+                label="Area"
+                icon={<SquareDashed size={16} />}
+                isActive={source === 'area'}
+                onClick={() => setSource('area')}
+              />
+              <SourceButton
+                label="Window"
+                icon={<AppWindowMac size={16} />}
+                isActive={source === 'window'}
+                onClick={() => setSource('window')}
+              />
+            </div>
+
+            {/* *** Chọn Màn hình (Chỉ hiện khi Full Screen) *** */}
+            <div className="flex items-center" style={{ WebkitAppRegion: 'no-drag' }}>
+              <Select
+                value={selectedDisplayId}
+                onValueChange={setSelectedDisplayId}
+                disabled={source !== 'fullscreen'}
+              >
+                <SelectTrigger
+                  className={cn(
+                    "w-28 h-11 border-border/50",
+                    source === 'fullscreen' ? "bg-background/60" : "bg-muted/50 cursor-not-allowed opacity-70"
+                  )}
+                >
+                  <SelectValue placeholder="Monitor" />
+                </SelectTrigger>
+                <SelectContent>
+                  {displays.map(display => (
+                    <SelectItem key={display.id} value={String(display.id)}>
+                      {display.name.split(' (')[0].replace('Display', 'M')}{display.isPrimary ? ' ★' : ''}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+
+            {/* Divider */}
+            <div className="w-px bg-border/50"></div>
+
+            {/* Controls */}
+            <div className="flex items-center gap-3" style={{ WebkitAppRegion: 'no-drag' }}>
+              <Button
+                onClick={() => handleStart()}
+                disabled={isButtonDisabled}
+                variant="default"
+                size="icon"
+                className={cn(
+                  "h-12 w-12",
+                  isButtonDisabled && showLinuxWarning && "bg-amber-500/20 hover:bg-amber-500/30 text-amber-300 border border-amber-500/30",
+                  isButtonDisabled && !showLinuxWarning && "opacity-50"
+                )}
+              >
+                {buttonIcon}
+              </Button>
+              <Button variant="secondary" size="icon" disabled className="h-10 w-10 opacity-50"><Mic size={18} /></Button>
+              <Button variant="secondary" size="icon" disabled className="h-10 w-10 opacity-50"><Webcam size={18} /></Button>
+            </div>
+          </div>
+        </div>
+
+        {/* --- 2. Các Panel Hiển thị Có Điều kiện (Bên dưới thanh bar) --- */}
+        {showLinuxWarning && (
+          <LinuxToolsWarningPanel missingTools={missingLinuxTools} />
+        )}
 
         {showWindowPicker && (
-          <WindowPicker
+          <WindowPickerPanel
             sources={windowSources}
             isLoading={isLoadingWindows}
             onRefresh={() => platform && checkAndFetchSources(platform)}
@@ -255,93 +383,8 @@ export function RecorderPage() {
           />
         )}
 
-        <button
-          onClick={() => window.electronAPI.closeWindow()}
-          style={{ WebkitAppRegion: 'no-drag' }}
-          className={cn(
-            "absolute top-0 right-0 z-20 flex items-center justify-center w-6 h-6 rounded-full transition-colors duration-200",
-            "translate-x-1/2 -translate-y-1/2",
-            "bg-card/80 border border-border hover:bg-destructive/20 text-muted-foreground hover:text-destructive",
-            "backdrop-blur-sm shadow-lg"
-          )}
-          aria-label="Close Recorder"
-        >
-          <X className="w-4 h-4" />
-        </button>
-
-        <div
-          className={cn(
-            "relative flex items-stretch gap-4 p-2 rounded-xl",
-            "bg-card/80 border border-border text-card-foreground",
-            "shadow-lg backdrop-blur-xl"
-          )}
-          style={{ WebkitAppRegion: 'drag' }}
-        >
-          {/* NEW: Dedicated Drag Handle */}
-          <div className="flex items-center justify-center pl-2 pr-1 cursor-grab" style={{ WebkitAppRegion: 'drag' }}>
-            <GripVertical className="w-5 h-5 text-muted-foreground/50" />
-          </div>
-
-          {/* Source Selection */}
-          <div className="flex items-center p-1 bg-muted rounded-lg border border-border" style={{ WebkitAppRegion: 'no-drag' }}>
-            <SourceButton
-              label="Full Screen"
-              icon={<Monitor size={16} />}
-              isActive={source === 'fullscreen'}
-              onClick={() => setSource('fullscreen')}
-            />
-            <SourceButton
-              label="Area"
-              icon={<SquareDashed size={16} />}
-              isActive={source === 'area'}
-              onClick={() => setSource('area')}
-            />
-            <SourceButton
-              label="Window"
-              icon={<AppWindowMac size={16} />}
-              isActive={source === 'window'}
-              onClick={() => setSource('window')}
-            />
-          </div>
-
-          {/* Divider */}
-          <div className="w-px bg-border/50"></div>
-
-          {/* Controls */}
-          <div className="flex items-center gap-3" style={{ WebkitAppRegion: 'no-drag' }}>
-            <Button
-              onClick={() => handleStart()}
-              disabled={isButtonDisabled}
-              variant="default"
-              size="icon"
-              className={cn(
-                "h-12 w-12", // Larger record button
-                isButtonDisabled && showLinuxWarning && "bg-amber-500/20 hover:bg-amber-500/30 text-amber-300 border border-amber-500/30",
-                isButtonDisabled && !showLinuxWarning && "opacity-50"
-              )}
-            >
-              {buttonIcon}
-            </Button>
-            <Button
-              variant="secondary"
-              size="icon"
-              disabled
-              className="h-10 w-10 opacity-50" // Larger secondary buttons
-            >
-              <Mic size={18} />
-            </Button>
-            <Button
-              variant="secondary"
-              size="icon"
-              disabled
-              className="h-10 w-10 opacity-50" // Larger secondary buttons
-            >
-              <Webcam size={18} />
-            </Button>
-          </div>
-        </div>
       </div>
-    </main>
+    </div>
   );
 }
 

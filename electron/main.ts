@@ -34,16 +34,16 @@ import fsSync from 'node:fs'
 import Store from 'electron-store';
 
 const schema = {
-	windowBounds: {
-		type: 'object',
-		properties: {
-			width: { type: 'number' },
-			height: { type: 'number' },
-			x: { type: 'number' },
-			y: { type: 'number' },
-		},
-		default: { width: 1280, height: 800 } // Giá trị mặc định khi chưa có cài đặt
-	},
+  windowBounds: {
+    type: 'object',
+    properties: {
+      width: { type: 'number' },
+      height: { type: 'number' },
+      x: { type: 'number' },
+      y: { type: 'number' },
+    },
+    default: { width: 1280, height: 800 } // Giá trị mặc định khi chưa có cài đặt
+  },
   appearance: {
     type: 'object',
     properties: {
@@ -68,6 +68,12 @@ export const VITE_DEV_SERVER_URL = process.env['VITE_DEV_SERVER_URL']
 export const MAIN_DIST = path.join(process.env.APP_ROOT, 'dist-electron')
 export const RENDERER_DIST = path.join(process.env.APP_ROOT, 'dist')
 type ResolutionKey = '720p' | '1080p' | '2k';
+type DisplayInfo = {
+  id: number;
+  name: string;
+  bounds: Electron.Rectangle;
+  isPrimary: boolean;
+}
 
 const RESOLUTIONS: Record<ResolutionKey, { width: number; height: number }> = {
   '720p': { width: 1280, height: 720 },
@@ -99,7 +105,6 @@ async function handleLoadPresets() {
   return presets;
 }
 
-// MODIFIED: Thay thế logic ghi file cũ bằng electron-store
 async function handleSavePresets(_event: IpcMainInvokeEvent, presets: unknown) {
   log.info('[Main] Saving presets to electron-store.');
   store.set('presets', presets);
@@ -117,6 +122,22 @@ function calculateExportDimensions(resolutionKey: ResolutionKey, aspectRatio: st
   const finalWidth = width % 2 === 0 ? width : width + 1;
 
   return { width: finalWidth, height: baseHeight };
+}
+
+async function handleGetDisplays(): Promise<DisplayInfo[]> {
+  log.info('[Main] Getting all displays...');
+  const primaryDisplay = screen.getPrimaryDisplay();
+  const allDisplays = screen.getAllDisplays();
+
+  const displays = allDisplays.map((display, index) => ({
+    id: display.id,
+    name: `Display ${index + 1} (${display.bounds.width}x${display.bounds.height})`,
+    bounds: display.bounds,
+    isPrimary: display.id === primaryDisplay.id,
+  }));
+
+  log.info('[Main] Found displays:', displays);
+  return displays;
 }
 
 function getFFmpegPath(): string {
@@ -577,10 +598,11 @@ async function handleGetDesktopSources() {
 
 async function handleStartRecording(_event: IpcMainInvokeEvent, options: {
   source: 'fullscreen' | 'area' | 'window',
-  geometry?: { x: number, y: number, width: number, height: number }; // Thêm geometry
+  geometry?: { x: number, y: number, width: number, height: number };
   windowTitle?: string;
+  displayId?: number; // THÊM: displayId để chọn màn hình
 }) {
-  const { source, geometry, windowTitle } = options;
+  const { source, geometry, windowTitle, displayId } = options; // THÊM displayId
   const display = process.env.DISPLAY || ':0.0';
 
   if (source === 'window') {
@@ -708,13 +730,72 @@ async function handleStartRecording(_event: IpcMainInvokeEvent, options: {
     });
 
   } else { // Default to fullscreen
-    const ffmpegArgs = [
-      '-f', 'x11grab',
-      '-i', display,
-      '-c:v', 'libx264',
-      '-preset', 'ultrafast',
-      '-pix_fmt', 'yuv420p',
-    ];
+    const allDisplays = screen.getAllDisplays();
+    let targetDisplay = allDisplays.find(d => d.id === displayId);
+
+    if (!targetDisplay) {
+      log.warn(`[Main] Display with ID ${displayId} not found. Defaulting to primary display.`);
+      targetDisplay = screen.getPrimaryDisplay();
+    }
+
+    log.info(`[Main] Starting FULLSCREEN recording for display:`, targetDisplay.id, targetDisplay.bounds);
+
+    const { x, y, width, height } = targetDisplay.bounds;
+    // Đảm bảo width/height là số chẵn
+    const safeWidth = Math.floor(width / 2) * 2;
+    const safeHeight = Math.floor(height / 2) * 2;
+
+    let ffmpegArgs: string[] = [];
+
+    // Xây dựng command cho từng hệ điều hành
+    switch (process.platform) {
+      case 'linux':
+        ffmpegArgs = [
+          '-f', 'x11grab',
+          '-video_size', `${safeWidth}x${safeHeight}`,
+          '-i', `${display}+${x},${y}`,
+          '-c:v', 'libx264',
+          '-preset', 'ultrafast',
+          '-pix_fmt', 'yuv420p',
+        ];
+        break;
+
+      case 'win32':
+        ffmpegArgs = [
+          '-f', 'gdigrab',
+          '-offset_x', x.toString(),
+          '-offset_y', y.toString(),
+          '-video_size', `${safeWidth}x${safeHeight}`,
+          '-i', 'desktop',
+          '-c:v', 'libx264',
+          '-preset', 'ultrafast',
+          '-pix_fmt', 'yuv420p',
+        ];
+        break;
+
+      case 'darwin': {
+        // Trên macOS, chúng ta dùng index của màn hình
+        const displayIndex = allDisplays.findIndex(d => d.id === targetDisplay!.id);
+        const videoInputIndex = displayIndex >= 0 ? displayIndex : 0;
+        log.info(`[Main] macOS using display index: ${videoInputIndex}`);
+
+        ffmpegArgs = [
+          '-f', 'avfoundation',
+          // Định dạng "video_index:audio_index". Dùng ":" để chỉ định chỉ video.
+          '-i', `${videoInputIndex}:`,
+          '-c:v', 'libx264',
+          '-preset', 'ultrafast',
+          '-pix_fmt', 'yuv420p',
+        ];
+        break;
+      }
+
+      default:
+        log.error(`Fullscreen recording is not supported on ${process.platform}`);
+        dialog.showErrorBox('Unsupported Platform', 'Fullscreen recording is not supported on this operating system.');
+        return { canceled: true, filePath: undefined };
+    }
+
     return startActualRecording(ffmpegArgs);
   }
 }
@@ -784,20 +865,29 @@ async function handleCancelRecording(videoPath: string, metadataPath: string) {
 }
 
 function createRecorderWindow() {
+  // Lấy thông tin màn hình chính để tính toán vị trí
+  const primaryDisplay = screen.getPrimaryDisplay();
+  const { width: screenWidth, height: screenHeight } = primaryDisplay.workAreaSize;
+
+  const windowWidth = 800;
+  const windowHeight = 800;
+
+  // Tính toán vị trí: Căn giữa theo chiều ngang, cách 1/4 từ trên xuống
+  const x = Math.round((screenWidth - windowWidth) / 2);
+  const y = Math.max(0, Math.round(screenHeight / 4));
+
+  log.info(`[Main] Creating recorder window at ${x}, ${y} with fixed size ${windowWidth}x${windowHeight}`);
+
   recorderWin = new BrowserWindow({
     icon: path.join(process.env.VITE_PUBLIC, 'screenawesome-appicon.png'),
-    width: 800,
-    height: 90,
+    width: windowWidth,
+    height: windowHeight,
+    x,
+    y,
     frame: false,
     transparent: true,
     alwaysOnTop: true,
     resizable: false,
-    // --- VIBRANCY SETTINGS ---
-    // For macOS, uncomment the line below for a native blur effect
-    // vibrancy: 'under-window',
-    // For Windows and Linux, 'transparent: true' is key.
-    // The blur effect is then handled by CSS in the renderer process.
-    // We must ensure no background color is set here if transparent is true.
     webPreferences: {
       nodeIntegration: true,
       preload: path.join(__dirname, 'preload.mjs'),
@@ -1058,7 +1148,7 @@ app.whenReady().then(() => {
     if (recorderWin) {
       log.info(`Resizing recorder window to ${width}x${height}`);
       // Set size with animation, but DO NOT re-center.
-      recorderWin.setSize(width, height, true); 
+      recorderWin.setSize(width, height, true);
     }
   });
 
@@ -1100,6 +1190,7 @@ app.whenReady().then(() => {
     store.set(key, value);
   });
 
+  ipcMain.handle('desktop:get-displays', handleGetDisplays);
   ipcMain.handle('linux:check-tools', checkLinuxTools);
   ipcMain.handle('desktop:get-sources', handleGetDesktopSources);
   ipcMain.handle('recording:start', handleStartRecording)
