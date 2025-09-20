@@ -8,6 +8,11 @@ import { useEditorStore } from './store/editorStore';
 function App() {
   const [route, setRoute] = useState(window.location.hash);
   const theme = useEditorStore((state) => state.theme);
+  const { initializeSettings } = useEditorStore.getState();
+
+  useEffect(() => {
+    initializeSettings();
+  }, [initializeSettings]);
 
   useEffect(() => {
     const root = document.documentElement;

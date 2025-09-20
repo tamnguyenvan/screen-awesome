@@ -35,6 +35,7 @@ export interface EditorActions {
   setTimelineZoom: (zoom: number) => void;
   reset: () => void;
   _debouncedUpdatePreset: () => void;
+  initializeSettings: () => Promise<void>;
   initializePresets: () => Promise<void>;
   applyPreset: (id: string) => void;
   saveCurrentStyleAsPreset: (name: string) => void;
@@ -350,7 +351,12 @@ export const useEditorStore = create(
       }),
 
       setSelectedRegionId: (id) => set(state => { state.selectedRegionId = id; }),
-      toggleTheme: () => set(state => { state.theme = state.theme === 'dark' ? 'light' : 'dark'; }),
+      toggleTheme: () => {
+        const newTheme = get().theme === 'dark' ? 'light' : 'dark';
+        set(state => { state.theme = newTheme; });
+        // NEW: Lưu lại cài đặt theme mới
+        window.electronAPI.setSetting('appearance.theme', newTheme);
+      },
       setPreviewCutRegion: (region) => set(state => { state.previewCutRegion = region; }),
       setTimelineZoom: (zoom) => set(state => { state.timelineZoom = zoom; }),
 
@@ -359,46 +365,45 @@ export const useEditorStore = create(
         debounceTimer = setTimeout(() => {
           const { activePresetId, presets, frameStyles, aspectRatio } = get();
           if (activePresetId && presets[activePresetId]) {
-            // 1. Chuyển sang trạng thái 'saving'
             set({ presetSaveStatus: 'saving' });
-
-            // Cập nhật state nội bộ
             set(state => {
               state.presets[activePresetId].styles = JSON.parse(JSON.stringify(frameStyles));
               state.presets[activePresetId].aspectRatio = aspectRatio;
             });
 
-            // Gọi API lưu và xử lý kết quả
-            _persistPresets(get().presets)
-              .then(() => {
-                console.log(`Auto-saved preset: "${presets[activePresetId].name}"`);
-              })
-              .catch(err => {
-                console.error("Failed to auto-save preset:", err);
-                // Có thể thêm logic xử lý lỗi ở đây nếu cần
-              })
-              .finally(() => {
-                // 2. Chuyển sang trạng thái 'saved'
-                set({ presetSaveStatus: 'saved' });
-
-                // 3. Sau 1.5s, quay lại trạng thái 'idle'
-                setTimeout(() => {
-                  // Chỉ reset nếu trạng thái vẫn là 'saved'
-                  if (get().presetSaveStatus === 'saved') {
-                    set({ presetSaveStatus: 'idle' });
-                  }
-                }, 1500);
-              });
+            // MODIFIED: Sử dụng setSetting để lưu presets
+            window.electronAPI.setSetting('presets', get().presets);
+            
+            console.log(`Auto-saved preset: "${presets[activePresetId].name}"`);
+            set({ presetSaveStatus: 'saved' });
+            setTimeout(() => {
+              if (get().presetSaveStatus === 'saved') {
+                set({ presetSaveStatus: 'idle' });
+              }
+            }, 1500);
           }
         }, 1500);
       },
 
+      // NEW: Action để tải cài đặt từ main process khi app được mở
+      initializeSettings: async () => {
+        try {
+          const appearance = await window.electronAPI.getSetting<{ theme: 'light' | 'dark' }>('appearance');
+          if (appearance && appearance.theme) {
+            set({ theme: appearance.theme });
+          }
+          // Có thể tải các cài đặt khác ở đây trong tương lai
+        } catch (error) {
+          console.error("Could not load app settings:", error);
+        }
+      },
+      
       initializePresets: async () => {
         try {
-          let loadedPresets = await window.electronAPI.loadPresets();
+          // MODIFIED: Tải presets qua hệ thống settings chung
+          let loadedPresets = await window.electronAPI.getSetting<Record<string, Preset>>('presets');
 
-          // Logic này đã đúng: Nếu không có preset nào, tạo một cái mặc định.
-          if (Object.keys(loadedPresets).length === 0) {
+          if (!loadedPresets || Object.keys(loadedPresets).length === 0) {
             const defaultId = `preset-default-${Date.now()}`;
             loadedPresets = {
               [defaultId]: {
@@ -408,15 +413,13 @@ export const useEditorStore = create(
                 aspectRatio: '16:9',
               }
             };
-            // Lưu lại preset mặc định này vào file
-            await _persistPresets(loadedPresets);
+            // MODIFIED: Lưu presets mặc định qua hệ thống settings chung
+            window.electronAPI.setSetting('presets', loadedPresets);
           }
 
-          // Đoạn code còn lại để set state...
           const lastUsedId = localStorage.getItem(LAST_PRESET_ID_KEY);
           set(state => {
             state.presets = loadedPresets;
-            // Áp dụng preset cuối cùng được sử dụng nếu có
             if (lastUsedId && loadedPresets[lastUsedId]) {
               state.activePresetId = lastUsedId;
               state.frameStyles = JSON.parse(JSON.stringify(loadedPresets[lastUsedId].styles));
@@ -454,7 +457,8 @@ export const useEditorStore = create(
           state.activePresetId = id;
         });
         localStorage.setItem(LAST_PRESET_ID_KEY, id);
-        _persistPresets(get().presets);
+        // MODIFIED: Lưu presets qua hệ thống settings chung
+        window.electronAPI.setSetting('presets', get().presets);
       },
 
       updateActivePreset: () => {
@@ -478,8 +482,10 @@ export const useEditorStore = create(
             localStorage.removeItem(LAST_PRESET_ID_KEY);
           }
         });
-        _persistPresets(get().presets);
+        // MODIFIED: Lưu presets qua hệ thống settings chung
+        window.electronAPI.setSetting('presets', get().presets);
       },
+
       reset: () => set(state => {
         // Hàm reset này sẽ reset tất cả, bao gồm cả project và app state
         Object.assign(state, initialProjectState);

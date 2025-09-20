@@ -1,0 +1,61 @@
+name: Build & Release
+
+on:
+  push:
+    tags:
+      - 'v*.*.*' # Chạy khi bạn push một tag mới, ví dụ: v0.1.0
+
+jobs:
+  release:
+    runs-on: ${{ matrix.os }}
+
+    strategy:
+      matrix:
+        os: [ubuntu-22.04, windows-latest]
+
+    steps:
+      - name: Check out Git repository
+        uses: actions/checkout@v3
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v3
+        with:
+          node-version: 20
+
+      - name: Set up Python
+        uses: actions/setup-python@v4
+        with:
+          python-version: '3.10' # Hoặc phiên bản python bạn dùng
+
+      - name: Install Python dependencies & PyInstaller
+        run: |
+          python -m venv venv
+          source venv/bin/activate
+          pip install pynput pyinstaller
+
+      - name: Install Linux dependencies
+        if: runner.os == 'Linux'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y libx11-dev libxext-dev libxtst-dev libpng-dev libxfixes-dev libxdamage-dev libxcomposite-dev libasound2-dev libgbm-dev libxkbcommon-dev
+
+      - name: Install project dependencies
+        run: npm install --force
+
+      - name: Build the application
+        run: |
+          if [ "${{ runner.os }}" == "Linux" ]; then
+            xvfb-run npm run build
+          else
+            npm run build
+          fi
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Upload Artifacts
+        uses: actions/upload-artifact@v3
+        with:
+          name: ScreenAwesome-${{ matrix.os }}
+          path: |
+            dist/*.AppImage
+            dist/*.exe

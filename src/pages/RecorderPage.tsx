@@ -1,12 +1,16 @@
 // src/pages/RecorderPage.tsx
 import { useState, useEffect } from 'react';
-import { Mic, Webcam, Monitor, Crop, RectangleHorizontal, Radio, Loader2, RefreshCw, AlertTriangle, MousePointerClick } from 'lucide-react';
+import {
+  Mic, Webcam, Monitor, SquareDashed, Loader2,
+  RefreshCw, AlertTriangle, MousePointerClick, Video, AppWindowMac, X, GripVertical
+} from 'lucide-react';
 import { Button } from '../components/ui/button';
 import { cn } from '../lib/utils';
 import "../index.css";
 
-const RECORDER_SIZE_DEFAULT = { width: 800, height: 80, center: true };
-const RECORDER_SIZE_WINDOW_PICKER = { width: 800, height: 800, center: true };
+// MODIFIED: Increased default height for a more spacious feel.
+const RECORDER_SIZE_DEFAULT = { width: 800, height: 90 };
+const RECORDER_SIZE_WINDOW_PICKER = { width: 800, height: 800 };
 
 type RecordingState = 'idle' | 'recording';
 type RecordingSource = 'area' | 'fullscreen' | 'window';
@@ -54,7 +58,7 @@ const LinuxToolsWarning = ({ missingTools }: { missingTools: string[] }) => {
 
   return (
     <div
-      className="absolute bottom-full left-1/2 -translate-x-1/2 mb-4 w-[480px] p-6 bg-card/95 border border-amber-500/30 rounded-xl shadow-2xl backdrop-blur-xl"
+      className="absolute bottom-full left-1/2 -translate-x-1/2 mb-4 w-[480px] p-6 bg-card/90 border border-amber-500/30 rounded-lg shadow-2xl backdrop-blur-xl"
       style={{ WebkitAppRegion: 'no-drag' }}
     >
       <div className="flex items-start gap-4">
@@ -84,15 +88,15 @@ function WindowPicker({ onSelect, onRefresh, sources, isLoading }: {
 }) {
   return (
     <div
-      className="absolute bottom-full left-1/2 -translate-x-1/2 mb-4 w-[720px] h-72 p-6 bg-card/95 border border-border/50 rounded-xl shadow-2xl backdrop-blur-xl flex flex-col"
+      className="absolute bottom-full left-1/2 -translate-x-1/2 mb-4 w-[720px] h-72 p-4 bg-card border border-border/50 rounded-lg shadow-2xl backdrop-blur-xl flex flex-col"
       style={{ WebkitAppRegion: 'no-drag' }}
     >
-      <div className="flex items-center justify-between mb-4 flex-shrink-0">
+      <div className="flex items-center justify-between mb-3 flex-shrink-0 px-2">
         <h3 className="font-semibold text-foreground">Select a Window to Record</h3>
-        <Button 
-          variant="ghost" 
-          size="sm" 
-          onClick={onRefresh} 
+        <Button
+          variant="ghost"
+          size="sm"
+          onClick={onRefresh}
           disabled={isLoading}
           className="text-muted-foreground hover:text-foreground"
         >
@@ -109,7 +113,7 @@ function WindowPicker({ onSelect, onRefresh, sources, isLoading }: {
       ) : sources.length === 0 ? (
         <div className="flex-1 flex flex-col items-center justify-center gap-3">
           <div className="w-12 h-12 rounded-full bg-muted flex items-center justify-center">
-            <RectangleHorizontal className="w-6 h-6 text-muted-foreground" />
+            <AppWindowMac className="w-6 h-6 text-muted-foreground" />
           </div>
           <p className="text-sm text-muted-foreground">No windows found</p>
         </div>
@@ -119,16 +123,16 @@ function WindowPicker({ onSelect, onRefresh, sources, isLoading }: {
             {sources.map(source => (
               <button
                 key={source.id}
-                className="group relative aspect-video rounded-lg overflow-hidden border-2 border-border/30 hover:border-primary/60 focus:border-primary focus:ring-2 focus:ring-primary/20 outline-none transition-all duration-200 bg-muted/50"
+                className="group relative aspect-video rounded-md overflow-hidden border-2 border-border/30 hover:border-primary/60 focus:border-primary focus:ring-2 focus:ring-primary/20 outline-none transition-all duration-200 bg-muted/50"
                 onClick={() => onSelect(source)}
               >
-                <img 
-                  src={source.thumbnailUrl} 
-                  alt={source.name} 
-                  className="w-full h-full object-cover" 
+                <img
+                  src={source.thumbnailUrl}
+                  alt={source.name}
+                  className="w-full h-full object-cover"
                 />
                 <div className="absolute inset-0 bg-gradient-to-t from-black/80 via-transparent to-transparent opacity-0 group-hover:opacity-100 transition-opacity duration-200" />
-                <div className="absolute inset-x-0 bottom-0 p-3">
+                <div className="absolute inset-x-0 bottom-0 p-2">
                   <p className="text-xs text-white font-medium truncate group-hover:text-white/90 transition-colors">
                     {source.name}
                   </p>
@@ -225,29 +229,23 @@ export function RecorderPage() {
   const showLinuxWarning = isWindowMode && onLinux && linuxToolsChecked && missingLinuxTools.length > 0;
   const showWindowPicker = isWindowMode && !showLinuxWarning;
 
-  let buttonText = 'Record';
-  let buttonIcon = <Radio size={18} />;
+  let buttonIcon = <Video size={20} />;
   let isButtonDisabled = false;
 
   if (isWindowMode) {
     isButtonDisabled = true;
     if (showLinuxWarning) {
-      buttonText = 'Tools Missing';
-      buttonIcon = <AlertTriangle size={18} />;
+      buttonIcon = <AlertTriangle size={20} />;
     } else {
-      buttonText = 'Select a Window';
-      buttonIcon = <MousePointerClick size={18} />;
+      buttonIcon = <MousePointerClick size={20} />;
     }
   }
 
   return (
-    <main
-      className="flex items-center justify-center h-screen bg-transparent select-none p-4"
-      style={{ WebkitAppRegion: 'drag' }}
-    >
+    <main className="flex items-center justify-center h-screen bg-transparent select-none p-4">
       <div className="relative">
         {showLinuxWarning && <LinuxToolsWarning missingTools={missingLinuxTools} />}
-        
+
         {showWindowPicker && (
           <WindowPicker
             sources={windowSources}
@@ -257,70 +255,88 @@ export function RecorderPage() {
           />
         )}
 
+        <button
+          onClick={() => window.electronAPI.closeWindow()}
+          style={{ WebkitAppRegion: 'no-drag' }}
+          className={cn(
+            "absolute top-0 right-0 z-20 flex items-center justify-center w-6 h-6 rounded-full transition-colors duration-200",
+            "translate-x-1/2 -translate-y-1/2",
+            "bg-card/80 border border-border hover:bg-destructive/20 text-muted-foreground hover:text-destructive",
+            "backdrop-blur-sm shadow-lg"
+          )}
+          aria-label="Close Recorder"
+        >
+          <X className="w-4 h-4" />
+        </button>
+
         <div
           className={cn(
-            "relative flex items-center gap-3 px-4 py-3 rounded-xl border",
-            "bg-card/90 border-border/50 text-card-foreground",
-            "shadow-2xl backdrop-blur-xl"
+            "relative flex items-stretch gap-4 p-2 rounded-xl",
+            "bg-card/80 border border-border text-card-foreground",
+            "shadow-lg backdrop-blur-xl"
           )}
-          style={{ WebkitAppRegion: 'no-drag' }}
+          style={{ WebkitAppRegion: 'drag' }}
         >
+          {/* NEW: Dedicated Drag Handle */}
+          <div className="flex items-center justify-center pl-2 pr-1 cursor-grab" style={{ WebkitAppRegion: 'drag' }}>
+            <GripVertical className="w-5 h-5 text-muted-foreground/50" />
+          </div>
+
           {/* Source Selection */}
-          <div className="flex items-center p-1 bg-muted/50 rounded-lg border border-border/30">
+          <div className="flex items-center p-1 bg-muted rounded-lg border border-border" style={{ WebkitAppRegion: 'no-drag' }}>
             <SourceButton
-              label="Area" 
-              icon={<Crop size={16} />}
-              isActive={source === 'area'} 
-              onClick={() => setSource('area')}
-            />
-            <SourceButton
-              label="Full Screen" 
+              label="Full Screen"
               icon={<Monitor size={16} />}
-              isActive={source === 'fullscreen'} 
+              isActive={source === 'fullscreen'}
               onClick={() => setSource('fullscreen')}
             />
             <SourceButton
-              label="Window" 
-              icon={<RectangleHorizontal size={16} />}
-              isActive={source === 'window'} 
+              label="Area"
+              icon={<SquareDashed size={16} />}
+              isActive={source === 'area'}
+              onClick={() => setSource('area')}
+            />
+            <SourceButton
+              label="Window"
+              icon={<AppWindowMac size={16} />}
+              isActive={source === 'window'}
               onClick={() => setSource('window')}
             />
           </div>
 
           {/* Divider */}
-          <div className="w-px h-8 bg-border/50"></div>
+          <div className="w-px bg-border/50"></div>
 
           {/* Controls */}
-          <div className="flex items-center gap-2">
-            {/* Audio/Video buttons - disabled state */}
-            <Button 
-              variant="outline" 
-              size="sm" 
-              disabled
-              className="h-8 w-8 p-0 opacity-50"
-            >
-              <Mic size={16} />
-            </Button>
-            <Button 
-              variant="outline" 
-              size="sm" 
-              disabled
-              className="h-8 w-8 p-0 opacity-50"
-            >
-              <Webcam size={16} />
-            </Button>
-
-            {/* Record Button */}
+          <div className="flex items-center gap-3" style={{ WebkitAppRegion: 'no-drag' }}>
             <Button
               onClick={() => handleStart()}
               disabled={isButtonDisabled}
+              variant="default"
+              size="icon"
               className={cn(
-                "flex items-center gap-2 px-6 h-9 font-semibold min-w-[160px] justify-center",
-                isButtonDisabled && showLinuxWarning && "bg-amber-500/20 hover:bg-amber-500/30 text-amber-300 border-amber-500/30"
+                "h-12 w-12", // Larger record button
+                isButtonDisabled && showLinuxWarning && "bg-amber-500/20 hover:bg-amber-500/30 text-amber-300 border border-amber-500/30",
+                isButtonDisabled && !showLinuxWarning && "opacity-50"
               )}
             >
               {buttonIcon}
-              <span className="text-sm">{buttonText}</span>
+            </Button>
+            <Button
+              variant="secondary"
+              size="icon"
+              disabled
+              className="h-10 w-10 opacity-50" // Larger secondary buttons
+            >
+              <Mic size={18} />
+            </Button>
+            <Button
+              variant="secondary"
+              size="icon"
+              disabled
+              className="h-10 w-10 opacity-50" // Larger secondary buttons
+            >
+              <Webcam size={18} />
             </Button>
           </div>
         </div>
@@ -334,16 +350,16 @@ const SourceButton = ({ label, icon, isActive, ...props }: React.ButtonHTMLAttri
   icon: React.ReactNode,
   isActive: boolean,
 }) => (
-  <Button
-    variant={isActive ? 'default' : 'ghost'}
-    size="sm"
+  <button
     className={cn(
-      "flex items-center gap-2 px-3 py-2 h-8 text-xs font-medium transition-all duration-200",
-      !isActive && "text-muted-foreground hover:text-foreground hover:bg-accent/50"
+      "flex items-center gap-2 px-4 py-2 rounded-md text-sm font-medium transition-all duration-200 outline-none focus-visible:ring-2 focus-visible:ring-ring",
+      isActive
+        ? "bg-card shadow-sm text-foreground"
+        : "text-muted-foreground hover:text-foreground"
     )}
     {...props}
   >
     {icon}
     <span>{label}</span>
-  </Button>
+  </button>
 );

@@ -63,131 +63,76 @@ export function PreviewControls({ videoRef }: PreviewControlsProps) {
       "flex items-center justify-between px-6 shadow-sm"
     )}>
       {/* Left Controls */}
-      <div className="flex items-center gap-3">
-        <Button
-          variant="outline"
-          size="sm"
-          onClick={() => addZoomRegion()}
-          className="bg-background/50 hover:bg-accent/80 border-border/50 text-foreground font-medium px-4 py-2 rounded-lg transition-all duration-200"
-        >
-          <Plus className="w-4 h-4 mr-2" />
-          Add Zoom
+      <div className="flex items-center gap-2">
+        <Button variant="secondary" size="sm" onClick={() => addZoomRegion()}>
+          <Plus className="w-4 h-4 mr-2" /> Add Zoom
+        </Button>
+        <Button variant="secondary" size="sm" onClick={() => addCutRegion()}>
+          <Scissors className="w-4 h-4 mr-2" /> Add Cut
         </Button>
         <Button
-          variant="outline"
-          size="sm"
-          onClick={() => addCutRegion()}
-          className="bg-background/50 hover:bg-accent/80 border-border/50 text-foreground font-medium px-4 py-2 rounded-lg transition-all duration-200"
-        >
-          <Scissors className="w-4 h-4 mr-2" />
-          Add Cut
-        </Button>
-
-        <Button
-          variant="destructive"
-          size="sm"
-          onClick={handleDelete}
-          disabled={!selectedRegionId}
-          className="bg-destructive/10 hover:bg-destructive/20 text-destructive font-medium px-4 py-2 rounded-lg transition-all duration-200 disabled:opacity-40 disabled:cursor-not-allowed"
-          title='Delete Selected Region (Del)'
+          variant="secondary" size="icon" onClick={handleDelete}
+          disabled={!selectedRegionId} title='Delete Selected Region (Del)'
+          className="h-8 w-8 text-muted-foreground hover:text-destructive hover:bg-destructive/10"
         >
           <Trash2 className="w-4 h-4" />
         </Button>
-
-        {/* Timeline Zoom Control */}
-        <div className="flex items-center gap-3 ml-4 px-4 py-2 bg-background/30 rounded-lg border border-border/30">
+        <div className="w-px h-6 bg-border mx-2"></div>
+        <div className="flex items-center gap-3">
           <ZoomIn className="w-4 h-4 text-muted-foreground" />
           <div className="w-24">
             <Slider
-              min={1}
-              max={4}
-              step={0.5}
+              min={1} max={4} step={0.5}
               value={timelineZoom}
-              onChange={(value) => setTimelineZoom(value)}
-              className="w-full h-2 bg-muted rounded-full appearance-none cursor-pointer accent-primary slider"
+              onChange={setTimelineZoom}
             />
           </div>
-          <span className="text-xs text-muted-foreground font-mono min-w-[2.5rem]">
-            {timelineZoom.toFixed(1)}x
-          </span>
         </div>
       </div>
 
       {/* Center Playback Controls */}
-      <div className="flex items-center gap-4">
-        <Button
-          variant="ghost"
-          size="icon"
-          onClick={handleRewind}
-          className="w-10 h-10 rounded-full hover:bg-accent/80 transition-all duration-200"
-        >
-          <Rewind className="w-5 h-5" />
-        </Button>
-
-        <Button variant="ghost" size="icon"
-          onClick={handleUndo} disabled={pastStates.length === 0} className="w-9 h-9"
-          title='Undo (Ctrl+Z)'
-        >
+      <div className="flex items-center gap-2">
+        <Button variant="ghost" size="icon" onClick={handleUndo} disabled={pastStates.length === 0} className="w-8 h-8" title='Undo (Ctrl+Z)'>
           <Undo className="w-4 h-4" />
         </Button>
-        <Button variant="ghost" size="icon"
-          onClick={handleRedo} disabled={futureStates.length === 0} className="w-9 h-9"
-          title='Redo (Ctrl+Y)'
-        >
+        <Button variant="ghost" size="icon" onClick={handleRedo} disabled={futureStates.length === 0} className="w-8 h-8" title='Redo (Ctrl+Y)'>
           <Redo className="w-4 h-4" />
         </Button>
-        <Button variant="ghost" size="icon" onClick={handleClear} disabled={pastStates.length === 0} className="w-9 h-9"
-          title='Clear History (Ctrl+Shift+Z)'
-        >
+        <Button variant="ghost" size="icon" onClick={handleClear} disabled={pastStates.length === 0} className="w-8 h-8" title='Clear History'>
           <RotateCcw className="w-4 h-4" />
         </Button>
-
-        <Button
-          variant="ghost"
-          size="icon"
-          className="w-14 h-14 rounded-full bg-primary/10 hover:bg-primary/20 transition-all duration-200 border-2 border-primary/20"
-          onClick={togglePlay}
-          title='Play/Pause (Space)'
-        >
-          {isPlaying ? (
-            <Pause className="w-6 h-6 text-primary" />
-          ) : (
-            <Play className="w-6 h-6 text-primary ml-0.5" />
-          )}
+        <Button variant="ghost" size="icon" onClick={handleRewind} className="w-8 h-8" title='Rewind (Ctrl+Left Arrow)'>
+          <Rewind className="w-5 h-5" />
         </Button>
-
-        <div className="flex items-center gap-2 px-3 py-2 bg-background/30 rounded-lg border border-border/30">
-          <span className="text-sm font-mono text-foreground font-medium min-w-[5rem] text-center">
-            {formatTime(currentTime)}
-          </span>
-          <div className="w-px h-4 bg-border/50"></div>
-          <span className="text-sm font-mono text-muted-foreground min-w-[5rem] text-center">
-            {formatTime(duration)}
-          </span>
+        <Button
+          variant="ghost" size="icon" onClick={togglePlay} title='Play/Pause (Space)'
+          className="w-12 h-12 rounded-full bg-primary/10 hover:bg-primary/20"
+        >
+          {isPlaying ? <Pause className="w-6 h-6 text-primary" /> : <Play className="w-6 h-6 text-primary ml-1" />}
+        </Button>
+        <div className="flex items-center gap-2 font-mono text-sm">
+          <span className="text-foreground min-w-[4rem] text-right">{formatTime(currentTime)}</span>
+          <span className="text-muted-foreground">/</span>
+          <span className="text-muted-foreground min-w-[4rem] text-left">{formatTime(duration)}</span>
         </div>
       </div>
 
       {/* Right Controls */}
-      <div className="flex items-center">
-        <div className="flex items-center gap-2">
-          <span className="text-sm text-muted-foreground font-medium">Aspect:</span>
-          <div className="w-28">
-            <Select
-              value={aspectRatio}
-              onValueChange={(value) => setAspectRatio(value as AspectRatio)}
-            >
-              <SelectTrigger>
-                <SelectValue placeholder="Select ratio..." />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="16:9">16:9</SelectItem>
-                <SelectItem value="9:16">9:16</SelectItem>
-                <SelectItem value="4:3">4:3</SelectItem>
-                <SelectItem value="3:4">3:4</SelectItem>
-                <SelectItem value="1:1">1:1</SelectItem>
-              </SelectContent>
-            </Select>
-          </div>
+      <div className="flex items-center gap-2">
+        <span className="text-sm text-muted-foreground">Aspect:</span>
+        <div className="w-28">
+          <Select value={aspectRatio} onValueChange={(value) => setAspectRatio(value as AspectRatio)}>
+            <SelectTrigger className="h-9">
+              <SelectValue />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="16:9">16:9</SelectItem>
+              <SelectItem value="9:16">9:16</SelectItem>
+              <SelectItem value="4:3">4:3</SelectItem>
+              <SelectItem value="3:4">3:4</SelectItem>
+              <SelectItem value="1:1">1:1</SelectItem>
+            </SelectContent>
+          </Select>
         </div>
       </div>
     </div>

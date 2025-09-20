@@ -192,22 +192,6 @@ export const Preview = memo(({ videoRef }: { videoRef: React.RefObject<HTMLVideo
               className="w-full h-full transition-all duration-300 ease-out"
               style={glassyFrameStyle}
             >
-              {/* Shimmer effect overlay */}
-              <div
-                className="absolute inset-0 pointer-events-none opacity-30"
-                style={{
-                  background: `
-                    linear-gradient(45deg, 
-                      transparent 30%, 
-                      rgba(255, 255, 255, 0.3) 50%, 
-                      transparent 70%
-                    )
-                  `,
-                  borderRadius: `${frameStyles.borderRadius}px`,
-                  animation: frameStyles.borderWidth > 0 ? 'shimmer 3s ease-in-out infinite' : 'none',
-                }}
-              />
-              
               {/* Video Element with enhanced styling */}
               <video
                 ref={videoRef}
@@ -234,8 +218,6 @@ export const Preview = memo(({ videoRef }: { videoRef: React.RefObject<HTMLVideo
           </div>
         )}
       </div>
-      
-      {/* Shimmer animation is now defined in globals.css */}
     </div>
   );
 });

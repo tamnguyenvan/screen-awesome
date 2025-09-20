@@ -76,28 +76,28 @@ const Slider: React.FC<SliderProps> = ({
   return (
     <div className={`space-y-2 ${className}`}>
       {label && (
-        <label className="text-sm font-medium text-gray-700 dark:text-gray-300">
+        <label className="text-sm font-medium text-foreground">
           {label}
         </label>
       )}
-      <div className="relative">
+      <div className="relative flex items-center h-5">
         <div
           ref={sliderRef}
-          className={`relative h-1 bg-gray-200 dark:bg-gray-400 rounded-full cursor-pointer ${
+          className={`relative w-full h-1 bg-muted-foreground/30 rounded-full cursor-pointer group ${
             disabled ? 'opacity-50 cursor-not-allowed' : ''
           }`}
           onMouseDown={handleMouseDown}
         >
           {/* Track Fill */}
           <div
-            className="absolute top-0 left-0 h-full bg-primary rounded-full transition-all duration-150"
+            className="absolute top-0 left-0 h-full bg-primary rounded-full"
             style={{ width: `${percentage}%` }}
           />
           {/* Handle */}
           <div
-            className={`absolute top-1/2 w-5 h-5 bg-white border-2 border-primary rounded-full transform -translate-y-1/2 -translate-x-1/2 transition-all duration-200 ease-out shadow-md
-              ${isDragging ? 'scale-125 shadow-xl ring-4 ring-primary/40' : 'hover:scale-110 hover:shadow-lg'}
-              ${disabled ? 'cursor-not-allowed opacity-70' : 'cursor-grab active:cursor-grabbing'}
+            className={`absolute top-1/2 w-4 h-4 bg-card border border-border rounded-full transform -translate-y-1/2 -translate-x-1/2 transition-transform duration-100 ease-out shadow
+              ${isDragging ? 'scale-110 ring-4 ring-primary/20' : 'group-hover:ring-4 group-hover:ring-primary/20'}
+              ${disabled ? 'cursor-not-allowed' : 'cursor-pointer'}
             `}
             style={{ left: `${percentage}%` }}
           />

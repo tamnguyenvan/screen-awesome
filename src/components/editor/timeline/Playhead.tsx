@@ -15,8 +15,8 @@ export const Playhead: React.FC<PlayheadProps> = React.memo(
     const { triangleSize, lineColor, triangleColor } = useMemo(() => {
       return {
         triangleSize: { base: 10, height: 14 },
-        lineColor: "rgba(99,101,241,0.9)", // tailwind primary/blue-500
-        triangleColor: isDragging ? "rgba(99,101,241,1)" : "rgba(99,101,241,1)",
+        lineColor: "rgba(60,131,246,0.9)", // tailwind primary/blue-500
+        triangleColor: isDragging ? "rgba(60,131,246,1)" : "rgba(60,131,246,1)",
       };
     }, [isDragging]);
 
