@@ -204,9 +204,8 @@ export const Preview = memo(({ videoRef }: { videoRef: React.RefObject<HTMLVideo
     };
   }, [webcamStyles]);
 
-  // MODIFIED: Cập nhật class cho webcam, bỏ border, đổi thành hình vuông bo góc
   const webcamWrapperClasses = cn(
-    'absolute z-20 aspect-square overflow-hidden rounded-2xl', // Change to square, squircle, no border
+    'absolute z-20 aspect-square overflow-hidden rounded-[35%]', // Squircle shape
     'transition-all duration-300 ease-in-out', // For smooth hide/show and position changes
     {
       'top-4 left-4': webcamPosition.pos === 'top-left',

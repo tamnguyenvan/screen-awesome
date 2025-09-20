@@ -74,7 +74,7 @@ const initialProjectState = {
   isWebcamVisible: false,
   webcamPosition: { pos: 'bottom-right' } as WebcamPosition,
   // MODIFIED: Sử dụng webcamStyles object với giá trị mặc định mới
-  webcamStyles: { size: 15, shadow: 15 },
+  webcamStyles: { size: 30, shadow: 15 },
 };
 
 // State toàn cục của ứng dụng, không bị reset bởi loadProject

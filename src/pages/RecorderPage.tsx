@@ -511,9 +511,8 @@ export function RecorderPage() {
           />
         )}
 
-        {/* MODIFIED: Cập nhật style cho webcam preview */}
         {selectedWebcamId !== 'none' && (
-          <div className="mt-4 w-48 aspect-square rounded-2xl overflow-hidden shadow-2xl bg-black">
+          <div className="mt-4 w-48 aspect-square rounded-[35%] overflow-hidden shadow-2xl bg-black">
             <video ref={webcamPreviewRef} autoPlay playsInline muted className="w-full h-full object-cover" />
           </div>
         )}

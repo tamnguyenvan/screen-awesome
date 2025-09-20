@@ -169,7 +169,7 @@ export function RendererPage() {
         const { webcamPosition, webcamStyles, isWebcamVisible } = projectState;
         const webcamHeight = outputHeight * (webcamStyles.size / 100);
         const webcamWidth = webcamHeight; // Make it a square
-        const webcamRadius = webcamHeight * 0.15; // 15% radius for squircle
+        const webcamRadius = webcamHeight * 0.35; // 35% radius for a squircle effect
 
         // Calculate webcam coordinates with padding
         const padding = outputHeight * 0.02; // 2% padding
