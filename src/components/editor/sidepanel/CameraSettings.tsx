@@ -7,7 +7,6 @@ import Slider from '../../ui/slider';
 import { useShallow } from 'zustand/react/shallow';
 
 export function CameraSettings() {
-  // MODIFIED: Lấy thêm state và action cho webcam styles
   const { isWebcamVisible, webcamPosition, webcamStyles, setWebcamVisibility, setWebcamPosition, updateWebcamStyle } = useEditorStore(
     useShallow(state => ({
       isWebcamVisible: state.isWebcamVisible,
@@ -27,7 +26,6 @@ export function CameraSettings() {
   ];
 
   return (
-    // MODIFIED: Cấu trúc lại toàn bộ component với header và content đẹp hơn
     <div className="h-full flex flex-col">
       {/* Header */}
       <div className="p-6 border-b border-sidebar-border">
@@ -95,9 +93,7 @@ export function CameraSettings() {
             <div>
               <label className="flex items-center justify-between mb-3">
                 <span className="text-sm font-medium text-sidebar-foreground">Size</span>
-                <span className="text-sm font-mono text-primary font-semibold bg-primary/10 px-2 py-1 rounded">
-                  {webcamStyles.size}%
-                </span>
+                <span className="text-xs text-muted-foreground">{webcamStyles.size}%</span>
               </label>
               <Slider
                 min={5} max={40} step={1}
@@ -108,9 +104,7 @@ export function CameraSettings() {
             <div>
               <label className="flex items-center justify-between mb-3">
                 <span className="text-sm font-medium text-sidebar-foreground">Shadow</span>
-                <span className="text-sm font-mono text-primary font-semibold bg-primary/10 px-2 py-1 rounded">
-                  {webcamStyles.shadow}
-                </span>
+                <span className="text-xs text-muted-foreground">{webcamStyles.shadow}</span>
               </label>
               <Slider
                 min={0} max={40} step={1}

@@ -45,8 +45,12 @@ function TabButton({ label, icon, isActive, onClick, disabled }: TabButtonProps)
             </div>
           </button>
         </TooltipTrigger>
-        <TooltipContent side="left" className="capitalize">
-          <p>{label}</p>
+        <TooltipContent 
+          side="left" 
+          sideOffset={8}
+          className="capitalize px-3 py-1.5 text-sm font-medium bg-popover text-popover-foreground shadow-md rounded-md border border-border/50 dark:border-border/80"
+        >
+          <p className="whitespace-nowrap">{label}</p>
         </TooltipContent>
       </Tooltip>
     </TooltipProvider>

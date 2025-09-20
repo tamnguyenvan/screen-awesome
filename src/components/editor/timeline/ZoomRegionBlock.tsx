@@ -27,9 +27,9 @@ export const ZoomRegionBlock = memo(({
       ref={setRef}
       data-region-id={region.id}
       className={cn(
-        'w-full h-full flex items-center justify-center rounded-lg overflow-hidden relative',
+        'w-full h-full rounded-lg overflow-hidden relative', // SỬA ĐỔI: Bỏ 'flex items-center justify-center'
         'cursor-grab border-2',
-        isSelected ? 'border-primary' : 'border-border', // Highlight border when selected
+        isSelected ? 'border-primary' : 'border-border',
         'bg-muted/80'
       )}
       onMouseDown={(e) => onMouseDown(e, region, 'move')}
@@ -45,11 +45,14 @@ export const ZoomRegionBlock = memo(({
         <div className="absolute inset-0 bg-primary/40" />
       )}
 
-      <div className="pointer-events-none flex items-center gap-2 px-2 relative z-10">
-        <Search className={cn("w-4 h-4", isSelected ? "text-primary-foreground" : "text-foreground/80")} />
-        <span className={cn("text-xs font-medium select-none", isSelected ? "text-primary-foreground" : "text-foreground/80")}>
-          Zoom
-        </span>
+      {/* SỬA ĐỔI: Div chứa nội dung giờ sẽ tự căn giữa bằng 'absolute inset-0 ...' */}
+      <div className="absolute inset-0 flex items-center justify-center pointer-events-none z-10">
+        <div className="flex items-center gap-2 px-2">
+            <Search className={cn("w-4 h-4", isSelected ? "text-primary-foreground" : "text-foreground/80")} />
+            <span className={cn("text-xs font-medium select-none", isSelected ? "text-primary-foreground" : "text-foreground/80")}>
+            Zoom
+            </span>
+        </div>
       </div>
 
       <div 

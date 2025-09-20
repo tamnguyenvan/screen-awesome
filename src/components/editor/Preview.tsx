@@ -222,40 +222,42 @@ export const Preview = memo(({ videoRef }: { videoRef: React.RefObject<HTMLVideo
       className="transition-all duration-300 ease-out flex items-center justify-center relative overflow-hidden"
       style={{ ...backgroundStyle, aspectRatio: cssAspectRatio, maxWidth: '100%', maxHeight: '100%' }}
     >
-      <div className="w-full h-full flex items-center justify-center" style={{ padding: `${frameStyles.padding}%` }}>
+      <div className="w-full h-full flex items-center justify-center relative" style={{ padding: `${frameStyles.padding}%` }}>
         {videoUrl ? (
-          // Container receives transform (zoom/pan) and shadow.
-          <div
-            ref={frameContainerRef}
-            className="relative transition-transform duration-75"
-            style={{
-              width: videoDisplayWidth,
-              height: videoDisplayHeight,
-              aspectRatio: videoDimensions.width / videoDimensions.height,
-              maxWidth: '100%',
-              maxHeight: '100%',
-            }}
-          >
-            {/* Enhanced Glassy Frame with premium glass effect */}
+          <>
+            {/* Container receives transform (zoom/pan) and shadow. */}
             <div
-              className="w-full h-full transition-all duration-300 ease-out"
-              style={glassyFrameStyle}
+              ref={frameContainerRef}
+              className="relative transition-transform duration-75"
+              style={{
+                width: videoDisplayWidth,
+                height: videoDisplayHeight,
+                aspectRatio: videoDimensions.width / videoDimensions.height,
+                maxWidth: '100%',
+                maxHeight: '100%',
+              }}
             >
-              {/* Video Element with enhanced styling */}
-              <video
-                ref={videoRef}
-                src={videoUrl}
-                className="w-full h-full object-cover block relative z-10 transition-all duration-200"
-                style={videoStyle}
-                onTimeUpdate={handleTimeUpdate}
-                onLoadedMetadata={handleLoadedMetadata}
-                onPlay={() => setPlaying(true)}
-                onPause={() => setPlaying(false)}
-                onEnded={() => setPlaying(false)}
-              />
+              {/* Enhanced Glassy Frame with premium glass effect */}
+              <div
+                className="w-full h-full transition-all duration-300 ease-out"
+                style={glassyFrameStyle}
+              >
+                {/* Video Element with enhanced styling */}
+                <video
+                  ref={videoRef}
+                  src={videoUrl}
+                  className="w-full h-full object-cover block relative z-10 transition-all duration-200"
+                  style={videoStyle}
+                  onTimeUpdate={handleTimeUpdate}
+                  onLoadedMetadata={handleLoadedMetadata}
+                  onPlay={() => setPlaying(true)}
+                  onPause={() => setPlaying(false)}
+                  onEnded={() => setPlaying(false)}
+                />
+              </div>
             </div>
-            
-            {/* MODIFIED: Áp dụng class và style mới cho webcam */}
+
+            {/* Webcam is now outside of the scaling container */}
             {webcamVideoUrl && (
               <div className={webcamWrapperClasses} style={webcamDynamicStyle}>
                 <video
@@ -267,7 +269,7 @@ export const Preview = memo(({ videoRef }: { videoRef: React.RefObject<HTMLVideo
                 />
               </div>
             )}
-          </div>
+          </>
         ) : (
           <div className="w-full h-full bg-gradient-to-br from-slate-50/10 to-slate-100/5 border-2 border-dashed border-white/20 rounded-xl flex flex-col items-center justify-center text-white/70 gap-4 backdrop-blur-sm">
             <div className="w-16 h-16 rounded-full bg-gradient-to-br from-white/20 to-white/5 flex items-center justify-center backdrop-blur-md border border-white/20">
