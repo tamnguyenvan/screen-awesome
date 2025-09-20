@@ -15,7 +15,6 @@ import { useKeyboardShortcuts } from '../hooks/useKeyboardShortcuts';
 import { Button } from '../components/ui/button';
 
 export function EditorPage() {
-  // Lấy state và actions từ store
   const { loadProject, toggleTheme, deleteRegion, initializePresets } = useEditorStore.getState();
   const presetSaveStatus = useEditorStore(state => state.presetSaveStatus);
   const duration = useEditorStore(state => state.duration);
@@ -60,11 +59,10 @@ export function EditorPage() {
       setExportProgress(progress);
     });
 
-    // --- MODIFIED EXPORT COMPLETE LISTENER ---
     const cleanCompleteListener = window.electronAPI.onExportComplete(({ success, outputPath, error }) => {
-      setIsExporting(false); // Quá trình cốt lõi đã xong
-      setExportProgress(100); // Đảm bảo thanh tiến trình đầy
-      setExportResult({ success, outputPath, error }); // Đặt kết quả để hiển thị màn hình thành công/lỗi trong modal
+      setIsExporting(false); 
+      setExportProgress(100); 
+      setExportResult({ success, outputPath, error }); 
     });
 
     return () => {
@@ -75,9 +73,6 @@ export function EditorPage() {
   }, [loadProject, initializePresets]);
 
   const handleStartExport = useCallback(async (settings: ExportSettings) => {
-    // Don't close the modal, just start the export process.
-    // The modal will change its own view based on the `isExporting` prop.
-
     const defaultPath = `ScreenAwesome-Export-${Date.now()}.${settings.format}`;
     const result = await window.electronAPI.showSaveDialog({
       title: 'Save Video',
@@ -89,7 +84,6 @@ export function EditorPage() {
 
     if (result.canceled || !result.filePath) {
       console.log('User cancelled the save dialog.');
-      // If user cancels save, we don't start exporting. Modal remains in settings view.
       return;
     }
 
@@ -106,7 +100,6 @@ export function EditorPage() {
       cutRegions: fullState.cutRegions,
     };
 
-    // Reset state for the new export
     setExportResult(null);
     setIsExporting(true);
     setExportProgress(0);
@@ -119,7 +112,6 @@ export function EditorPage() {
       });
     } catch (e) {
       console.error("Export invocation failed", e);
-      // If starting the export fails, show an error in the modal
       setExportResult({ success: false, error: `An error occurred while starting the export: ${e}` });
       setIsExporting(false);
     }
@@ -131,15 +123,8 @@ export function EditorPage() {
 
   const currentTheme = useEditorStore(state => state.theme);
 
-  // --- ADD A HANDLER TO RESET STATE WHEN MODAL IS CLOSED ---
   const handleCloseExportModal = () => {
     setExportModalOpen(false);
-    // Delay reset to avoid UI flicker during closing animation
-    setTimeout(() => {
-      setIsExporting(false);
-      setExportProgress(0);
-      setExportResult(null);
-    }, 250);
   };
 
   const getPresetButtonContent = () => {
@@ -157,30 +142,33 @@ export function EditorPage() {
     <main className="h-screen w-screen bg-background flex flex-col overflow-hidden select-none">
       {/* Header */}
       <header
-        className="relative h-14 flex-shrink-0 border-b border-border bg-card/50 backdrop-blur-sm"
+        className="relative h-12 flex-shrink-0 border-b border-border bg-card/60 backdrop-blur-xl flex items-center justify-center"
         style={{ WebkitAppRegion: 'drag' }}
       >
-        <div className="absolute left-4 top-1/2 -translate-y-1/2">
+        <div className="absolute left-3 top-1/2 -translate-y-1/2">
           {platform !== 'darwin' && <WindowControls />}
         </div>
-        <div className="absolute left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2 flex items-center gap-2 pointer-events-none">
-          <h1 className="text-xl font-semibold text-foreground tracking-tight">ScreenAwesome</h1>
-        </div>
-        <div className="absolute right-4 top-1/2 -translate-y-1/2 flex items-center gap-2" style={{ WebkitAppRegion: 'no-drag' }}>
-          <button
+
+        <h1 className="text-sm font-semibold text-foreground pointer-events-none">ScreenAwesome</h1>
+        
+        <div className="absolute right-3 top-1/2 -translate-y-1/2 flex items-center gap-2" style={{ WebkitAppRegion: 'no-drag' }}>
+          <Button
+            variant="ghost"
+            size="icon"
             onClick={toggleTheme}
             aria-label="Toggle theme"
-            className={cn('h-9 w-9 rounded-full flex items-center justify-center text-muted-foreground hover:text-foreground hover:bg-accent/50 transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 ring-offset-background')}
+            className={cn('h-8 w-8 text-muted-foreground hover:text-foreground')}
           >
             {currentTheme === 'dark' ? <Sun className="w-4 h-4" /> : <Moon className="w-4 h-4" />}
-          </button>
+          </Button>
           <Button
-            variant="outline"
+            variant="secondary"
+            size="sm"
             onClick={() => setPresetModalOpen(true)}
             disabled={presetSaveStatus === 'saving'}
             className={cn(
-              "btn-clean transition-all duration-300 w-[120px]",
-              presetSaveStatus === 'saved' && "bg-green-500/10 border-green-500/30 text-green-600 dark:text-green-400"
+              "transition-all duration-300 w-[110px]",
+              presetSaveStatus === 'saved' && "bg-green-500/10 border border-green-500/30 text-green-600 dark:text-green-400"
             )}
           >
             {getPresetButtonContent()}
@@ -193,27 +181,27 @@ export function EditorPage() {
         </div>
       </header>
 
-      {/* Main Layout (No Changes) */}
+      {/* Main Layout */}
       <div className="flex flex-1 overflow-hidden">
         <div className="w-96 flex-shrink-0 bg-sidebar border-r border-sidebar-border overflow-hidden">
           <SidePanel />
         </div>
         <div className="flex-1 flex flex-col overflow-hidden bg-background">
           <div className="flex-1 flex flex-col overflow-hidden">
-            <div className="flex-1 flex items-center justify-center m-6 overflow-hidden rounded-xl bg-muted/20 border border-border/50">
+            <div className="flex-1 flex items-center justify-center p-6 overflow-hidden">
               <Preview videoRef={videoRef} />
             </div>
             <div className="flex-shrink-0">
               <PreviewControls videoRef={videoRef} />
             </div>
           </div>
-          <div className="h-48 flex-shrink-0 bg-card/30 border-t border-border backdrop-blur-sm overflow-hidden">
+          <div className="h-48 flex-shrink-0 bg-card/50 border-t border-border backdrop-blur-sm overflow-hidden">
             <Timeline videoRef={videoRef} />
           </div>
         </div>
       </div>
 
-      {/* --- UPDATED MODAL AND REMOVED OVERLAY --- */}
+      {/* Modals */}
       <ExportModal
         isOpen={isExportModalOpen}
         onClose={handleCloseExportModal}

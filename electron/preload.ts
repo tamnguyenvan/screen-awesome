@@ -68,7 +68,8 @@ export const electronAPI = {
   getDesktopSources: (): Promise<WindowSource[]> => ipcRenderer.invoke('desktop:get-sources'),
   linuxCheckTools: (): Promise<{ [key: string]: boolean }> => ipcRenderer.invoke('linux:check-tools'),
 
-  setRecorderSize: (options: { width: number, height: number, center?: boolean }) => {
+  // MODIFIED: Removed the 'center' property as it's no longer used in the main process.
+  setRecorderSize: (options: { width: number, height: number }) => {
     ipcRenderer.send('recorder:set-size', options);
   },
 

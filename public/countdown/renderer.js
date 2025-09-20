@@ -1,32 +1,29 @@
 let count = 3;
 const countdownNumber = document.getElementById('countdown-number');
-const countdownCircle = document.getElementById('countdown-circle');
 
-if (countdownNumber && countdownCircle) {
+if (countdownNumber) {
   countdownNumber.textContent = count;
   
   const interval = setInterval(() => {
     count--;
-    
-    // Trigger number change animation
-    countdownNumber.style.animation = 'none';
-    countdownNumber.offsetHeight; // Trigger reflow
-    countdownNumber.style.animation = 'numberChange 0.2s ease-in-out';
-    
+
+    // 1. Update the content based on the new count FIRST
     if (count > 0) {
-      setTimeout(() => {
-        countdownNumber.textContent = count;
-      }, 100); // Change number at the middle of animation
+      countdownNumber.textContent = count;
     } else if (count === 0) {
-      setTimeout(() => {
-        countdownNumber.textContent = 'Go!';
-        countdownNumber.style.fontSize = '48px';
-        countdownNumber.style.fontWeight = '700';
-        countdownNumber.style.color = 'rgb(34, 197, 94)';
-      }, 100);
+      countdownNumber.textContent = 'Go!';
+      countdownNumber.style.fontSize = '100px';
+      countdownNumber.style.fontWeight = '700';
+      countdownNumber.style.color = 'rgb(255, 255, 255)';
     } else {
       clearInterval(interval);
-      // The window is closed automatically after the countdown.
+      return;
     }
+
+    // 2. Then, force-restart the animation on the new content
+    countdownNumber.style.animation = 'none';
+    void countdownNumber.offsetHeight; // This is a trick to trigger a DOM reflow
+    countdownNumber.style.animation = 'countdownEffect 1s ease-in-out';
+
   }, 1000);
 }

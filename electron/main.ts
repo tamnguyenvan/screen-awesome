@@ -755,7 +755,7 @@ function createRecorderWindow() {
   recorderWin = new BrowserWindow({
     icon: path.join(process.env.VITE_PUBLIC, 'screenawesome-appicon.png'),
     width: 800,
-    height: 80,
+    height: 90,
     frame: false,
     transparent: true,
     alwaysOnTop: true,
@@ -1021,13 +1021,12 @@ app.whenReady().then(() => {
   });
 
   // --- IPC Handlers for Recorder Window ---
-  ipcMain.on('recorder:set-size', (_event, { width, height, center }: { width: number, height: number, center: boolean }) => {
+  // MODIFIED: Removed the `center` parameter and logic. The window will now resize from its current position.
+  ipcMain.on('recorder:set-size', (_event, { width, height }: { width: number, height: number }) => {
     if (recorderWin) {
       log.info(`Resizing recorder window to ${width}x${height}`);
-      recorderWin.setSize(width, height, true); // true = animate
-      if (center) {
-        recorderWin.center();
-      }
+      // Set size with animation, but DO NOT re-center.
+      recorderWin.setSize(width, height, true); 
     }
   });
 
