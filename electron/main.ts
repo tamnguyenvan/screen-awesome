@@ -31,6 +31,34 @@ import path from 'node:path'
 import { spawn, ChildProcessWithoutNullStreams, exec } from 'node:child_process'
 import fs from 'node:fs/promises'
 import fsSync from 'node:fs'
+import Store from 'electron-store';
+
+const schema = {
+	windowBounds: {
+		type: 'object',
+		properties: {
+			width: { type: 'number' },
+			height: { type: 'number' },
+			x: { type: 'number' },
+			y: { type: 'number' },
+		},
+		default: { width: 1280, height: 800 } // Giá trị mặc định khi chưa có cài đặt
+	},
+  appearance: {
+    type: 'object',
+    properties: {
+      theme: { type: 'string', enum: ['light', 'dark'], default: 'light' }
+    },
+    default: {}
+  },
+  presets: {
+    type: 'object',
+    default: {}
+  }
+};
+
+// NEW: Khởi tạo store với schema đã định nghĩa
+const store = new Store({ schema });
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url))
 
@@ -64,40 +92,19 @@ let metadataStream: fsSync.WriteStream | null = null
 let pythonDataBuffer = ''
 let firstChunkWritten = true
 
-function getPresetsFilePath() {
-  const userDataPath = app.getPath('userData');
-  log.info(`[Main] User data path: ${userDataPath}`);
-  return path.join(userDataPath, 'presets.json');
-}
-
 async function handleLoadPresets() {
-  const filePath = getPresetsFilePath();
-  log.info(`[Main] Loading presets from: ${filePath}`);
-  try {
-    if (fsSync.existsSync(filePath)) {
-      const data = await fs.readFile(filePath, 'utf-8');
-      const presets = JSON.parse(data);
-      log.info('[Main] Presets loaded successfully.');
-      return presets;
-    }
-    log.warn('[Main] presets.json not found. Returning empty object.');
-  } catch (error) {
-    log.error('[Main] Failed to load presets:', error);
-  }
-  return {}; // Return empty object if file doesn't exist or fails to parse
+  log.info('[Main] Loading presets from electron-store.');
+  const presets = store.get('presets');
+  log.info('[Main] Presets loaded successfully.');
+  return presets;
 }
 
+// MODIFIED: Thay thế logic ghi file cũ bằng electron-store
 async function handleSavePresets(_event: IpcMainInvokeEvent, presets: unknown) {
-  const filePath = getPresetsFilePath();
-  log.info(`[Main] Saving presets to: ${filePath}`);
-  try {
-    await fs.writeFile(filePath, JSON.stringify(presets, null, 2));
-    log.info('[Main] Presets saved successfully.');
-    return { success: true };
-  } catch (error) {
-    log.error('[Main] Failed to save presets:', error);
-    return { success: false, error: (error as Error).message };
-  }
+  log.info('[Main] Saving presets to electron-store.');
+  store.set('presets', presets);
+  log.info('[Main] Presets saved successfully.');
+  return { success: true };
 }
 
 function calculateExportDimensions(resolutionKey: ResolutionKey, aspectRatio: string): { width: number; height: number } {
@@ -169,11 +176,16 @@ function createSavingWindow() {
 
 // --- Editor Window Creation ---
 function createEditorWindow(videoPath: string, metadataPath: string) {
+  const { x, y, width, height } = store.get('windowBounds') as { x?: number; y?: number; width: number; height: number; };
+
   editorWin = new BrowserWindow({
     icon: path.join(process.env.VITE_PUBLIC, 'screenawesome-appicon.png'),
     autoHideMenuBar: true,
-    width: 1280,
-    height: 800,
+    // MODIFIED: Sử dụng kích thước và vị trí đã lưu
+    x,
+    y,
+    width,
+    height,
     minWidth: 1024,
     minHeight: 768,
     frame: false, // Frameless on Win/Linux
@@ -185,8 +197,28 @@ function createEditorWindow(videoPath: string, metadataPath: string) {
     },
   })
 
+  // NEW: Logic lưu vị trí và kích thước cửa sổ khi thay đổi hoặc đóng
+  let resizeTimeout: NodeJS.Timeout;
+  const saveBounds = () => {
+    if (editorWin && !editorWin.isDestroyed()) {
+      const bounds = editorWin.getBounds();
+      log.info(`[Main] Saving window bounds:`, bounds);
+      store.set('windowBounds', bounds);
+    }
+  };
+
+  // Sử dụng debounce để tránh ghi file liên tục khi thay đổi kích thước
+  const debouncedSaveBounds = () => {
+    clearTimeout(resizeTimeout);
+    resizeTimeout = setTimeout(saveBounds, 500);
+  };
+
+  editorWin.on('resize', debouncedSaveBounds);
+  editorWin.on('move', debouncedSaveBounds);
+  editorWin.on('close', saveBounds); // Lưu ngay lập tức khi đóng
+
   // Maximize the window and show it when it's ready
-  editorWin.maximize()
+  // editorWin.maximize() // REMOVED: Không maximize mặc định nữa để nhớ vị trí
   editorWin.show()
 
   let editorUrl: string;
@@ -1058,6 +1090,15 @@ app.whenReady().then(() => {
   // --- IPC Handlers for Presets ---
   ipcMain.handle('presets:load', handleLoadPresets);
   ipcMain.handle('presets:save', handleSavePresets);
+  ipcMain.handle('settings:get', (_event, key: string) => {
+    const value = store.get(key);
+    log.info(`[Main] IPC settings:get - key: ${key}, value found:`, !!value);
+    return value;
+  });
+  ipcMain.on('settings:set', (_event, key: string, value: unknown) => {
+    log.info(`[Main] IPC settings:set - key: ${key}`);
+    store.set(key, value);
+  });
 
   ipcMain.handle('linux:check-tools', checkLinuxTools);
   ipcMain.handle('desktop:get-sources', handleGetDesktopSources);

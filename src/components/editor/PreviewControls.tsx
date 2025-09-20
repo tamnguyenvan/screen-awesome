@@ -78,7 +78,7 @@ export function PreviewControls({ videoRef }: PreviewControlsProps) {
           <Trash2 className="w-4 h-4" />
         </Button>
         <div className="w-px h-6 bg-border mx-2"></div>
-        <div className="flex items-center gap-2">
+        <div className="flex items-center gap-3">
           <ZoomIn className="w-4 h-4 text-muted-foreground" />
           <div className="w-24">
             <Slider

@@ -15,7 +15,7 @@ import { useKeyboardShortcuts } from '../hooks/useKeyboardShortcuts';
 import { Button } from '../components/ui/button';
 
 export function EditorPage() {
-  const { loadProject, toggleTheme, deleteRegion, initializePresets } = useEditorStore.getState();
+  const { loadProject, toggleTheme, deleteRegion, initializePresets, initializeSettings } = useEditorStore.getState();
   const presetSaveStatus = useEditorStore(state => state.presetSaveStatus);
   const duration = useEditorStore(state => state.duration);
   const { undo, redo } = useEditorStore.temporal.getState();
@@ -49,6 +49,8 @@ export function EditorPage() {
   useEffect(() => {
     window.electronAPI.getPlatform().then(setPlatform);
 
+    initializeSettings();
+
     const cleanup = window.electronAPI.onProjectOpen(async (payload) => {
       console.log('Received project to open:', payload);
       await initializePresets();
@@ -60,9 +62,9 @@ export function EditorPage() {
     });
 
     const cleanCompleteListener = window.electronAPI.onExportComplete(({ success, outputPath, error }) => {
-      setIsExporting(false); 
-      setExportProgress(100); 
-      setExportResult({ success, outputPath, error }); 
+      setIsExporting(false);
+      setExportProgress(100);
+      setExportResult({ success, outputPath, error });
     });
 
     return () => {
@@ -70,7 +72,8 @@ export function EditorPage() {
       cleanProgressListener();
       cleanCompleteListener();
     };
-  }, [loadProject, initializePresets]);
+    // MODIFIED: Thêm initializeSettings vào dependency array
+  }, [loadProject, initializePresets, initializeSettings]);
 
   const handleStartExport = useCallback(async (settings: ExportSettings) => {
     const defaultPath = `ScreenAwesome-Export-${Date.now()}.${settings.format}`;
@@ -150,7 +153,7 @@ export function EditorPage() {
         </div>
 
         <h1 className="text-sm font-semibold text-foreground pointer-events-none">ScreenAwesome</h1>
-        
+
         <div className="absolute right-3 top-1/2 -translate-y-1/2 flex items-center gap-2" style={{ WebkitAppRegion: 'no-drag' }}>
           <Button
             variant="ghost"

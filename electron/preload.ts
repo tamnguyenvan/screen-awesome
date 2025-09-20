@@ -68,7 +68,7 @@ export const electronAPI = {
   getDesktopSources: (): Promise<WindowSource[]> => ipcRenderer.invoke('desktop:get-sources'),
   linuxCheckTools: (): Promise<{ [key: string]: boolean }> => ipcRenderer.invoke('linux:check-tools'),
 
-  // MODIFIED: Removed the 'center' property as it's no longer used in the main process.
+  // Removed the 'center' property as it's no longer used in the main process.
   setRecorderSize: (options: { width: number, height: number }) => {
     ipcRenderer.send('recorder:set-size', options);
   },
@@ -135,6 +135,9 @@ export const electronAPI = {
   // --- Presets ---
   loadPresets: (): Promise<Record<string, Preset>> => ipcRenderer.invoke('presets:load'),
   savePresets: (presets: Record<string, Preset>): Promise<{ success: boolean; error?: string }> => ipcRenderer.invoke('presets:save', presets),
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  getSetting: <T = any>(key: string): Promise<T> => ipcRenderer.invoke('settings:get', key),
+  setSetting: (key: string, value: unknown): void => ipcRenderer.send('settings:set', key, value),
 
   // --- Window Controls ---
   minimizeWindow: () => ipcRenderer.send('window:minimize'),
