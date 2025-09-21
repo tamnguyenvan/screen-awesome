@@ -3,7 +3,7 @@ import { useEditorStore } from '../../store/editorStore';
 import { TimelineRegion, ZoomRegion } from '../../types/store';
 import { cn } from '../../lib/utils';
 import { Button } from '../ui/button';
-import { Trash2, Camera, Scissors, MousePointer, Video } from 'lucide-react';
+import { Camera, Scissors, MousePointer, Video, Trash2 } from 'lucide-react';
 import Slider from '../ui/slider';
 import { FocusPointPicker } from './sidepanel/FocusPointPicker';
 
@@ -12,7 +12,11 @@ interface RegionSettingsPanelProps {
 }
 
 function ZoomSettings({ region }: { region: ZoomRegion }) {
-  const { updateRegion } = useEditorStore.getState();
+  const { updateRegion, deleteRegion } = useEditorStore.getState();
+
+  const handleDelete = () => {
+    deleteRegion(region.id);
+  }
   const [activeTab, setActiveTab] = useState(region.mode);
 
   const handleValueChange = (name: string, value: string | number) => {
@@ -71,9 +75,7 @@ function ZoomSettings({ region }: { region: ZoomRegion }) {
         <div>
           <div className="flex items-center justify-between mb-3">
             <label className="text-sm font-medium text-sidebar-foreground">Zoom Level</label>
-            <span className="text-sm font-mono text-primary font-semibold bg-primary/10 px-2 py-1 rounded">
-              {region.zoomLevel.toFixed(1)}x
-            </span>
+            <span className="text-xs text-muted-foreground">{region.zoomLevel.toFixed(1)}x</span>
           </div>
           <Slider
             min={1}
@@ -82,10 +84,18 @@ function ZoomSettings({ region }: { region: ZoomRegion }) {
             value={region.zoomLevel}
             onChange={(value) => handleValueChange('zoomLevel', value)}
           />
-          <div className="flex justify-between text-xs text-muted-foreground mt-1">
-            <span>1x</span>
-            <span>5x</span>
-          </div>
+        </div>
+
+        <div className="mt-4">
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={handleDelete}
+            className="w-full h-9 bg-destructive/10 hover:bg-destructive text-destructive hover:text-destructive-foreground transition-all duration-200 flex items-center gap-2 justify-center"
+          >
+            <Trash2 className="w-4 h-4" />
+            <span>Delete Region</span>
+          </Button>
         </div>
       </div>
     </div>
@@ -93,12 +103,6 @@ function ZoomSettings({ region }: { region: ZoomRegion }) {
 }
 
 export function RegionSettingsPanel({ region }: RegionSettingsPanelProps) {
-  // OPTIMIZATION: Actions don't cause re-renders, so we get them directly from the store's state
-  const { deleteRegion } = useEditorStore.getState();
-
-  const handleDelete = () => {
-    deleteRegion(region.id);
-  }
 
   const RegionIcon = region.type === 'zoom' ? Camera : Scissors;
   const regionColor = region.type === 'zoom' ? 'text-primary' : 'text-destructive';
@@ -122,14 +126,6 @@ export function RegionSettingsPanel({ region }: RegionSettingsPanelProps) {
               </p>
             </div>
           </div>
-          <Button
-            variant="destructive"
-            size="icon"
-            onClick={handleDelete}
-            className="w-9 h-9 bg-destructive/10 hover:bg-destructive text-destructive hover:text-destructive-foreground transition-all duration-200"
-          >
-            <Trash2 className="w-4 h-4" />
-          </Button>
         </div>
       </div>
 
