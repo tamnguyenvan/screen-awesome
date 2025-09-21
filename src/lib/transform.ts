@@ -1,127 +1,122 @@
 import { useEditorStore } from '../store/editorStore';
+// import { AnchorPoint } from '../types/store';
 
-// --- Easing Functions ---
+const ZOOM_TRANSITION_DURATION = 0.8;
+const PAN_SMOOTHING_FACTOR = 0.08;
+
+// Biến này lưu vị trí trung tâm của "camera" theo tọa độ chuẩn hóa [-0.5, 0.5]
+let cameraPan = { x: 0, y: 0 };
+
 function easeInOutCubic(t: number): number {
   return t < 0.5 ? 4 * t * t * t : 1 - Math.pow(-2 * t + 2, 3) / 2;
 }
 
-// --- Linear Interpolation ---
 function lerp(start: number, end: number, t: number): number {
   return start * (1 - t) + end * t;
 }
 
-/**
- * A simple, efficient implementation of findLastIndex for arrays.
- * This is more performant than [...arr].reverse().findIndex().
- */
-function findLastIndex<T>(array: T[], predicate: (value: T, index: number, obj: T[]) => unknown): number {
-  for (let i = array.length - 1; i >= 0; i--) {
-    if (predicate(array[i], i, array)) {
-      return i;
-    }
-  }
-  return -1;
-}
-
-/**
- * Calculates the required CSS translate percentages to center the view on a specific point
- * after a given scale has been applied.
- */
-function calculatePan(scale: number, focusPointX: number, focusPointY: number, videoWidth: number, videoHeight: number) {
-  const panX = -(focusPointX - videoWidth / 2) * (scale - 1);
-  const panY = -(focusPointY - videoHeight / 2) * (scale - 1);
-  const translateX = (panX / videoWidth) * 100;
-  const translateY = (panY / videoHeight) * 100;
-  return { translateX, translateY };
-}
-
-
 export const calculateZoomTransform = (currentTime: number) => {
-  const {
-    zoomRegions,
-    metadata,
-    videoDimensions,
-    activeZoomRegionId
-  } = useEditorStore.getState();
-
-  const { width: videoWidth, height: videoHeight } = videoDimensions;
-
-  // OPTIMIZATION: O(1) lookup for the active region
+  const { zoomRegions, activeZoomRegionId } = useEditorStore.getState();
   const activeRegion = activeZoomRegionId ? zoomRegions[activeZoomRegionId] : undefined;
   
   const defaultTransform = { scale: 1, translateX: 0, translateY: 0 };
-  if (!activeRegion || videoWidth === 0 || videoHeight === 0) {
+  if (!activeRegion) {
+    cameraPan = { x: 0, y: 0 };
     return defaultTransform;
   }
   
-  // NOTE: Get the additional 'mode' property
-  const { startTime, duration, zoomLevel, targetX, targetY, mode } = activeRegion;
+  const { startTime, duration, zoomLevel, mode, targetX, targetY, anchors } = activeRegion;
   const elapsed = currentTime - startTime;
-  const zoomInDuration = 0.8;
-  const zoomOutDuration = 0.8;
-  const zoomOutStartTime = duration - zoomOutDuration;
+  const zoomOutStartTime = duration - ZOOM_TRANSITION_DURATION;
   
-  // --- Phase 1: Zoom In (first 0.8 seconds) ---
-  if (elapsed <= zoomInDuration) {
-    const t = easeInOutCubic(elapsed / zoomInDuration);
-    const currentScale = lerp(1, zoomLevel, t);
-    const focusX = lerp(videoWidth / 2, targetX, t);
-    const focusY = lerp(videoHeight / 2, targetY, t);
-    return { scale: currentScale, ...calculatePan(currentScale, focusX, focusY, videoWidth, videoHeight) };
+  let scale = 1.0;
+
+  // --- 1. Calculate Scale ---
+  if (elapsed >= 0 && elapsed <= ZOOM_TRANSITION_DURATION) {
+    const t = easeInOutCubic(elapsed / ZOOM_TRANSITION_DURATION);
+    scale = lerp(1, zoomLevel, t);
+  } else if (elapsed > ZOOM_TRANSITION_DURATION && elapsed < zoomOutStartTime) {
+    scale = zoomLevel;
+  } else if (elapsed >= zoomOutStartTime && elapsed <= duration) {
+    const t = easeInOutCubic((elapsed - zoomOutStartTime) / ZOOM_TRANSITION_DURATION);
+    scale = lerp(zoomLevel, 1, t);
+  } else {
+    cameraPan = { x: 0, y: 0 };
+    return defaultTransform;
   }
+  
+  // --- 2. Determine Target Pan Position ---
+  let targetPan = { x: 0, y: 0 };
+  
+  // --- DEBUG: TẠM THỜI VÔ HIỆU HÓA TRACKING CHUỘT ---
+  // Camera sẽ luôn nhắm vào điểm targetX, targetY cố định của vùng zoom.
+  targetPan = { x: targetX, y: targetY };
+  
+  if (mode === 'fixed' || !anchors || anchors.length === 0) {
+    targetPan = { x: targetX, y: targetY };
+  } else { // 'auto' mode with anchors
+    // const panStartTime = startTime + ZOOM_TRANSITION_DURATION;
+    const panEndTime = startTime + duration - ZOOM_TRANSITION_DURATION;
 
-  // --- Phase 3: Zoom Out (last 0.8 seconds) ---
-  if (elapsed >= zoomOutStartTime) {
-    const t = easeInOutCubic((elapsed - zoomOutStartTime) / zoomOutDuration);
-    
-    // NOTE: Determine the starting point for zoom-out based on mode
-    let startFocusX = targetX;
-    let startFocusY = targetY;
+    if (elapsed <= ZOOM_TRANSITION_DURATION) {
+      // Giai đoạn 1: Zoom-in
+      // Lia từ trung tâm (0,0) đến anchor đầu tiên
+      const t = easeInOutCubic(elapsed / ZOOM_TRANSITION_DURATION);
+      targetPan = {
+        x: lerp(0, anchors[0].x, t),
+        y: lerp(0, anchors[0].y, t),
+      };
+    } else if (elapsed >= panEndTime - startTime) {
+      // Giai đoạn 3: Zoom-out
+      // Lia từ anchor cuối cùng về trung tâm (0,0)
+      const lastAnchor = anchors[anchors.length - 1];
+      const t = easeInOutCubic((elapsed - (panEndTime - startTime)) / ZOOM_TRANSITION_DURATION);
+      targetPan = {
+        x: lerp(lastAnchor.x, 0, t),
+        y: lerp(lastAnchor.y, 0, t),
+      };
+    } else {
+      // Giai đoạn 2: Lia giữa các điểm neo
+      // Tìm segment anchor hiện tại
+      let currentAnchorIndex = -1;
+      for (let i = 0; i < anchors.length - 1; i++) {
+        if (currentTime >= anchors[i].time && currentTime < anchors[i+1].time) {
+          currentAnchorIndex = i;
+          break;
+        }
+      }
 
-    // If 'auto', find the last known mouse position before zoom-out
-    if (mode === 'auto') {
-      const lastMousePosIndex = findLastIndex(metadata, m => m.timestamp <= startTime + zoomOutStartTime);
-      const lastKnownPos = lastMousePosIndex !== -1 ? metadata[lastMousePosIndex] : { x: targetX, y: targetY };
-      startFocusX = lastKnownPos.x;
-      startFocusY = lastKnownPos.y;
+      if (currentAnchorIndex !== -1) {
+        const startAnchor = anchors[currentAnchorIndex];
+        const endAnchor = anchors[currentAnchorIndex + 1];
+        
+        const segmentDuration = endAnchor.time - startAnchor.time;
+        const progressInSegment = (currentTime - startAnchor.time) / segmentDuration;
+        const t = easeInOutCubic(progressInSegment);
+
+        targetPan = {
+          x: lerp(startAnchor.x, endAnchor.x, t),
+          y: lerp(startAnchor.y, endAnchor.y, t),
+        };
+      } else {
+        // Nếu không nằm trong segment nào (ví dụ, sau anchor cuối), giữ ở anchor cuối
+        targetPan = anchors[anchors.length - 1];
+      }
     }
-    // NOTE: If 'fixed', the starting point is the targetX/Y already set.
-
-    const currentScale = lerp(zoomLevel, 1, t);
-    const focusX = lerp(startFocusX, videoWidth / 2, t);
-    const focusY = lerp(startFocusY, videoHeight / 2, t);
-
-    return { scale: currentScale, ...calculatePan(currentScale, focusX, focusY, videoWidth, videoHeight) };
   }
   
-  // --- Phase 2: Tracking (between zoom-in and zoom-out) ---
+  // --- 3. Apply Smoothing and Clamping ---
+  cameraPan.x = lerp(cameraPan.x, targetPan.x, PAN_SMOOTHING_FACTOR);
+  cameraPan.y = lerp(cameraPan.y, targetPan.y, PAN_SMOOTHING_FACTOR);
+
+  const viewportHalfWidth = 0.5 / scale;
+  const viewportHalfHeight = 0.5 / scale;
+  cameraPan.x = Math.max(-0.5 + viewportHalfWidth, Math.min(cameraPan.x, 0.5 - viewportHalfWidth));
+  cameraPan.y = Math.max(-0.5 + viewportHalfHeight, Math.min(cameraPan.y, 0.5 - viewportHalfHeight));
   
-  // NOTE: If 'fixed', just keep the zoom position
-  if (mode === 'fixed') {
-    return { scale: zoomLevel, ...calculatePan(zoomLevel, targetX, targetY, videoWidth, videoHeight) };
-  }
+  // --- 4. Calculate Final CSS Translate ---
+  const translateX = -cameraPan.x * 100;
+  const translateY = -cameraPan.y * 100;
   
-  // NOTE: Logic below runs only for mode 'auto'
-  const prevIndex = findLastIndex(metadata, m => m.timestamp <= currentTime);
-  if (prevIndex === -1) {
-    return { scale: zoomLevel, ...calculatePan(zoomLevel, targetX, targetY, videoWidth, videoHeight) };
-  }
-  
-  const prevPos = metadata[prevIndex];
-  const nextPos = metadata[prevIndex + 1];
-
-  if (!nextPos || nextPos.timestamp > startTime + duration) {
-    return { scale: zoomLevel, ...calculatePan(zoomLevel, prevPos.x, prevPos.y, videoWidth, videoHeight) };
-  }
-
-  const timeDelta = nextPos.timestamp - prevPos.timestamp;
-  if (timeDelta <= 0) {
-    return { scale: zoomLevel, ...calculatePan(zoomLevel, prevPos.x, prevPos.y, videoWidth, videoHeight) };
-  }
-
-  const t = (currentTime - prevPos.timestamp) / timeDelta;
-  const focusX = lerp(prevPos.x, nextPos.x, t);
-  const focusY = lerp(prevPos.y, nextPos.y, t);
-
-  return { scale: zoomLevel, ...calculatePan(zoomLevel, focusX, focusY, videoWidth, videoHeight) };
+  return { scale, translateX, translateY };
 };

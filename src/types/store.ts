@@ -27,6 +27,12 @@ export interface Preset {
   aspectRatio: AspectRatio;
 }
 
+export interface AnchorPoint {
+  time: number;
+  x: number; // Tọa độ chuẩn hóa [-0.5, 0.5]
+  y: number; // Tọa độ chuẩn hóa [-0.5, 0.5]
+}
+
 export interface ZoomRegion {
   id: string;
   type: 'zoom';
@@ -38,6 +44,7 @@ export interface ZoomRegion {
   targetY: number;
   mode: 'auto' | 'fixed';
   zIndex: number;
+  anchors?: AnchorPoint[];
 }
 
 export interface CutRegion {

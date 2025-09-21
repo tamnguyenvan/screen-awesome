@@ -1,20 +1,18 @@
-// src/components/editor/sidepanel/FocusPointPicker.tsx
-
 import React, { useRef, useState, useEffect, useCallback } from 'react';
 import { useEditorStore } from '../../../store/editorStore';
 import { Loader2 } from 'lucide-react'; // Import a loading icon
 
 interface FocusPointPickerProps {
   regionId: string;
-  targetX: number;
-  targetY: number;
+  targetX: number; // Now a normalized value [-0.5, 0.5]
+  targetY: number; // Now a normalized value [-0.5, 0.5]
   startTime: number;
   onTargetChange: (coords: { x: number, y: number }) => void;
 }
 
 export function FocusPointPicker({ regionId, targetX, targetY, startTime, onTargetChange }: FocusPointPickerProps) {
   void regionId
-  const { videoPath, videoDimensions } = useEditorStore.getState();
+  const { videoPath } = useEditorStore.getState();
   const containerRef = useRef<HTMLDivElement>(null);
   const [thumbnailUrl, setThumbnailUrl] = useState<string | null>(null);
   const [isLoading, setIsLoading] = useState(true);
@@ -53,7 +51,7 @@ export function FocusPointPicker({ regionId, targetX, targetY, startTime, onTarg
   // Handle mouse events to select focus point
   const handleMouseDown = useCallback((e: React.MouseEvent<HTMLDivElement>) => {
     const container = containerRef.current;
-    if (!container || !videoDimensions.width) return;
+    if (!container) return;
 
     const updatePosition = (clientX: number, clientY: number) => {
       const rect = container.getBoundingClientRect();
@@ -63,11 +61,10 @@ export function FocusPointPicker({ regionId, targetX, targetY, startTime, onTarg
       const clampedX = Math.max(0, Math.min(x, rect.width));
       const clampedY = Math.max(0, Math.min(y, rect.height));
 
-      // Convert from display coordinates to video origin coordinates
-      const nativeX = (clampedX / rect.width) * videoDimensions.width;
-      const nativeY = (clampedY / rect.height) * videoDimensions.height;
+      const normalizedX = (clampedX / rect.width) - 0.5;
+      const normalizedY = (clampedY / rect.height) - 0.5;
 
-      onTargetChange({ x: nativeX, y: nativeY });
+      onTargetChange({ x: normalizedX, y: normalizedY });
     };
 
     updatePosition(e.clientX, e.clientY);
@@ -83,10 +80,10 @@ export function FocusPointPicker({ regionId, targetX, targetY, startTime, onTarg
 
     document.addEventListener('mousemove', handleMouseMove);
     document.addEventListener('mouseup', handleMouseUp);
-  }, [videoDimensions, onTargetChange]);
+  }, [onTargetChange]);
 
-  const reticleLeft = videoDimensions.width > 0 ? (targetX / videoDimensions.width) * 100 : 50;
-  const reticleTop = videoDimensions.height > 0 ? (targetY / videoDimensions.height) * 100 : 50;
+  const reticleLeft = (targetX + 0.5) * 100;
+  const reticleTop = (targetY + 0.5) * 100;
 
   return (
     <div className="space-y-2">
