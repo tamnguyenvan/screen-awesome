@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useRef, useEffect } from 'react';
 import { useEditorStore } from '../../../store/editorStore';
 import { cn } from '../../../lib/utils';
 import { WALLPAPERS } from '../../../lib/constants';
@@ -7,14 +7,8 @@ import {
   ArrowUp, ArrowDown, ArrowLeft, ArrowRight, ArrowDownRight, ArrowUpLeft, ArrowDownLeft, Plus
 } from 'lucide-react';
 import { ControlGroup } from './ControlGroup';
-import { Button } from '../../ui/button';
 
 type BackgroundTab = 'color' | 'gradient' | 'image' | 'wallpaper';
-type LocalGradientState = {
-  gradientStart: string;
-  gradientEnd: string;
-  gradientDirection: string;
-};
 
 // Helper component for circular color picker
 const ColorPickerRoundedRect = ({
@@ -82,32 +76,13 @@ const COLOR_PRESETS = [
 export function BackgroundSettings() {
   const { frameStyles, updateBackground } = useEditorStore();
   const [activeTab, setActiveTab] = useState<BackgroundTab>(frameStyles.background.type);
-  const [localGradient, setLocalGradient] = useState<LocalGradientState>({
-    gradientStart: frameStyles.background.gradientStart || '#6366f1',
-    gradientEnd: frameStyles.background.gradientEnd || '#9ca9ff',
-    gradientDirection: frameStyles.background.gradientDirection || 'to bottom right',
-  });
   const imageInputRef = useRef<HTMLInputElement>(null);
 
-  // Sync local gradient state when tab becomes active or global state changes
+  // Sync tab with global state if it changes from somewhere else
   useEffect(() => {
-    if (activeTab === 'gradient') {
-      setLocalGradient({
-        gradientStart: frameStyles.background.gradientStart || '#6366f1',
-        gradientEnd: frameStyles.background.gradientEnd || '#9ca9ff',
-        gradientDirection: frameStyles.background.gradientDirection || 'to bottom right',
-      });
-    }
-  }, [activeTab, frameStyles.background]);
+    setActiveTab(frameStyles.background.type);
+  }, [frameStyles.background.type]);
 
-
-  const handleLocalGradientChange = (updates: Partial<LocalGradientState>) => {
-    setLocalGradient(prev => ({ ...prev, ...updates }));
-  };
-
-  const applyGradient = () => {
-    updateBackground({ type: 'gradient', ...localGradient });
-  };
 
   const handleColorPresetClick = (color: string) => {
     updateBackground({ type: 'color', color: color });
@@ -177,7 +152,7 @@ export function BackgroundSettings() {
       </div>
 
       {/* Tab Content */}
-      <div className="min-h-[240px]">
+      <div className="min-h-[200px]">
         {activeTab === 'wallpaper' && (
           <div className="space-y-4">
             <div className="grid grid-cols-6 gap-2">
@@ -264,29 +239,29 @@ export function BackgroundSettings() {
         )}
 
         {activeTab === 'gradient' && (
-          <div className="space-y-4">
-            <div>
-              <h5 className="text-xs font-semibold text-muted-foreground mb-2 uppercase tracking-wider">Colors</h5>
-              <div className="flex items-center gap-4">
+          <div className="flex gap-6">
+            <div className="flex-shrink-0">
+              <h5 className="text-xs font-semibold text-muted-foreground mb-3 uppercase tracking-wider">Colors</h5>
+              <div className="flex flex-col items-center gap-4">
                 <ColorPickerRoundedRect
                   label="Start"
-                  color={localGradient.gradientStart}
+                  color={frameStyles.background.gradientStart || '#6366f1'}
                   name="gradientStart"
-                  onChange={(e) => handleLocalGradientChange({ gradientStart: e.target.value })}
+                  onChange={(e) => updateBackground({ type: 'gradient', gradientStart: e.target.value })}
                   size="md"
                 />
                 <ColorPickerRoundedRect
                   label="End"
-                  color={localGradient.gradientEnd}
+                  color={frameStyles.background.gradientEnd || '#9ca9ff'}
                   name="gradientEnd"
-                  onChange={(e) => handleLocalGradientChange({ gradientEnd: e.target.value })}
+                  onChange={(e) => updateBackground({ type: 'gradient', gradientEnd: e.target.value })}
                   size="md"
                 />
               </div>
             </div>
 
-            <div>
-              <h5 className="text-xs font-semibold text-muted-foreground mb-2 uppercase tracking-wider">Style</h5>
+            <div className="flex-1">
+              <h5 className="text-xs font-semibold text-muted-foreground mb-3 uppercase tracking-wider">Style</h5>
               <div className="grid grid-cols-4 gap-2">
                 {GRADIENT_PRESETS.map((preset, index) => {
                   const startColor = '#ffffff';
@@ -299,17 +274,17 @@ export function BackgroundSettings() {
                     <button
                       key={index}
                       className={cn(
-                        "relative w-16 h-10 rounded-lg overflow-hidden border-2 transition-all duration-200",
+                        "relative w-full h-10 rounded-lg overflow-hidden border-2 transition-all duration-200",
                         "flex items-center justify-center group",
-                        localGradient.gradientDirection === preset.direction
+                        frameStyles.background.gradientDirection === preset.direction
                           ? "border-primary ring-2 ring-primary/20"
                           : "border-sidebar-border hover:border-primary/60"
                       )}
                       style={gradientStyle}
-                      onClick={() => handleLocalGradientChange({ gradientDirection: preset.direction })}
+                      onClick={() => updateBackground({ type: 'gradient', gradientDirection: preset.direction })}
                       title={preset.name}
                     >
-                      {localGradient.gradientDirection === preset.direction && (
+                      {frameStyles.background.gradientDirection === preset.direction && (
                         <div className="absolute inset-0 bg-black/10 flex items-center justify-center">
                           <div className="w-5 h-5 bg-white/90 rounded-full flex items-center justify-center shadow-sm">
                             <Check className="w-3 h-3 text-gray-800" />
@@ -321,7 +296,6 @@ export function BackgroundSettings() {
                 })}
               </div>
             </div>
-            <Button onClick={applyGradient} className="w-full mt-4">Apply Gradient</Button>
           </div>
         )}
 

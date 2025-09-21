@@ -28,7 +28,7 @@ function TabButton({ label, icon, isActive, onClick, disabled }: TabButtonProps)
             onClick={onClick}
             disabled={disabled}
             className={cn(
-              'w-full flex flex-col items-center justify-center p-3 rounded-lg transition-colors',
+              'w-full flex flex-col items-center justify-center p-1 rounded-lg transition-colors',
               'hover:bg-accent/50 focus:outline-none focus:ring-2 focus:ring-ring focus:ring-offset-2 ring-offset-sidebar',
               isActive
                 ? 'bg-accent text-primary'
