@@ -44,9 +44,14 @@ export function PreviewControls({ videoRef }: PreviewControlsProps) {
   const { undo, redo, pastStates, futureStates } = useEditorStore.temporal.getState();
 
   const handleRewind = () => {
-    setCurrentTime(0);
+    const cutRegionsMap = useEditorStore.getState().cutRegions;
+    const startTrimRegion = Object.values(cutRegionsMap).find(r => r.trimType === 'start');
+    
+    const rewindTime = startTrimRegion ? startTrimRegion.startTime + startTrimRegion.duration : 0;
+
+    setCurrentTime(rewindTime);
     if (videoRef.current) {
-      videoRef.current.currentTime = 0;
+      videoRef.current.currentTime = rewindTime;
     }
   }
 
