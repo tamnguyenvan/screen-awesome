@@ -1,5 +1,8 @@
+// src/components/editor/sidepanel/FocusPointPicker.tsx
+
 import React, { useRef, useState, useEffect, useCallback } from 'react';
 import { useEditorStore } from '../../../store/editorStore';
+import { Loader2 } from 'lucide-react'; // Import a loading icon
 
 interface FocusPointPickerProps {
   regionId: string;
@@ -11,31 +14,46 @@ interface FocusPointPickerProps {
 
 export function FocusPointPicker({ regionId, targetX, targetY, startTime, onTargetChange }: FocusPointPickerProps) {
   void regionId
-  const videoUrl = useEditorStore.getState().videoUrl;
-  const videoRef = useRef<HTMLVideoElement>(null);
+  const { videoPath, videoDimensions } = useEditorStore.getState();
   const containerRef = useRef<HTMLDivElement>(null);
-  const [videoDims, setVideoDims] = useState({ width: 0, height: 0 });
+  const [thumbnailUrl, setThumbnailUrl] = useState<string | null>(null);
+  const [isLoading, setIsLoading] = useState(true);
 
-  // Seek video to the start of the region when the component mounts
+  // Effect to fetch the thumbnail when the component mounts or start time changes
   useEffect(() => {
-    const video = videoRef.current;
-    if (video && video.readyState >= 1) { // HAVE_METADATA
-      video.currentTime = startTime;
-    }
-  }, [startTime]);
+    let isCancelled = false;
+    const fetchFrame = async () => {
+      if (!videoPath) return;
 
-  const handleLoadedMetadata = () => {
-    const video = videoRef.current;
-    if (video) {
-      setVideoDims({ width: video.videoWidth, height: video.videoHeight });
-      video.currentTime = startTime;
-    }
-  };
+      setIsLoading(true);
+      setThumbnailUrl(null);
+
+      try {
+        const dataUrl = await window.electronAPI.getVideoFrame({ videoPath, time: startTime });
+        if (!isCancelled) {
+          setThumbnailUrl(dataUrl);
+        }
+      } catch (error) {
+        console.error("Failed to fetch video frame:", error);
+      } finally {
+        if (!isCancelled) {
+          setIsLoading(false);
+        }
+      }
+    };
+
+    fetchFrame();
+
+    return () => {
+      isCancelled = true;
+    };
+  }, [startTime, videoPath]);
+
 
   // Handle mouse events to select focus point
   const handleMouseDown = useCallback((e: React.MouseEvent<HTMLDivElement>) => {
     const container = containerRef.current;
-    if (!container || videoDims.width === 0) return;
+    if (!container || !videoDimensions.width) return;
 
     const updatePosition = (clientX: number, clientY: number) => {
       const rect = container.getBoundingClientRect();
@@ -46,8 +64,8 @@ export function FocusPointPicker({ regionId, targetX, targetY, startTime, onTarg
       const clampedY = Math.max(0, Math.min(y, rect.height));
 
       // Convert from display coordinates to video origin coordinates
-      const nativeX = (clampedX / rect.width) * videoDims.width;
-      const nativeY = (clampedY / rect.height) * videoDims.height;
+      const nativeX = (clampedX / rect.width) * videoDimensions.width;
+      const nativeY = (clampedY / rect.height) * videoDimensions.height;
 
       onTargetChange({ x: nativeX, y: nativeY });
     };
@@ -65,10 +83,10 @@ export function FocusPointPicker({ regionId, targetX, targetY, startTime, onTarg
 
     document.addEventListener('mousemove', handleMouseMove);
     document.addEventListener('mouseup', handleMouseUp);
-  }, [videoDims, onTargetChange]);
+  }, [videoDimensions, onTargetChange]);
 
-  const reticleLeft = videoDims.width > 0 ? (targetX / videoDims.width) * 100 : 50;
-  const reticleTop = videoDims.height > 0 ? (targetY / videoDims.height) * 100 : 50;
+  const reticleLeft = videoDimensions.width > 0 ? (targetX / videoDimensions.width) * 100 : 50;
+  const reticleTop = videoDimensions.height > 0 ? (targetY / videoDimensions.height) * 100 : 50;
 
   return (
     <div className="space-y-2">
@@ -79,13 +97,18 @@ export function FocusPointPicker({ regionId, targetX, targetY, startTime, onTarg
         onMouseDown={handleMouseDown}
         className="relative aspect-video w-full bg-black rounded-lg overflow-hidden cursor-crosshair"
       >
-        <video
-          ref={videoRef}
-          src={videoUrl ?? ''}
-          className="w-full h-full object-contain"
-          onLoadedMetadata={handleLoadedMetadata}
-          muted
-        />
+        {isLoading && (
+          <div className="absolute inset-0 flex items-center justify-center bg-muted/50">
+            <Loader2 className="w-6 h-6 animate-spin text-primary" />
+          </div>
+        )}
+        {thumbnailUrl && (
+          <img
+            src={thumbnailUrl}
+            className="w-full h-full object-contain pointer-events-none"
+            alt="Video Frame Preview"
+          />
+        )}
         <div
           className="absolute w-6 h-6 rounded-full border-2 border-primary bg-primary/20 backdrop-blur-sm shadow-lg pointer-events-none transform -translate-x-1/2 -translate-y-1/2 flex items-center justify-center"
           style={{

@@ -445,7 +445,6 @@ export function Timeline({ videoRef }: { videoRef: React.RefObject<HTMLVideoElem
             {/* Layer 2: Cut Regions (Full height overlays) */}
             <div className="absolute top-0 left-0 right-0 bottom-0 pointer-events-none">
               {allCutRegionsToRender.map(region => {
-                // --- CHANGE START ---
                 // Logic to apply a temporary high z-index to the selected region
                 let z;
                 if (region.trimType) {
@@ -455,7 +454,6 @@ export function Timeline({ videoRef }: { videoRef: React.RefObject<HTMLVideoElem
                 } else {
                   z = region.zIndex ?? 10; // Use calculated z-index
                 }
-                // --- CHANGE END ---
 
                 return (
                   <div
@@ -466,7 +464,6 @@ export function Timeline({ videoRef }: { videoRef: React.RefObject<HTMLVideoElem
                     <CutRegionBlock
                       region={region}
                       isSelected={selectedRegionId === region.id}
-                      isDragging={draggingRegion?.id === region.id}
                       isDraggable={region.id !== previewCutRegion?.id}
                       onMouseDown={handleRegionMouseDown}
                       setRef={el => regionRefs.current.set(region.id, el)}
@@ -480,10 +477,7 @@ export function Timeline({ videoRef }: { videoRef: React.RefObject<HTMLVideoElem
             <div className="relative pt-6 space-y-4">
               <div className="h-24 relative bg-gradient-to-b from-background/50 to-background/20">
                 {zoomRegions.map(region => {
-                  // --- CHANGE START ---
-                  // Logic to apply a temporary high z-index to the selected region
                   const z = selectedRegionId === region.id ? 100 : (region.zIndex ?? 10);
-                  // --- CHANGE END ---
 
                   return (
                     <div
@@ -494,7 +488,6 @@ export function Timeline({ videoRef }: { videoRef: React.RefObject<HTMLVideoElem
                       <ZoomRegionBlock
                         region={region}
                         isSelected={selectedRegionId === region.id}
-                        isDragging={draggingRegion?.id === region.id}
                         onMouseDown={handleRegionMouseDown}
                         setRef={el => regionRefs.current.set(region.id, el)}
                       />

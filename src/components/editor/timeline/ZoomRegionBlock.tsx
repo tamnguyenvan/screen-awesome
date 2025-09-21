@@ -6,29 +6,16 @@ import { Search } from 'lucide-react';
 interface ZoomRegionBlockProps {
   region: ZoomRegion;
   isSelected: boolean;
-  isDragging: boolean;
   onMouseDown: (e: React.MouseEvent<HTMLDivElement>, region: TimelineRegion, type: 'move' | 'resize-left' | 'resize-right') => void;
   setRef: (el: HTMLDivElement | null) => void;
 }
 
-const areEqual = (prevProps: ZoomRegionBlockProps, nextProps: ZoomRegionBlockProps) => {
-  return (
-    prevProps.isSelected === nextProps.isSelected &&
-    prevProps.isDragging === nextProps.isDragging &&
-    prevProps.region.id === nextProps.region.id &&
-    prevProps.region.startTime === nextProps.region.startTime &&
-    prevProps.region.duration === nextProps.region.duration
-  );
-};
-
 export const ZoomRegionBlock = memo(({
   region,
   isSelected,
-  isDragging,
   onMouseDown,
   setRef
 }: ZoomRegionBlockProps) => {
-  void isDragging
   const handleResizeMouseDown = (e: React.MouseEvent<HTMLDivElement>, type: 'resize-left' | 'resize-right') => {
     e.stopPropagation();
     onMouseDown(e, region, type);
@@ -71,6 +58,6 @@ export const ZoomRegionBlock = memo(({
       </div>
     </div>
   );
-}, areEqual);
+});
 
 ZoomRegionBlock.displayName = 'ZoomRegionBlock';

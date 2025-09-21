@@ -140,6 +140,26 @@ async function handleGetDisplays(): Promise<DisplayInfo[]> {
   return displays;
 }
 
+async function handleGetVideoFrame(_event: IpcMainInvokeEvent, { videoPath, time }: { videoPath: string, time: number }): Promise<string> {
+  return new Promise((resolve, reject) => {
+    log.info(`[Main] Extracting frame from "${videoPath}" at ${time}s`);
+
+    const command = `"${FFMPEG_PATH}" -ss ${time} -i "${videoPath}" -vframes 1 -f image2pipe -c:v png -`;
+    
+    exec(command, { encoding: 'binary', maxBuffer: 10 * 1024 * 1024 }, (error, stdout, stderr) => {
+      if (error) {
+        log.error(`[Main] FFmpeg frame extraction error: ${stderr}`);
+        return reject(error);
+      }
+      
+      const buffer = Buffer.from(stdout, 'binary');
+      const base64Image = `data:image/png;base64,${buffer.toString('base64')}`;
+      log.info(`[Main] Frame extracted successfully.`);
+      resolve(base64Image);
+    });
+  });
+}
+
 function getFFmpegPath(): string {
   // path to ffmpeg in production
   if (app.isPackaged) {
@@ -1194,6 +1214,7 @@ app.whenReady().then(() => {
   ipcMain.handle('dialog:showSaveDialog', (_event, options) => {
     return dialog.showSaveDialog(options);
   });
+  ipcMain.handle('video:get-frame', handleGetVideoFrame);
 
   createRecorderWindow()
 })

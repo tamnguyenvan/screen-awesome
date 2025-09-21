@@ -8,7 +8,6 @@ import { Scissors } from 'lucide-react';
 interface CutRegionBlockProps {
   region: CutRegion;
   isSelected: boolean;
-  isDragging: boolean; // Prop mới
   isDraggable?: boolean;
   onMouseDown: (e: React.MouseEvent<HTMLDivElement>, region: TimelineRegion, type: 'move' | 'resize-left' | 'resize-right') => void;
   setRef: (el: HTMLDivElement | null) => void;
@@ -17,7 +16,6 @@ interface CutRegionBlockProps {
 export const CutRegionBlock = memo(({
   region,
   isSelected,
-  isDragging,
   isDraggable = true,
   onMouseDown,
   setRef
@@ -39,10 +37,10 @@ export const CutRegionBlock = memo(({
       data-region-id={region.id}
       className={cn(
         'w-full h-full pointer-events-none',
-        'bg-destructive/20' // This creates the colored track background
       )}
       style={{ willChange: 'transform, width' }}
     >
+      <div className="absolute top-0 left-0 w-full h-[72px] bg-destructive/20" />
       <div
         className={cn(
           'relative w-full h-14 mt-[72px] flex items-center justify-center rounded-lg border-2',
