@@ -445,7 +445,18 @@ export function Timeline({ videoRef }: { videoRef: React.RefObject<HTMLVideoElem
             {/* Layer 2: Cut Regions (Full height overlays) */}
             <div className="absolute top-0 left-0 right-0 bottom-0 pointer-events-none">
               {allCutRegionsToRender.map(region => {
-                const z = region.trimType !== undefined ? 10 : (region.id === selectedRegionId ? 39 : 15 + ((region as CutRegion).zIndex ?? 0));
+                // --- CHANGE START ---
+                // Logic to apply a temporary high z-index to the selected region
+                let z;
+                if (region.trimType) {
+                  z = 5; // Trim regions are always at the bottom
+                } else if (selectedRegionId === region.id) {
+                  z = 100; // Selected non-trim regions are temporarily on top
+                } else {
+                  z = region.zIndex ?? 10; // Use calculated z-index
+                }
+                // --- CHANGE END ---
+
                 return (
                   <div
                     key={region.id}
@@ -469,7 +480,11 @@ export function Timeline({ videoRef }: { videoRef: React.RefObject<HTMLVideoElem
             <div className="relative pt-6 space-y-4">
               <div className="h-24 relative bg-gradient-to-b from-background/50 to-background/20">
                 {zoomRegions.map(region => {
-                  const z = region.id === selectedRegionId ? 39 : 15 + region.zIndex;
+                  // --- CHANGE START ---
+                  // Logic to apply a temporary high z-index to the selected region
+                  const z = selectedRegionId === region.id ? 100 : (region.zIndex ?? 10);
+                  // --- CHANGE END ---
+
                   return (
                     <div
                       key={region.id}

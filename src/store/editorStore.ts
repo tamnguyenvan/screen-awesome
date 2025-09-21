@@ -37,6 +37,7 @@ export interface EditorActions {
   initializeSettings: () => Promise<void>;
   initializePresets: () => Promise<void>;
   applyPreset: (id: string) => void;
+  _recalculateZIndices: () => void;
   saveCurrentStyleAsPreset: (name: string) => void;
   updateActivePreset: () => void;
   deletePreset: (id: string) => void;
@@ -65,7 +66,6 @@ const initialProjectState = {
   activeZoomRegionId: null,
   isCurrentlyCut: false,
   timelineZoom: 1,
-  nextZIndex: 1,
   webcamVideoPath: null,
   webcamVideoUrl: null,
   isWebcamVisible: false,
@@ -103,6 +103,27 @@ const _persistPresets = async (presets: Record<string, Preset>) => {
   } catch (error) {
     console.error("Failed to save presets:", error);
   }
+};
+
+const _recalculateZIndices = (set: (fn: (state: EditorState) => void) => void) => {
+  set(state => {
+    const allRegions = [
+      ...Object.values(state.zoomRegions),
+      // IMPORTANT: Only include regular cut regions, not trim regions, for dynamic z-indexing
+      ...Object.values(state.cutRegions).filter(r => !r.trimType)
+    ];
+
+    // Sort by duration ASC (shorter regions get higher z-index)
+    allRegions.sort((a, b) => a.duration - b.duration);
+
+    // FIX: Assign z-index inversely to the sorted index.
+    // The shortest region (index 0) gets the highest z-index.
+    const regionCount = allRegions.length;
+    allRegions.forEach((region, index) => {
+      // Start z-index from 10 to leave space for other layers (like trim regions)
+      region.zIndex = 10 + (regionCount - 1 - index);
+    });
+  });
 };
 
 // --- Store Implementation ---
@@ -177,15 +198,16 @@ export const useEditorStore = create(
               targetX: firstClick.x,
               targetY: firstClick.y,
               mode: 'auto',
-              zIndex: index + 1,
+              zIndex: 0, // Will be set by _recalculateZIndices
             };
             return acc;
           }, {} as Record<string, ZoomRegion>);
 
           set(state => {
             state.zoomRegions = newZoomRegions;
-            state.nextZIndex = mergedClickGroups.length + 1;
           });
+          get()._recalculateZIndices();
+
 
         } catch (error) {
           console.error("Failed to process metadata file:", error);
@@ -278,7 +300,7 @@ export const useEditorStore = create(
       setAspectRatio: (ratio) => set(state => { state.aspectRatio = ratio; }),
 
       addZoomRegion: () => {
-        const { metadata, currentTime, videoDimensions, duration, nextZIndex } = get();
+        const { metadata, currentTime, videoDimensions, duration } = get();
         if (duration === 0) return;
 
         const lastMousePos = metadata.find(m => m.timestamp <= currentTime);
@@ -294,7 +316,7 @@ export const useEditorStore = create(
           targetX: lastMousePos?.x || videoDimensions.width / 2,
           targetY: lastMousePos?.y || videoDimensions.height / 2,
           mode: 'auto',
-          zIndex: nextZIndex,
+          zIndex: 0,  // will be set by _recalculateZIndices
         };
 
         if (newRegion.startTime + newRegion.duration > duration) {
@@ -304,12 +326,12 @@ export const useEditorStore = create(
         set(state => {
           state.zoomRegions[id] = newRegion;
           state.selectedRegionId = id;
-          state.nextZIndex++;
         });
+        get()._recalculateZIndices();
       },
 
       addCutRegion: (regionData) => {
-        const { currentTime, duration, nextZIndex } = get();
+        const { currentTime, duration } = get();
         if (duration === 0) return;
 
         const id = `cut-${Date.now()}`;
@@ -319,7 +341,7 @@ export const useEditorStore = create(
           type: 'cut',
           startTime: currentTime,
           duration: 2,
-          zIndex: nextZIndex,
+          zIndex: 0,  // will be set by _recalculateZIndices
           ...regionData,
         };
 
@@ -330,33 +352,47 @@ export const useEditorStore = create(
         set(state => {
           state.cutRegions[id] = newRegion;
           state.selectedRegionId = id;
-          if (!regionData?.trimType) {
-            state.nextZIndex++;
+        });
+
+        // Only recalculate for non-trim regions
+        if (!regionData?.trimType) {
+          get()._recalculateZIndices();
+        }
+      },
+
+      updateRegion: (id, updates) => {
+        set(state => {
+          const region = state.zoomRegions[id] || state.cutRegions[id];
+
+          if (region) {
+            const oldDuration = region.duration;
+            Object.assign(region, updates);
+            const videoDuration = state.duration;
+            if (videoDuration > 0) {
+              region.startTime = Math.max(0, Math.min(region.startTime, videoDuration - MINIMUM_REGION_DURATION));
+              const maxPossibleDuration = videoDuration - region.startTime;
+              region.duration = Math.max(MINIMUM_REGION_DURATION, Math.min(region.duration, maxPossibleDuration));
+            }
+
+            // Recalculate if duration changed, as it affects z-index order
+            if (oldDuration !== region.duration) {
+              get()._recalculateZIndices();
+            }
           }
         });
       },
 
-      updateRegion: (id, updates) => set(state => {
-        const region = state.zoomRegions[id] || state.cutRegions[id];
 
-        if (region) {
-          Object.assign(region, updates);
-          const videoDuration = state.duration;
-          if (videoDuration > 0) {
-            region.startTime = Math.max(0, Math.min(region.startTime, videoDuration - MINIMUM_REGION_DURATION));
-            const maxPossibleDuration = videoDuration - region.startTime;
-            region.duration = Math.max(MINIMUM_REGION_DURATION, Math.min(region.duration, maxPossibleDuration));
+      deleteRegion: (id) => {
+        set(state => {
+          delete state.zoomRegions[id];
+          delete state.cutRegions[id];
+          if (state.selectedRegionId === id) {
+            state.selectedRegionId = null;
           }
-        }
-      }),
-
-      deleteRegion: (id) => set(state => {
-        delete state.zoomRegions[id];
-        delete state.cutRegions[id];
-        if (state.selectedRegionId === id) {
-          state.selectedRegionId = null;
-        }
-      }),
+        });
+        get()._recalculateZIndices();
+      },
 
       setSelectedRegionId: (id) => set(state => { state.selectedRegionId = id; }),
       toggleTheme: () => {
@@ -445,6 +481,8 @@ export const useEditorStore = create(
           localStorage.setItem(LAST_PRESET_ID_KEY, id);
         }
       },
+
+      _recalculateZIndices: () => _recalculateZIndices(set),
 
       saveCurrentStyleAsPreset: (name) => {
         const id = `preset-${Date.now()}`;

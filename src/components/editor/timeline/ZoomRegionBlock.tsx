@@ -39,14 +39,11 @@ export const ZoomRegionBlock = memo(({
       ref={setRef}
       data-region-id={region.id}
       className={cn(
-        'w-full h-full rounded-lg overflow-hidden relative',
-        'cursor-grab border-2 bg-muted',
-        isSelected && [
-          'shadow-lg shadow-primary/20',
-          'transform -translate-y-2'
-        ],
-        isSelected ? 'border-primary' : 'border-border',
-        isSelected ? 'z-20' : 'z-10'
+        'w-full h-full rounded-lg relative transition-all duration-200',
+        'cursor-grab border-2',
+        isSelected
+          ? 'bg-accent border-primary transform -translate-y-2'
+          : 'bg-secondary border-border hover:border-border/80'
       )}
       style={{ willChange: 'transform, width' }}
       onMouseDown={(e) => onMouseDown(e, region, 'move')}
@@ -54,12 +51,8 @@ export const ZoomRegionBlock = memo(({
       <div
         className="absolute left-0 top-0 w-4 h-full cursor-ew-resize rounded-l-md flex items-center justify-center z-30"
         onMouseDown={(e) => handleResizeMouseDown(e, 'resize-left')} >
-        <div className={cn("w-0.5 h-1/2 bg-gray-500/50 rounded-full", isSelected && "bg-primary")} />
+        <div className={cn("w-0.5 h-1/2 rounded-full", isSelected ? "bg-primary" : "bg-border")} />
       </div>
-
-      {isSelected && (
-        <div className="absolute inset-0 bg-primary/20" />
-      )}
 
       <div className="absolute inset-0 flex items-center justify-center pointer-events-none z-10">
         <div className="flex items-center gap-2 px-2">
@@ -74,7 +67,7 @@ export const ZoomRegionBlock = memo(({
       <div
         className="absolute right-0 top-0 w-4 h-full cursor-ew-resize rounded-r-md flex items-center justify-center z-30"
         onMouseDown={(e) => handleResizeMouseDown(e, 'resize-right')} >
-        <div className={cn("w-0.5 h-1/2 bg-gray-500/50 rounded-full", isSelected && "bg-primary")} />
+        <div className={cn("w-0.5 h-1/2 rounded-full", isSelected ? "bg-primary" : "bg-border")} />
       </div>
     </div>
   );

@@ -90,7 +90,6 @@ export interface EditorState {
   isCurrentlyCut: boolean;
   theme: 'light' | 'dark';
   timelineZoom: number;
-  nextZIndex: number,
   presets: Record<string, Preset>;
   activePresetId: string | null;
   presetSaveStatus: 'idle' | 'saving' | 'saved';
