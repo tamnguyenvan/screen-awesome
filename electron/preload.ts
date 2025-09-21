@@ -1,4 +1,3 @@
-// electron/preload.ts
 import { contextBridge, ipcRenderer, IpcRendererEvent } from 'electron'
 
 // Define the type for the callback value

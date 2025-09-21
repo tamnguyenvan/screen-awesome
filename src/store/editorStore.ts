@@ -1,5 +1,3 @@
-// src/store/editorStore.ts
-
 import { create } from 'zustand';
 import { immer } from 'zustand/middleware/immer';
 import { useShallow } from 'zustand/react/shallow';
@@ -46,7 +44,6 @@ export interface EditorActions {
   // webcam
   setWebcamPosition: (position: WebcamPosition) => void;
   setWebcamVisibility: (isVisible: boolean) => void;
-  // NEW: Thêm action để cập nhật style của webcam
   updateWebcamStyle: (style: Partial<WebcamStyles>) => void;
 }
 
@@ -73,11 +70,9 @@ const initialProjectState = {
   webcamVideoUrl: null,
   isWebcamVisible: false,
   webcamPosition: { pos: 'bottom-right' } as WebcamPosition,
-  // MODIFIED: Sử dụng webcamStyles object với giá trị mặc định mới
   webcamStyles: { size: 30, shadow: 15 },
 };
 
-// State toàn cục của ứng dụng, không bị reset bởi loadProject
 const initialAppState = {
   theme: 'light' as 'light' | 'dark',
   presets: {},
@@ -118,7 +113,6 @@ export const useEditorStore = create(
       ...initialAppState,
       frameStyles: initialFrameStyles,
 
-      // ... (các actions khác không thay đổi) ...
       loadProject: async ({ videoPath, metadataPath, webcamVideoPath }) => {
         const videoUrl = `media://${videoPath}`;
         const webcamVideoUrl = webcamVideoPath ? `media://${webcamVideoPath}` : null;
@@ -126,17 +120,15 @@ export const useEditorStore = create(
         const currentPresets = get().presets;
 
         set(state => {
-          // --- FIX: CHỈ RESET STATE CỦA PROJECT, KHÔNG RESET PRESETS/THEME ---
           Object.assign(state, initialProjectState);
 
-          // Khôi phục lại frame style từ preset đang active, nếu có
           if (lastActiveId && currentPresets[lastActiveId]) {
             state.frameStyles = JSON.parse(JSON.stringify(currentPresets[lastActiveId].styles));
           } else {
-            state.frameStyles = initialFrameStyles; // Nếu không thì dùng style mặc định
+            state.frameStyles = initialFrameStyles;
           }
 
-          // Cập nhật thông tin project mới
+          // Update the new project information
           state.videoPath = videoPath;
           state.metadataPath = metadataPath;
           state.videoUrl = videoUrl;
@@ -241,9 +233,7 @@ export const useEditorStore = create(
       updateFrameStyle: (style) => {
         set(state => {
           Object.assign(state.frameStyles, style);
-          // BỎ DÒNG NÀY: state.activePresetId = null; 
         });
-        // GỌI HÀM DEBOUNCE
         get()._debouncedUpdatePreset();
       },
 
@@ -372,7 +362,6 @@ export const useEditorStore = create(
       toggleTheme: () => {
         const newTheme = get().theme === 'dark' ? 'light' : 'dark';
         set(state => { state.theme = newTheme; });
-        // NEW: Lưu lại cài đặt theme mới
         window.electronAPI.setSetting('appearance.theme', newTheme);
       },
       setPreviewCutRegion: (region) => set(state => { state.previewCutRegion = region; }),
@@ -389,7 +378,6 @@ export const useEditorStore = create(
               state.presets[activePresetId].aspectRatio = aspectRatio;
             });
 
-            // MODIFIED: Sử dụng setSetting để lưu presets
             window.electronAPI.setSetting('presets', get().presets);
             
             console.log(`Auto-saved preset: "${presets[activePresetId].name}"`);
@@ -403,14 +391,12 @@ export const useEditorStore = create(
         }, 1500);
       },
 
-      // NEW: Action để tải cài đặt từ main process khi app được mở
       initializeSettings: async () => {
         try {
           const appearance = await window.electronAPI.getSetting<{ theme: 'light' | 'dark' }>('appearance');
           if (appearance && appearance.theme) {
             set({ theme: appearance.theme });
           }
-          // Có thể tải các cài đặt khác ở đây trong tương lai
         } catch (error) {
           console.error("Could not load app settings:", error);
         }
@@ -418,7 +404,6 @@ export const useEditorStore = create(
       
       initializePresets: async () => {
         try {
-          // MODIFIED: Tải presets qua hệ thống settings chung
           let loadedPresets = await window.electronAPI.getSetting<Record<string, Preset>>('presets');
 
           if (!loadedPresets || Object.keys(loadedPresets).length === 0) {
@@ -431,7 +416,6 @@ export const useEditorStore = create(
                 aspectRatio: '16:9',
               }
             };
-            // MODIFIED: Lưu presets mặc định qua hệ thống settings chung
             window.electronAPI.setSetting('presets', loadedPresets);
           }
 
@@ -475,13 +459,10 @@ export const useEditorStore = create(
           state.activePresetId = id;
         });
         localStorage.setItem(LAST_PRESET_ID_KEY, id);
-        // MODIFIED: Lưu presets qua hệ thống settings chung
         window.electronAPI.setSetting('presets', get().presets);
       },
 
       updateActivePreset: () => {
-        // Hàm này giờ có thể được đơn giản hóa vì logic đã nằm trong _debouncedUpdatePreset
-        // Tuy nhiên, giữ lại để có thể gọi thủ công nếu cần
         const { activePresetId, presets, frameStyles, aspectRatio } = get();
         if (activePresetId && presets[activePresetId]) {
           set(state => {
@@ -500,12 +481,10 @@ export const useEditorStore = create(
             localStorage.removeItem(LAST_PRESET_ID_KEY);
           }
         });
-        // MODIFIED: Lưu presets qua hệ thống settings chung
         window.electronAPI.setSetting('presets', get().presets);
       },
 
       reset: () => set(state => {
-        // Hàm reset này sẽ reset tất cả, bao gồm cả project và app state
         Object.assign(state, initialProjectState);
         Object.assign(state, initialAppState);
         state.frameStyles = initialFrameStyles;
@@ -513,7 +492,6 @@ export const useEditorStore = create(
 
       setWebcamPosition: (position) => set({ webcamPosition: position }),
       setWebcamVisibility: (isVisible) => set({ isWebcamVisible: isVisible }),
-      // NEW: Triển khai action cập nhật style webcam
       updateWebcamStyle: (style) => set(state => {
         Object.assign(state.webcamStyles, style);
       }),

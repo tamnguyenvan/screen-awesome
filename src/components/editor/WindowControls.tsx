@@ -1,4 +1,3 @@
-// src/components/editor/WindowControls.tsx
 import { Minus, Maximize2, X } from 'lucide-react';
 
 export function WindowControls() {

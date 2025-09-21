@@ -1,4 +1,3 @@
-// src/pages/RecorderPage.tsx
 import { useState, useEffect, useRef } from 'react';
 import {
   Mic, Webcam, Monitor, SquareDashed, Loader2,
@@ -174,7 +173,7 @@ export function RecorderPage() {
   useEffect(() => {
     window.electronAPI.getPlatform().then(setPlatform);
 
-    // Lấy danh sách màn hình
+    // Get the list of displays
     window.electronAPI.getDisplays().then(fetchedDisplays => {
       setDisplays(fetchedDisplays);
       const primary = fetchedDisplays.find(d => d.isPrimary);
@@ -186,14 +185,13 @@ export function RecorderPage() {
     });
 
     const cleanup = window.electronAPI.onRecordingFinished(() => {
-      // Không cần setRecorderSize nữa
+      // No longer need to setRecorderSize
       setRecordingState('idle');
     });
 
     return () => cleanup();
   }, []);
 
-  // Sửa đổi: useEffect chỉ để fetch sources, không resize
   useEffect(() => {
     if (source === 'window' && platform) {
       checkAndFetchSources(platform);
@@ -289,7 +287,6 @@ export function RecorderPage() {
   };
 
   const handleStart = async (options: { geometry?: WindowSource['geometry'], windowTitle?: string } = {}) => {
-    // ---- START OF FIX ----
     // Stop the preview stream BEFORE telling the main process to start recording.
     // This releases the webcam so FFmpeg can use it.
     if (webcamStreamRef.current) {
@@ -300,7 +297,6 @@ export function RecorderPage() {
         webcamPreviewRef.current.srcObject = null;
       }
     }
-    // ---- END OF FIX ----
 
     try {
       setRecordingState('recording');
@@ -366,21 +362,18 @@ export function RecorderPage() {
   }
 
   return (
-    // Container chính chiếm toàn bộ cửa sổ 800x800 trong suốt
     <div className="relative h-screen w-screen bg-transparent select-none">
-
-      {/* Wrapper nội dung: Căn giữa trên cùng */}
       <div className="absolute top-0 left-0 right-0 flex flex-col items-center pt-8">
 
-        {/* --- 1. Control Bar Chính --- */}
+        {/* --- 1. Main Control Bar --- */}
         <div
           className={cn(
-            "relative flex items-stretch gap-4 p-2 rounded-xl", // Thêm 'relative' vào đây
+            "relative flex items-stretch gap-4 p-2 rounded-xl",
             "bg-transparent text-card-foreground",
           )}
           style={{ WebkitAppRegion: 'drag' }}
         >
-          {/* Nút đóng (Close Button) */}
+          {/* Close Button */}
           <button
             onClick={() => window.electronAPI.closeWindow()}
             style={{ WebkitAppRegion: 'no-drag' }}
@@ -401,7 +394,7 @@ export function RecorderPage() {
             )}
             style={{ WebkitAppRegion: 'drag' }}
           >
-            {/* Tay nắm kéo (Drag Handle) */}
+            {/* Drag Handle */}
             <div className="flex items-center justify-center pl-2 pr-1 cursor-grab" style={{ WebkitAppRegion: 'drag' }}>
               <GripVertical className="w-5 h-5 text-muted-foreground/50" />
             </div>
@@ -428,7 +421,7 @@ export function RecorderPage() {
               />
             </div>
 
-            {/* *** Chọn Màn hình (Chỉ hiện khi Full Screen) *** */}
+            {/* Monitor Selection */}
             <div className="flex items-center" style={{ WebkitAppRegion: 'no-drag' }}>
               <Select
                 value={selectedDisplayId}
@@ -497,11 +490,12 @@ export function RecorderPage() {
           </div>
         </div>
 
-        {/* --- 2. Các Panel Hiển thị Có Điều kiện (Bên dưới thanh bar) --- */}
+        {/* --- 2. Linux Tools Warning Panel --- */}
         {showLinuxWarning && (
           <LinuxToolsWarningPanel missingTools={missingLinuxTools} />
         )}
 
+        {/* --- 2. Window Picker Panel --- */}
         {showWindowPicker && (
           <WindowPickerPanel
             sources={windowSources}

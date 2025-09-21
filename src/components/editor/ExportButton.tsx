@@ -1,4 +1,3 @@
-// src/components/editor/ExportButton.tsx
 import { Upload, Loader2 } from 'lucide-react';
 import { Button } from '../ui/button';
 
@@ -12,7 +11,7 @@ export function ExportButton({ onClick, isExporting, disabled }: ExportButtonPro
   return (
     <Button
       onClick={onClick}
-      disabled={isExporting || disabled} // CẬP NHẬT LOGIC DISABLED
+      disabled={isExporting || disabled}
       className="btn-clean bg-primary hover:bg-primary/90 text-primary-foreground font-medium px-4 py-2 rounded-lg transition-colors duration-200 disabled:opacity-60 disabled:cursor-not-allowed"
     >
       {isExporting ? (

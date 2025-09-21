@@ -1,5 +1,3 @@
-// src/components/editor/PreviewControls.tsx
-
 import React from 'react';
 import { Play, Pause, Scissors, Plus, ZoomIn, Trash2, Undo, Redo } from 'lucide-react';
 import { useEditorStore } from '../../store/editorStore';
@@ -40,7 +38,7 @@ export function PreviewControls({ videoRef }: PreviewControlsProps) {
     isPlaying, togglePlay, currentTime, duration, setCurrentTime,
     aspectRatio, setAspectRatio, addZoomRegion, addCutRegion,
     timelineZoom, setTimelineZoom,
-    selectedRegionId, deleteRegion // Lấy thêm state và action cần thiết
+    selectedRegionId, deleteRegion
   } = useEditorStore();
 
   const { undo, redo, pastStates, futureStates } = useEditorStore.temporal.getState();

@@ -1,4 +1,3 @@
-// src/components/editor/RegionSettingsPanel.tsx
 import { useState } from 'react';
 import { useEditorStore } from '../../store/editorStore';
 import { TimelineRegion, ZoomRegion } from '../../types/store';
@@ -29,7 +28,6 @@ function ZoomSettings({ region }: { region: ZoomRegion }) {
   return (
     <div className="space-y-4">
       <h3 className="text-sm font-semibold text-sidebar-foreground uppercase tracking-wide">Zoom Type</h3>
-      {/* Giao diện Tab */}
       <div className="grid grid-cols-2 gap-2 p-1 bg-muted/50 rounded-lg">
         <Button
           variant={activeTab === 'auto' ? 'secondary' : 'ghost'}
@@ -47,7 +45,6 @@ function ZoomSettings({ region }: { region: ZoomRegion }) {
         </Button>
       </div>
 
-      {/* Nội dung Tab */}
       <div className="mt-4 space-y-4">
         {activeTab === 'auto' && (
           <div className="p-4 bg-primary/5 border border-primary/20 rounded-lg">
@@ -71,7 +68,6 @@ function ZoomSettings({ region }: { region: ZoomRegion }) {
           />
         )}
 
-        {/* Cài đặt chung cho cả hai mode */}
         <div>
           <div className="flex items-center justify-between mb-3">
             <label className="text-sm font-medium text-sidebar-foreground">Zoom Level</label>
@@ -102,7 +98,6 @@ export function RegionSettingsPanel({ region }: RegionSettingsPanelProps) {
 
   const handleDelete = () => {
     deleteRegion(region.id);
-    // Note: setSelectedRegionId(null) is now handled inside deleteRegion to avoid stale selections
   }
 
   const RegionIcon = region.type === 'zoom' ? Camera : Scissors;

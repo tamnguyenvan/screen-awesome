@@ -1,4 +1,3 @@
-// src/components/editor/sidepanel/CameraSettings.tsx
 import { useEditorStore } from '../../../store/editorStore';
 import { ControlGroup } from './ControlGroup';
 import { CornerUpLeft, CornerUpRight, CornerDownLeft, CornerDownRight, Video, Eye, EyeOff, Image } from 'lucide-react';

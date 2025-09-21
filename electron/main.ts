@@ -1,5 +1,3 @@
-// electron/main.ts
-
 import log from 'electron-log/main';
 
 log.transports.file.format = '[{y}-{m}-{d} {h}:{i}:{s}.{ms}] [{level}] {text}';
@@ -42,7 +40,7 @@ const schema = {
       x: { type: 'number' },
       y: { type: 'number' },
     },
-    default: { width: 1280, height: 800 } // Giá trị mặc định khi chưa có cài đặt
+    default: { width: 1280, height: 800 } // Default values when no settings exist
   },
   appearance: {
     type: 'object',
@@ -97,7 +95,7 @@ let metadataStream: fsSync.WriteStream | null = null
 let pythonDataBuffer = ''
 let firstChunkWritten = true
 
-let framesSentCount = 0; // NEW: Counter for frames actually sent during export
+let framesSentCount = 0; // Counter for frames actually sent during export
 
 
 async function handleLoadPresets() {
@@ -120,7 +118,7 @@ function calculateExportDimensions(resolutionKey: ResolutionKey, aspectRatio: st
   const aspectRatioValue = ratioW / ratioH;
 
   const width = Math.round(baseHeight * aspectRatioValue);
-  // Đảm bảo chiều rộng là số chẵn để tương thích với nhiều codec video
+  // Ensure width is even for better compatibility with many video codecs
   const finalWidth = width % 2 === 0 ? width : width + 1;
 
   return { width: finalWidth, height: baseHeight };
@@ -204,7 +202,6 @@ function createEditorWindow(videoPath: string, metadataPath: string, webcamVideo
   editorWin = new BrowserWindow({
     icon: path.join(process.env.VITE_PUBLIC, 'screenawesome-appicon.png'),
     autoHideMenuBar: true,
-    // MODIFIED: Sử dụng kích thước và vị trí đã lưu
     x,
     y,
     width,
@@ -220,7 +217,7 @@ function createEditorWindow(videoPath: string, metadataPath: string, webcamVideo
     },
   })
 
-  // NEW: Logic lưu vị trí và kích thước cửa sổ khi thay đổi hoặc đóng
+  // Logic to save window position and size when changed or closed
   let resizeTimeout: NodeJS.Timeout;
   const saveBounds = () => {
     if (editorWin && !editorWin.isDestroyed()) {
@@ -230,7 +227,7 @@ function createEditorWindow(videoPath: string, metadataPath: string, webcamVideo
     }
   };
 
-  // Sử dụng debounce để tránh ghi file liên tục khi thay đổi kích thước
+  // Use debounce to avoid continuous file writing when resizing
   const debouncedSaveBounds = () => {
     clearTimeout(resizeTimeout);
     resizeTimeout = setTimeout(saveBounds, 500);
@@ -238,10 +235,9 @@ function createEditorWindow(videoPath: string, metadataPath: string, webcamVideo
 
   editorWin.on('resize', debouncedSaveBounds);
   editorWin.on('move', debouncedSaveBounds);
-  editorWin.on('close', saveBounds); // Lưu ngay lập tức khi đóng
+  editorWin.on('close', saveBounds); // Save immediately when closing
 
   // Maximize the window and show it when it's ready
-  // editorWin.maximize() // REMOVED: Không maximize mặc định nữa để nhớ vị trí
   editorWin.show()
 
   let editorUrl: string;
@@ -385,7 +381,7 @@ async function startActualRecording(inputArgs: string[], hasWebcam: boolean) {
   await ensureDirectoryExists(recordingDir);
   const baseName = `ScreenAwesome-recording-${Date.now()}`;
 
-  // THAY ĐỔI: Tạo đường dẫn riêng cho screen và webcam
+  // Create separate paths for screen and webcam
   const screenVideoPath = path.join(recordingDir, `${baseName}-screen.mp4`);
   const webcamVideoPath = hasWebcam ? path.join(recordingDir, `${baseName}-webcam.mp4`) : undefined;
   const metadataPath = path.join(recordingDir, `${baseName}.json`);
@@ -426,7 +422,6 @@ async function startActualRecording(inputArgs: string[], hasWebcam: boolean) {
     metadataStream.write('[\n')
 
     pythonTracker.stdout.on('data', (data) => {
-      // ... (logic xử lý data của python không đổi)
       pythonDataBuffer += data.toString('utf-8')
       const lines = pythonDataBuffer.split('\n')
       const completeLines = lines.slice(0, -1)
@@ -452,14 +447,14 @@ async function startActualRecording(inputArgs: string[], hasWebcam: boolean) {
     // 4. Start FFmpeg with the provided arguments
     const finalArgs = [...inputArgs];
     if (hasWebcam) {
-      // Input 0 là webcam, Input 1 là màn hình.
-      // Chúng ta muốn file chính (đầu tiên) là video màn hình.
+      // Input 0 is webcam, Input 1 is screen.
+      // We want the main (first) file to be the screen recording.
       finalArgs.push(
         '-map', '1:v', '-c:v', 'libx264', '-preset', 'ultrafast', '-pix_fmt', 'yuv420p', screenVideoPath,
         '-map', '0:v', '-c:v', 'libx264', '-preset', 'ultrafast', '-pix_fmt', 'yuv420p', webcamVideoPath!
       );
     } else {
-      // Chỉ có một input (màn hình)
+      // Only one input (screen)
       finalArgs.push(
         '-map', '0:v', '-c:v', 'libx264', '-preset', 'ultrafast', '-pix_fmt', 'yuv420p', screenVideoPath
       );
@@ -502,7 +497,7 @@ async function checkLinuxTools(): Promise<{ [key: string]: boolean }> {
   log.info('Checking Linux tools...');
   if (process.platform !== 'linux') {
     log.info(`Linux tools check skipped for platform ${process.platform}`);
-    return { wmctrl: true, xwininfo: true, import: true }; // Mặc định là true cho các OS khác
+    return { wmctrl: true, xwininfo: true, import: true }; // Default to true for other OS
   }
   log.info(`Checking Linux tools: ${['wmctrl', 'xwininfo', 'import'].join(', ')}`);
   const tools = ['wmctrl', 'xwininfo', 'import'];
@@ -529,7 +524,7 @@ const EXCLUDED_WINDOW_NAMES = ['Screen Awesome'];
 async function handleGetDesktopSources() {
   if (process.platform === 'linux') {
     return new Promise((resolve, reject) => {
-      // Dùng -lG để lấy ID, geometry và title cùng lúc
+      // Use -lG to get ID, geometry and title at the same time
       log.info('Executing wmctrl -lG');
       exec('wmctrl -lG', (error, stdout) => {
         if (error) {
@@ -547,7 +542,7 @@ async function handleGetDesktopSources() {
 
             const [, id, x, y, width, height, name] = match;
 
-            // Lọc các cửa sổ không phù hợp (VD: panels, docks, chính app)
+            // Filter out windows that are not suitable (e.g. panels, docks, main app)
             if (!name || EXCLUDED_WINDOW_NAMES.some(excludedName => name.includes(excludedName)) ||
               parseInt(width) < 50 || parseInt(height) < 50) {
               return null;
@@ -561,19 +556,19 @@ async function handleGetDesktopSources() {
                 height: parseInt(height)
               };
 
-              // Thêm -resize 320x180! vào lệnh. 
-              // Dấu '!' buộc resize chính xác kích thước, không giữ tỷ lệ gốc,
-              // phù hợp cho thumbnail.
+              // Add -resize 320x180! to the command. 
+              // The '!' forces the resize to be exact, not maintaining the original aspect ratio,
+              // suitable for thumbnails.
               const command = `import -window ${id} -resize 320x180! png:-`;
 
               console.log(`window ${id} ${name} command: ${command}`);
 
               exec(command, { encoding: 'binary', maxBuffer: 10 * 1024 * 1024 }, (err, stdout) => {
-                let thumbnailUrl = GRAY_PLACEHOLDER_URL; // Mặc định là ảnh placeholder
+                let thumbnailUrl = GRAY_PLACEHOLDER_URL; // Default to placeholder image
 
                 if (err) {
                   log.warn(`Failed to capture thumbnail for window ${id} (${name}), using placeholder. Error:`, err.message);
-                  // Không return null nữa, vẫn resolve để cửa sổ hiện ra
+                  // Do not return null, still resolve to show the window
                 } else {
                   const buffer = Buffer.from(stdout, 'binary');
                   thumbnailUrl = `data:image/png;base64,${buffer.toString('base64')}`;
@@ -592,14 +587,14 @@ async function handleGetDesktopSources() {
           .filter(p => p !== null);
 
         Promise.all(sourcesPromises).then(sources => {
-          // Không cần lọc null nữa vì chúng ta luôn resolve một object
+          // No need to filter null anymore since we always resolve an object
           resolve(sources);
         });
       });
     });
   }
 
-  // Logic cũ cho Windows/macOS không đổi
+  // Logic for Windows/macOS
   const sources = await desktopCapturer.getSources({
     types: ['window'],
     thumbnailSize: { width: 320, height: 180 }
@@ -626,8 +621,8 @@ async function handleStartRecording(_event: IpcMainInvokeEvent, options: {
   const baseFfmpegArgs: string[] = [];
   let webcamInputAdded = false;
 
-  // --- Xử lý đầu vào Webcam ---
-  // MODIFIED: This is the core fix. Use the correct identifier for each platform.
+  // --- Webcam Input ---
+  // This is the core fix. Use the correct identifier for each platform.
   if (webcam) {
     log.info('[Main] Adding webcam input:', webcam.deviceLabel);
     switch (process.platform) {
@@ -736,16 +731,6 @@ async function handleStartRecording(_event: IpcMainInvokeEvent, options: {
 
         log.info(`Received selection geometry: ${JSON.stringify(geometry)}. Adjusted to: ${safeWidth}x${safeHeight}`);
 
-        // const ffmpegArgs = [
-        //   '-f', 'x11grab',
-        //   // Use the adjusted safe dimensions
-        //   '-video_size', `${safeWidth}x${safeHeight}`,
-        //   '-i', `${display}+${geometry.x},${geometry.y}`,
-        //   '-c:v', 'libx264',
-        //   '-preset', 'ultrafast',
-        //   '-pix_fmt', 'yuv420p',
-        // ];
-        // resolve(startActualRecording(ffmpegArgs));
         resolve(geometry);
       });
 
@@ -778,7 +763,7 @@ async function handleStartRecording(_event: IpcMainInvokeEvent, options: {
     const safeWidth = Math.floor(width / 2) * 2;
     const safeHeight = Math.floor(height / 2) * 2;
 
-    // FIX: Nối các đối số vào `baseFfmpegArgs`
+    // Add arguments to `baseFfmpegArgs`
     switch (process.platform) {
       case 'linux':
         baseFfmpegArgs.push('-f', 'x11grab', '-video_size', `${safeWidth}x${safeHeight}`, '-i', `${display}+${x},${y}`);
@@ -867,14 +852,14 @@ async function handleCancelRecording(screenVideoPath: string, webcamVideoPath: s
 }
 
 function createRecorderWindow() {
-  // Lấy thông tin màn hình chính để tính toán vị trí
+  // Get primary display to calculate position
   const primaryDisplay = screen.getPrimaryDisplay();
   const { width: screenWidth, height: screenHeight } = primaryDisplay.workAreaSize;
 
   const windowWidth = 800;
   const windowHeight = 800;
 
-  // Tính toán vị trí: Căn giữa theo chiều ngang, cách 1/4 từ trên xuống
+  // Calculate position: Center horizontally, 1/4 from top
   const x = Math.round((screenWidth - windowWidth) / 2);
   const y = Math.max(0, Math.round(screenHeight / 4));
 
@@ -957,7 +942,7 @@ async function handleExportStart(
 
   // --- Start new strategy: Use Render Worker ---
 
-  // NEW: Reset framesSentCount for each new export
+  // Reset framesSentCount for each new export
   framesSentCount = 0;
 
   // 1. Clean up old worker if exists (to handle previous export errors)
@@ -990,7 +975,7 @@ async function handleExportStart(
   const { resolution, fps, format } = exportSettings;
   const { width: outputWidth, height: outputHeight } = calculateExportDimensions(
     resolution as ResolutionKey,
-    projectState.aspectRatio // Lấy aspectRatio từ state của project
+    projectState.aspectRatio
   );
   log.info(`[Main] Calculated export dimensions for ${resolution} ${projectState.aspectRatio}: ${outputWidth}x${outputHeight}`);
 
@@ -1030,23 +1015,23 @@ async function handleExportStart(
     log.info(`[FFmpeg stderr]: ${data.toString()}`);
   });
 
-  // CHÚ THÍCH: Định nghĩa hàm xử lý việc hủy export.
+  // Define cancellation handler
   const cancellationHandler = () => {
     log.warn('[Main] Received "export:cancel" event. Terminating export.');
 
-    // Giết tiến trình FFmpeg ngay lập tức
+    // Close FFmpeg process immediately
     if (!ffmpegClosed && ffmpeg) {
       ffmpeg.kill('SIGKILL');
       ffmpegClosed = true;
     }
 
-    // Đóng cửa sổ render worker
+    // Close render worker
     if (renderWorker) {
       renderWorker.close();
       renderWorker = null;
     }
 
-    // Xóa file output đang được tạo dở
+    // Delete partial export file
     if (fsSync.existsSync(outputPath)) {
       fs.unlink(outputPath).then(() => log.info(`[Main] Deleted partial export file: ${outputPath}`));
     }
@@ -1058,7 +1043,7 @@ async function handleExportStart(
     // Write buffer of frame to FFmpeg stdin for processing
     if (!ffmpegClosed && ffmpeg.stdin.writable) {
       ffmpeg.stdin.write(frame);
-      framesSentCount++; // NEW: Increment counter
+      framesSentCount++;
     }
     // Send progress to main editor window to update UI
     window.webContents.send('export:progress', { progress, stage: 'Rendering...' });
@@ -1074,31 +1059,30 @@ async function handleExportStart(
 
   ipcMain.on('export:frame-data', frameListener);
   ipcMain.on('export:render-finished', finishListener);
-  // CHÚ THÍCH: Sử dụng .once() để lắng nghe sự kiện hủy. Listener sẽ tự động bị gỡ bỏ sau khi được gọi.
+  // Use .once() to listen to cancellation event. Listener will be automatically removed after being called.
   ipcMain.once('export:cancel', cancellationHandler);
 
 
   // 7. Handle when FFmpeg process ends
   ffmpeg.on('close', (code) => {
     ffmpegClosed = true;
-    log.info(`[Main] FFmpeg process exited with code ${code}. Sent ${framesSentCount} frames.`); // NEW: Log frames sent
-    renderWorker?.close(); // Close worker window
+    log.info(`[Main] FFmpeg process exited with code ${code}. Sent ${framesSentCount} frames.`);
+    renderWorker?.close();
     renderWorker = null;
 
-    // CHÚ THÍCH: Sửa đổi logic để xử lý trường hợp bị hủy.
-    // Nếu `code` là null, nghĩa là tiến trình đã bị giết bởi `cancellationHandler`.
+    // Handle cancellation
     if (code === null) {
       log.info(`[Main] Export was cancelled. Sending 'export:complete' to editor.`);
       window.webContents.send('export:complete', { success: false, error: 'Export cancelled by user.' });
-    } else if (code === 0 && framesSentCount === 0) { // NEW: Code 0 but no frames = empty output failure
+    } else if (code === 0 && framesSentCount === 0) {
       log.error(`[Main] Export failed: Output file is empty (FFmpeg exited with code 0 but no frames were rendered).`);
-      // NEW: Delete empty output file here to avoid leaving it behind.
+      // Delete empty output file here to avoid leaving it behind.
       if (fsSync.existsSync(outputPath)) {
           fs.unlink(outputPath).then(() => log.info(`[Main] Deleted empty output file: ${outputPath}`));
       }
       window.webContents.send('export:complete', { success: false, error: 'No video frames were rendered. Ensure no "cut" regions cover the entire video.' });
     } else {
-      // Logic cũ cho trường hợp thành công hoặc thất bại thông thường.
+      // Logic for successful or failed exports
       if (code === 0) {
         log.info(`[Main] Export successful. Sending 'export:complete' to editor.`);
         window.webContents.send('export:complete', { success: true, outputPath });
@@ -1111,12 +1095,10 @@ async function handleExportStart(
     // Important: Remove listeners to avoid memory leaks for subsequent exports
     ipcMain.removeListener('export:frame-data', frameListener);
     ipcMain.removeListener('export:render-finished', finishListener);
-    // CHÚ THÍCH: Gỡ bỏ listener hủy để tránh gọi nhầm trong lần export sau.
-    // (Không cần thiết nếu dùng .once() nhưng để đây cho rõ ràng)
     ipcMain.removeListener('export:cancel', cancellationHandler);
   });
 
-  // 8. Fix: Move data sending logic here, waiting for 'ready' signal from worker
+  // 8. Move data sending logic here, waiting for 'ready' signal from worker
   ipcMain.once('render:ready', () => {
     log.info('[Main] Received "render:ready" from worker. Sending project state...');
     renderWorker?.webContents.send('render:start', {
@@ -1132,7 +1114,7 @@ app.whenReady().then(() => {
     const url = request.url.replace('media://', '');
     const decodedUrl = decodeURIComponent(url);
 
-    // FIX: Handle both absolute paths (for videos) and relative paths (for assets).
+    // Handle both absolute paths (for videos) and relative paths (for assets).
 
     // 1. Check if the decoded path is absolute and exists.
     // This handles the video file path like /home/user/.screenawesome/recording.mp4

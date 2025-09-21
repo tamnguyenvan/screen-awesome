@@ -1,9 +1,8 @@
-// src/components/editor/Playhead.tsx
 import React, { useEffect, useRef, useMemo } from "react";
 
 interface PlayheadProps {
-  height: number;       // chiều cao canvas (theo track area)
-  isDragging: boolean;  // trạng thái kéo playhead
+  height: number;       // canvas height (track area)
+  isDragging: boolean;  // playhead drag state
   onMouseDown?: (e: React.MouseEvent<HTMLDivElement>) => void;
 }
 
@@ -11,7 +10,7 @@ export const Playhead: React.FC<PlayheadProps> = React.memo(
   ({ height, isDragging, onMouseDown }) => {
     const canvasRef = useRef<HTMLCanvasElement>(null);
 
-    // Memo hóa style cho playhead
+    // Memoize playhead styles
     const { triangleSize, lineColor, triangleColor } = useMemo(() => {
       return {
         triangleSize: { base: 10, height: 14 },
@@ -28,7 +27,7 @@ export const Playhead: React.FC<PlayheadProps> = React.memo(
 
       ctx.clearRect(0, 0, canvas.width, canvas.height);
 
-      // --- Vẽ line ---
+      // --- Draw line ---
       ctx.beginPath();
       ctx.moveTo(canvas.width / 2, 0);
       ctx.lineTo(canvas.width / 2, height);
@@ -36,22 +35,22 @@ export const Playhead: React.FC<PlayheadProps> = React.memo(
       ctx.lineWidth = 2;
       ctx.stroke();
 
-      // --- Vẽ triangle ở trên cùng, hướng xuống dưới ---
+      // --- Draw triangle at the top, pointing down ---
       const triW = triangleSize.base;
       const triH = triangleSize.height;
       const x = canvas.width / 2;
-      const y = 0;  // Vị trí trên cùng
+      const y = 0;  // Top position
 
       ctx.beginPath();
-      ctx.moveTo(x, y + triH);  // Điểm dưới cùng
-      ctx.lineTo(x - triW, y);  // Vẽ lên trên bên trái
-      ctx.lineTo(x + triW, y);  // Vẽ lên trên bên phải
+      ctx.moveTo(x, y + triH);  // Bottom point
+      ctx.lineTo(x - triW, y);  // Top left
+      ctx.lineTo(x + triW, y);  // Top right
       ctx.closePath();
       ctx.fillStyle = triangleColor;
       ctx.fill();
       ctx.shadowColor = "rgba(0,0,0,0.2)";
       ctx.shadowBlur = isDragging ? 8 : 4;
-      ctx.shadowOffsetY = 2;  // Thêm bóng đổ cho đẹp hơn
+      ctx.shadowOffsetY = 2;  // Add shadow for better appearance
     }, [height, triangleSize, lineColor, triangleColor, isDragging]);
 
     return (

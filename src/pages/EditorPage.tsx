@@ -1,4 +1,3 @@
-// src/pages/EditorPage.tsx
 import { useEffect, useRef, useState, useCallback } from 'react';
 import { useEditorStore } from '../store/editorStore';
 import { Preview } from '../components/editor/Preview';
@@ -28,7 +27,6 @@ export function EditorPage() {
   const [platform, setPlatform] = useState<NodeJS.Platform | null>(null);
 
   const handleDeleteSelectedRegion = useCallback(() => {
-    // Dùng getState() để lấy selectedRegionId mới nhất bên trong callback
     const currentSelectedId = useEditorStore.getState().selectedRegionId;
     if (currentSelectedId) {
       deleteRegion(currentSelectedId);
@@ -72,7 +70,6 @@ export function EditorPage() {
       cleanProgressListener();
       cleanCompleteListener();
     };
-    // MODIFIED: Thêm initializeSettings vào dependency array
   }, [loadProject, initializePresets, initializeSettings]);
 
   const handleStartExport = useCallback(async (settings: ExportSettings) => {

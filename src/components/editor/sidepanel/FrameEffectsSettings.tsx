@@ -1,4 +1,3 @@
-// src/components/editor/sidepanel/FrameEffectsSettings.tsx
 import { useEditorStore } from '../../../store/editorStore';
 import Slider from '../../ui/slider';
 import { ControlGroup } from './ControlGroup';

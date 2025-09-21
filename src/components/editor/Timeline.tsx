@@ -1,4 +1,3 @@
-// src/components/editor/Timeline.tsx
 import React, {
   useRef, useState, MouseEvent as ReactMouseEvent,
   useEffect, useCallback, useMemo, memo
@@ -99,7 +98,13 @@ export function Timeline({ videoRef }: { videoRef: React.RefObject<HTMLVideoElem
   const wasPlayingRef = useRef(false);
   const isDraggingRegionHiddenRef = useRef(false);
 
-  const [draggingRegion, setDraggingRegion] = useState<{ id: string; type: 'move' | 'resize-left' | 'resize-right'; initialX: number; initialStartTime: number; initialDuration: number; } | null>(null);
+  const [draggingRegion, setDraggingRegion] = useState<{
+    id: string;
+    type: 'move' | 'resize-left' | 'resize-right';
+    initialX: number;
+    initialStartTime: number;
+    initialDuration: number;
+  } | null>(null);
   const [isDraggingPlayhead, setIsDraggingPlayhead] = useState(false);
   const [containerWidth, setContainerWidth] = useState(0);
   const [isDraggingLeftStrip, setIsDraggingLeftStrip] = useState(false);
@@ -497,7 +502,7 @@ export function Timeline({ videoRef }: { videoRef: React.RefObject<HTMLVideoElem
             wasPlayingRef.current = useEditorStore.getState().isPlaying;
             if (wasPlayingRef.current) setPlaying(false);
 
-            // --- FIX (Issue 2): Delete existing right trim region before starting new drag ---
+            // Delete existing right trim region before starting new drag
             const state = useEditorStore.getState();
             const existingRightTrim = Object.values(state.cutRegions).find(r => r.trimType === 'end');
             if (existingRightTrim) {

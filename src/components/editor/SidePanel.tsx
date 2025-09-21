@@ -1,4 +1,3 @@
-// src/components/editor/SidePanel.tsx
 import { useEditorStore } from '../../store/editorStore';
 import { RegionSettingsPanel } from './RegionSettingsPanel';
 import { Palette, Video, AudioLines, Settings } from 'lucide-react';
@@ -10,10 +9,8 @@ import { useEffect, useState, useMemo } from 'react';
 import { cn } from '../../lib/utils';
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '../ui/tooltip';
 
-// Định nghĩa các tab có thể có
 type SidePanelTab = 'general' | 'camera' | 'audio' | 'settings';
 
-// Component nút bấm cho thanh điều hướng
 interface TabButtonProps {
   label: string;
   icon: React.ReactNode;
@@ -57,7 +54,6 @@ function TabButton({ label, icon, isActive, onClick, disabled }: TabButtonProps)
   );
 }
 
-// Component cho cài đặt Frame chung
 function FrameSettingsPanel() {
   return (
     <div className="h-full flex flex-col">
@@ -84,7 +80,6 @@ function FrameSettingsPanel() {
   );
 }
 
-// Component cho cài đặt Audio
 function AudioSettingsPanel() {
   return (
     <div className="h-full flex flex-col">
@@ -106,7 +101,6 @@ function AudioSettingsPanel() {
   );
 }
 
-// Component placeholder cho cài đặt chung của App
 function AppSettingsPanel() {
   return (
     <div className="h-full flex flex-col">
@@ -131,7 +125,7 @@ function AppSettingsPanel() {
 export function SidePanel() {
   const [activeTab, setActiveTab] = useState<SidePanelTab>('general');
 
-  // Lấy các state cần thiết từ store
+  // Get necessary states from the store
   const { selectedRegionId, zoomRegions, cutRegions, webcamVideoUrl, setSelectedRegionId } = useEditorStore(
     useShallow(state => ({
       selectedRegionId: state.selectedRegionId,
@@ -142,20 +136,20 @@ export function SidePanel() {
     }))
   );
 
-  // Tối ưu hóa việc tìm region được chọn bằng useMemo
+  // Optimize region lookup using useMemo
   const selectedRegion = useMemo(() => {
     if (!selectedRegionId) return null;
     return zoomRegions[selectedRegionId] || cutRegions[selectedRegionId];
   }, [selectedRegionId, zoomRegions, cutRegions]);
 
-  // Tự động chuyển về tab 'general' khi một region được chọn
+  // Auto switch to 'general' tab when a region is selected
   useEffect(() => {
     if (selectedRegion) {
       setActiveTab('general');
     }
   }, [selectedRegion]);
   
-  // Xử lý khi nhấn phím Escape
+  // Handle Escape key to clear selection
   useEffect(() => {
     const handleKeyDown = (event: KeyboardEvent) => {
       if (event.key === 'Escape' && selectedRegionId) {
@@ -166,11 +160,10 @@ export function SidePanel() {
     return () => window.removeEventListener('keydown', handleKeyDown);
   }, [selectedRegionId, setSelectedRegionId]);
 
-  // Hàm render nội dung chính dựa trên tab đang hoạt động
+  // Render content based on active tab
   const renderContent = () => {
     switch (activeTab) {
       case 'general':
-        // Logic hiển thị động cho tab General
         return selectedRegion
           ? <RegionSettingsPanel region={selectedRegion} />
           : <FrameSettingsPanel />;
@@ -192,7 +185,7 @@ export function SidePanel() {
         {renderContent()}
       </div>
 
-      {/* Vertical Tab Navigator (Luôn hiển thị) */}
+      {/* Vertical Tab Navigator (Always visible) */}
       <div className="w-[64px] flex-shrink-0 p-3 border-l border-sidebar-border bg-sidebar/80">
         <div className="flex flex-col items-center space-y-2">
           <TabButton

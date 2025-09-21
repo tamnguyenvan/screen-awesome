@@ -1,5 +1,3 @@
-// src/store/editorStore.ts
-
 // --- Types ---
 export type BackgroundType = 'color' | 'gradient' | 'image' | 'wallpaper';
 export type AspectRatio = '16:9' | '9:16' | '4:3' | '3:4' | '1:1';
@@ -84,8 +82,8 @@ export interface EditorState {
   isPlaying: boolean;
   frameStyles: FrameStyles;
   aspectRatio: AspectRatio;
-  zoomRegions: Record<string, ZoomRegion>; // OPTIMIZATION: Array -> Record
-  cutRegions: Record<string, CutRegion>;   // OPTIMIZATION: Array -> Record
+  zoomRegions: Record<string, ZoomRegion>;
+  cutRegions: Record<string, CutRegion>;
   previewCutRegion: CutRegion | null;
   selectedRegionId: string | null;
   activeZoomRegionId: string | null;

@@ -1,5 +1,3 @@
-// src/components/editor/Preview.tsx
-
 import React, { useEffect, useMemo, useRef, memo } from 'react';
 import { useEditorStore, usePlaybackState } from '../../store/editorStore';
 import { calculateZoomTransform } from '../../lib/transform';
@@ -8,7 +6,6 @@ import { useShallow } from 'zustand/react/shallow';
 import { cn } from '../../lib/utils';
 
 const generateBackgroundStyle = (backgroundState: ReturnType<typeof useEditorStore.getState>['frameStyles']['background']) => {
-  // ... (no changes in this function, keeping it for brevity)
   switch (backgroundState.type) {
     case 'color':
       return { background: backgroundState.color || '#ffffff' };
@@ -34,7 +31,6 @@ const generateBackgroundStyle = (backgroundState: ReturnType<typeof useEditorSto
 };
 
 export const Preview = memo(({ videoRef }: { videoRef: React.RefObject<HTMLVideoElement> }) => {
-  // MODIFIED: Thay thế webcamSize bằng webcamStyles
   const { frameStyles, videoUrl, aspectRatio, videoDimensions, cutRegions,
     webcamVideoUrl, webcamPosition, isWebcamVisible, webcamStyles
   } = useEditorStore(
@@ -192,7 +188,6 @@ export const Preview = memo(({ videoRef }: { videoRef: React.RefObject<HTMLVideo
     zIndex: 1,
   }), [frameStyles.borderRadius, frameStyles.borderWidth]);
 
-  // NEW: Tính toán style động cho webcam dựa trên state
   const webcamDynamicStyle = useMemo(() => {
     const shadow = webcamStyles.shadow;
     const shadowOpacity = Math.min(shadow * 0.015, 0.4);
@@ -205,14 +200,14 @@ export const Preview = memo(({ videoRef }: { videoRef: React.RefObject<HTMLVideo
   }, [webcamStyles]);
 
   const webcamWrapperClasses = cn(
-    'absolute z-20 aspect-square overflow-hidden rounded-[35%]', // Squircle shape
-    'transition-all duration-300 ease-in-out', // For smooth hide/show and position changes
+    'absolute z-20 aspect-square overflow-hidden rounded-[35%]',
+    'transition-all duration-300 ease-in-out',
     {
       'top-4 left-4': webcamPosition.pos === 'top-left',
       'top-4 right-4': webcamPosition.pos === 'top-right',
       'bottom-4 left-4': webcamPosition.pos === 'bottom-left',
       'bottom-4 right-4': webcamPosition.pos === 'bottom-right',
-      'opacity-0 scale-95': !isWebcamVisible, // Add a subtle scale for the transition
+      'opacity-0 scale-95': !isWebcamVisible,
       'opacity-100 scale-100': isWebcamVisible,
     }
   );

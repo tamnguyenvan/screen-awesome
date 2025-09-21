@@ -1,4 +1,3 @@
-// src/components/editor/sidepanel/BackgroundSettings.tsx
 import React, { useState, useEffect, useRef } from 'react';
 import { useEditorStore } from '../../../store/editorStore';
 import { cn } from '../../../lib/utils';

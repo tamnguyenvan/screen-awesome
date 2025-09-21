@@ -1,4 +1,3 @@
-// src/components/editor/timeline/ZoomRegionBlock.tsx
 import { memo } from 'react';
 import { TimelineRegion, ZoomRegion } from '../../../types/store';
 import { cn } from '../../../lib/utils';
@@ -27,7 +26,7 @@ export const ZoomRegionBlock = memo(({
       ref={setRef}
       data-region-id={region.id}
       className={cn(
-        'w-full h-full rounded-lg overflow-hidden relative', // SỬA ĐỔI: Bỏ 'flex items-center justify-center'
+        'w-full h-full rounded-lg overflow-hidden relative',
         'cursor-grab border-2',
         isSelected ? 'border-primary' : 'border-border',
         'bg-muted/80'
@@ -45,7 +44,6 @@ export const ZoomRegionBlock = memo(({
         <div className="absolute inset-0 bg-primary/40" />
       )}
 
-      {/* SỬA ĐỔI: Div chứa nội dung giờ sẽ tự căn giữa bằng 'absolute inset-0 ...' */}
       <div className="absolute inset-0 flex items-center justify-center pointer-events-none z-10">
         <div className="flex items-center gap-2 px-2">
             <Search className={cn("w-4 h-4", isSelected ? "text-primary-foreground" : "text-foreground/80")} />

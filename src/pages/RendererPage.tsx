@@ -1,17 +1,10 @@
-// src/pages/RendererPage.tsx
-
 import log from 'electron-log/renderer';
 import { useEffect, useRef } from 'react';
 import { useEditorStore, EditorActions } from '../store/editorStore';
 import { EditorState, CutRegion } from '../types/store';
 import { calculateZoomTransform } from '../lib/transform';
 import { ExportSettings } from '../components/editor/ExportModal';
-
-const RESOLUTIONS = {
-  '720p': { width: 1280, height: 720 },
-  '1080p': { width: 1920, height: 1080 },
-  '2k': { width: 2560, height: 1440 },
-};
+import { RESOLUTIONS } from '../lib/constants';
 
 /**
  * Draws the background (color, gradient, image) onto the canvas.
@@ -164,12 +157,11 @@ export function RendererPage() {
         canvas.width = outputWidth;
         canvas.height = outputHeight;
 
-        // MODIFIED: Cập nhật toàn bộ logic tính toán layout của webcam
         // Webcam layout calculations
         const { webcamPosition, webcamStyles, isWebcamVisible } = projectState;
         const webcamHeight = outputHeight * (webcamStyles.size / 100);
         const webcamWidth = webcamHeight; // Make it a square
-        const webcamRadius = webcamHeight * 0.35; // 35% radius for a squircle effect
+        const webcamRadius = webcamHeight * 0.35; // 35% radius for a `squircle` effect
 
         // Calculate webcam coordinates with padding
         const padding = outputHeight * 0.02; // 2% padding
@@ -331,7 +323,7 @@ export function RendererPage() {
 
         // 3. Start Render Loop
         const cutRegionsArray = Object.values(projectState.cutRegions);
-        const totalFrames = Math.ceil(projectState.duration * fps); // SỬA: Dùng Math.ceil để không bỏ sót frame cuối
+        const totalFrames = Math.ceil(projectState.duration * fps);
         log.info(`[RendererPage] Starting render for ${totalFrames} frames at ${fps} FPS.`);
 
         if (totalFrames <= 0) {
@@ -354,16 +346,15 @@ export function RendererPage() {
             (r: CutRegion) => currentTime >= r.startTime && currentTime < (r.startTime + r.duration)
           );
 
-          // Nếu frame nằm trong vùng cắt, bỏ qua và đi đến frame tiếp theo
+          // Skip frames that are in cut regions
           if (isInCutRegion) {
-            continue; // Bỏ qua frame này
+            continue;
           }
 
           // Prepare for rendering
           await seekVideos(currentTime);
           state.setCurrentTime(currentTime); // Update store for zoom calculations
 
-          // --- BEGIN FRAME RENDERING ---
 
           // 1. Draw Background
           await drawBackground(ctx, outputWidth, outputHeight, frameStyles.background);
@@ -443,30 +434,28 @@ export function RendererPage() {
 
           ctx.restore(); // End video clip
 
-          // --- END FRAME RENDERING ---
-
           ctx.restore(); // Restore context state (removes zoom/pan transform)
 
-          // MODIFIED: Cập nhật logic vẽ webcam
+          // Update webcam drawing logic
           if (isWebcamVisible && projectState.webcamVideoPath && webcamVideo) {
             ctx.save();
-            // Tạo clipping path bo tròn cho webcam
+            // Create rounded clipping path for webcam
             const webcamPath = new Path2D();
             webcamPath.roundRect(webcamX, webcamY, webcamWidth, webcamHeight, webcamRadius);
             ctx.clip(webcamPath);
 
-            // Vẽ frame hiện tại của video webcam
+            // Draw current webcam frame
             ctx.drawImage(webcamVideo, webcamX, webcamY, webcamWidth, webcamHeight);
             ctx.restore();
           }
 
-          // 6. Extract and Send Frame Data
+          // Extract and Send Frame Data
           const imageData = ctx.getImageData(0, 0, outputWidth, outputHeight);
           const frameBuffer = Buffer.from(imageData.data.buffer);
           const progress = Math.round(((frameIndex + 1) / totalFrames) * 100);
 
           window.electronAPI.sendFrameToMain({ frame: frameBuffer, progress });
-          framesActuallyRendered++; // NEW: Increment counter
+          framesActuallyRendered++;
         }
 
         log.info(`[RendererPage] All frames processed. Sent ${framesActuallyRendered} frames. Sending "finishRender" signal.`);

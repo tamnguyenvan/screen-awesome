@@ -1,4 +1,3 @@
-// src/components/editor/sidepanel/ControlGroup.tsx
 import React from 'react';
 
 export const ControlGroup = ({
