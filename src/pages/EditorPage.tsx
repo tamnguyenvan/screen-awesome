@@ -14,7 +14,7 @@ import { useKeyboardShortcuts } from '../hooks/useKeyboardShortcuts';
 import { Button } from '../components/ui/button';
 
 export function EditorPage() {
-  const { loadProject, toggleTheme, deleteRegion, initializePresets, initializeSettings } = useEditorStore.getState();
+  const { loadProject, toggleTheme, deleteRegion, initializePresets, initializeSettings, togglePlay } = useEditorStore.getState();
   const presetSaveStatus = useEditorStore(state => state.presetSaveStatus);
   const duration = useEditorStore(state => state.duration);
   const { undo, redo } = useEditorStore.temporal.getState();
@@ -37,11 +37,12 @@ export function EditorPage() {
     {
       'delete': handleDeleteSelectedRegion,
       'backspace': handleDeleteSelectedRegion,
+      ' ': (e) => { e.preventDefault(); togglePlay(); },
       'ctrl+z': (e) => { e.preventDefault(); undo(); },
       'ctrl+y': (e) => { e.preventDefault(); redo(); },
       'ctrl+shift+z': (e) => { e.preventDefault(); redo(); }, // Common alternative for redo
     },
-    [handleDeleteSelectedRegion, undo, redo]
+    [handleDeleteSelectedRegion, undo, redo, togglePlay]
   );
 
   useEffect(() => {
@@ -53,6 +54,8 @@ export function EditorPage() {
       console.log('Received project to open:', payload);
       await initializePresets();
       await loadProject(payload);
+      // This sets the loaded state as the new "initial state".
+      useEditorStore.temporal.getState().clear();
     });
 
     const cleanProgressListener = window.electronAPI.onExportProgress(({ progress }) => {

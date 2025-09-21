@@ -109,14 +109,12 @@ const _recalculateZIndices = (set: (fn: (state: EditorState) => void) => void) =
   set(state => {
     const allRegions = [
       ...Object.values(state.zoomRegions),
-      // IMPORTANT: Only include regular cut regions, not trim regions, for dynamic z-indexing
       ...Object.values(state.cutRegions).filter(r => !r.trimType)
     ];
 
     // Sort by duration ASC (shorter regions get higher z-index)
     allRegions.sort((a, b) => a.duration - b.duration);
 
-    // FIX: Assign z-index inversely to the sorted index.
     // The shortest region (index 0) gets the highest z-index.
     const regionCount = allRegions.length;
     allRegions.forEach((region, index) => {
@@ -128,416 +126,444 @@ const _recalculateZIndices = (set: (fn: (state: EditorState) => void) => void) =
 
 // --- Store Implementation ---
 export const useEditorStore = create(
-  temporal(
-    immer<EditorState & EditorActions>((set, get) => ({
-      ...initialProjectState,
-      ...initialAppState,
-      frameStyles: initialFrameStyles,
+  temporal( // Zundo middleware for undo/redo
+    immer<EditorState & EditorActions>((set, get) => ({ // Immer middleware for immutable updates
+    ...initialProjectState,
+    ...initialAppState,
+    frameStyles: initialFrameStyles,
 
-      loadProject: async ({ videoPath, metadataPath, webcamVideoPath }) => {
-        const videoUrl = `media://${videoPath}`;
-        const webcamVideoUrl = webcamVideoPath ? `media://${webcamVideoPath}` : null;
-        const lastActiveId = get().activePresetId;
-        const currentPresets = get().presets;
+    loadProject: async ({ videoPath, metadataPath, webcamVideoPath }) => {
+      const videoUrl = `media://${videoPath}`;
+      const webcamVideoUrl = webcamVideoPath ? `media://${webcamVideoPath}` : null;
+      const lastActiveId = get().activePresetId;
+      const currentPresets = get().presets;
 
-        set(state => {
-          Object.assign(state, initialProjectState);
+      set(state => {
+        Object.assign(state, initialProjectState);
 
-          if (lastActiveId && currentPresets[lastActiveId]) {
-            state.frameStyles = JSON.parse(JSON.stringify(currentPresets[lastActiveId].styles));
-          } else {
-            state.frameStyles = initialFrameStyles;
-          }
-
-          // Update the new project information
-          state.videoPath = videoPath;
-          state.metadataPath = metadataPath;
-          state.videoUrl = videoUrl;
-          state.webcamVideoPath = webcamVideoPath || null;
-          state.webcamVideoUrl = webcamVideoUrl;
-          state.isWebcamVisible = !!webcamVideoUrl;
-        });
-
-        try {
-          const metadataContent = await window.electronAPI.readFile(metadataPath);
-          const metadata: MetaDataItem[] = JSON.parse(metadataContent);
-          const processedMetadata = metadata.map(item => ({ ...item, timestamp: item.timestamp / 1000 }));
-          set(state => { state.metadata = processedMetadata });
-
-          const clicks = processedMetadata.filter(item => item.type === 'click' && item.pressed);
-          if (clicks.length === 0) return;
-
-          const mergedClickGroups: MetaDataItem[][] = [];
-          if (clicks.length > 0) {
-            let currentGroup = [clicks[0]];
-            for (let i = 1; i < clicks.length; i++) {
-              if (clicks[i].timestamp - currentGroup[currentGroup.length - 1].timestamp < 3.0) {
-                currentGroup.push(clicks[i]);
-              } else {
-                mergedClickGroups.push(currentGroup);
-                currentGroup = [clicks[i]];
-              }
-            }
-            mergedClickGroups.push(currentGroup);
-          }
-
-          const newZoomRegions: Record<string, ZoomRegion> = mergedClickGroups.reduce((acc, group, index) => {
-            const firstClick = group[0];
-            const lastClick = group[group.length - 1];
-            const startTime = Math.max(0, firstClick.timestamp - 0.25);
-            const duration = Math.max(3, (lastClick.timestamp - firstClick.timestamp) + 0.75);
-            const id = `auto-zoom-${Date.now()}-${index}`;
-
-            acc[id] = {
-              id,
-              type: 'zoom',
-              startTime,
-              duration,
-              zoomLevel: 2.0,
-              easing: 'ease-in-out',
-              targetX: firstClick.x,
-              targetY: firstClick.y,
-              mode: 'auto',
-              zIndex: 0, // Will be set by _recalculateZIndices
-            };
-            return acc;
-          }, {} as Record<string, ZoomRegion>);
-
-          set(state => {
-            state.zoomRegions = newZoomRegions;
-          });
-          get()._recalculateZIndices();
-
-
-        } catch (error) {
-          console.error("Failed to process metadata file:", error);
-        }
-      },
-
-      setVideoDimensions: (dims) => set(state => { state.videoDimensions = dims }),
-
-      setDuration: (duration) => set(state => {
-        state.duration = duration;
-
-        if (duration > 0) {
-          Object.values(state.zoomRegions).forEach(region => {
-            const regionEndTime = region.startTime + region.duration;
-            if (regionEndTime > duration) {
-              const newDuration = duration - region.startTime;
-              region.duration = Math.max(MINIMUM_REGION_DURATION, newDuration);
-            }
-          });
-          Object.values(state.cutRegions).forEach(region => {
-            const regionEndTime = region.startTime + region.duration;
-            if (regionEndTime > duration) {
-              const newDuration = duration - region.startTime;
-              region.duration = Math.max(MINIMUM_REGION_DURATION, newDuration);
-            }
-          });
-        }
-      }),
-
-      setCurrentTime: (time) => set(state => {
-        state.currentTime = time;
-        const allZoomRegions = Object.values(state.zoomRegions);
-        const allCutRegions = Object.values(state.cutRegions);
-
-        const newActiveRegion = allZoomRegions.find(r => time >= r.startTime && time < r.startTime + r.duration);
-        state.activeZoomRegionId = newActiveRegion?.id ?? null;
-
-        const activeCutRegion = allCutRegions.find(r => time >= r.startTime && time < r.startTime + r.duration);
-        state.isCurrentlyCut = !!activeCutRegion;
-      }),
-
-      togglePlay: () => set(state => { state.isPlaying = !state.isPlaying; }),
-      setPlaying: (isPlaying) => set(state => { state.isPlaying = isPlaying; }),
-
-      updateFrameStyle: (style) => {
-        set(state => {
-          Object.assign(state.frameStyles, style);
-        });
-        get()._debouncedUpdatePreset();
-      },
-
-      updateBackground: (bg) => set((state) => {
-        const currentBg = state.frameStyles.background;
-
-        // If type is changing, create a new default state for that type first
-        if (bg.type && bg.type !== currentBg.type) {
-          let newBackgroundState: Background = { type: bg.type };
-          switch (bg.type) {
-            case 'color':
-              newBackgroundState = { type: 'color', color: '#ffffff' };
-              break;
-            case 'gradient':
-              newBackgroundState = {
-                type: 'gradient',
-                gradientStart: '#6366f1',
-                gradientEnd: '#9ca9ff',
-                gradientDirection: 'to bottom right',
-              };
-              break;
-            case 'image':
-            case 'wallpaper':
-              newBackgroundState = {
-                type: bg.type,
-                imageUrl: WALLPAPERS[0].imageUrl,
-                thumbnailUrl: WALLPAPERS[0].thumbnailUrl,
-              };
-              break;
-          }
-          // IMPORTANT: Merge the incoming changes (bg) over the new default state
-          // This ensures the selected wallpaper/color is applied immediately, not the default.
-          state.frameStyles.background = { ...newBackgroundState, ...bg };
+        if (lastActiveId && currentPresets[lastActiveId]) {
+          state.frameStyles = JSON.parse(JSON.stringify(currentPresets[lastActiveId].styles));
         } else {
-          // If type is not changing, just merge the properties
-          Object.assign(state.frameStyles.background, bg);
+          state.frameStyles = initialFrameStyles;
         }
 
-        get()._debouncedUpdatePreset();
-      }),
+        // Update the new project information
+        state.videoPath = videoPath;
+        state.metadataPath = metadataPath;
+        state.videoUrl = videoUrl;
+        state.webcamVideoPath = webcamVideoPath || null;
+        state.webcamVideoUrl = webcamVideoUrl;
+        state.isWebcamVisible = !!webcamVideoUrl;
+      });
 
-      setAspectRatio: (ratio) => set(state => { state.aspectRatio = ratio; }),
+      try {
+        const metadataContent = await window.electronAPI.readFile(metadataPath);
+        const metadata: MetaDataItem[] = JSON.parse(metadataContent);
+        const processedMetadata = metadata.map(item => ({ ...item, timestamp: item.timestamp / 1000 }));
+        set(state => { state.metadata = processedMetadata });
 
-      addZoomRegion: () => {
-        const { metadata, currentTime, videoDimensions, duration } = get();
-        if (duration === 0) return;
+        const clicks = processedMetadata.filter(item => item.type === 'click' && item.pressed);
+        if (clicks.length === 0) return;
 
-        const lastMousePos = metadata.find(m => m.timestamp <= currentTime);
-        const id = `zoom-${Date.now()}`;
-
-        const newRegion: ZoomRegion = {
-          id,
-          type: 'zoom',
-          startTime: currentTime,
-          duration: 3,
-          zoomLevel: 2,
-          easing: 'ease-in-out',
-          targetX: lastMousePos?.x || videoDimensions.width / 2,
-          targetY: lastMousePos?.y || videoDimensions.height / 2,
-          mode: 'auto',
-          zIndex: 0,  // will be set by _recalculateZIndices
-        };
-
-        if (newRegion.startTime + newRegion.duration > duration) {
-          newRegion.duration = Math.max(MINIMUM_REGION_DURATION, duration - newRegion.startTime);
-        }
-
-        set(state => {
-          state.zoomRegions[id] = newRegion;
-          state.selectedRegionId = id;
-        });
-        get()._recalculateZIndices();
-      },
-
-      addCutRegion: (regionData) => {
-        const { currentTime, duration } = get();
-        if (duration === 0) return;
-
-        const id = `cut-${Date.now()}`;
-
-        const newRegion: CutRegion = {
-          id,
-          type: 'cut',
-          startTime: currentTime,
-          duration: 2,
-          zIndex: 0,  // will be set by _recalculateZIndices
-          ...regionData,
-        };
-
-        if (newRegion.startTime + newRegion.duration > duration) {
-          newRegion.duration = Math.max(MINIMUM_REGION_DURATION, duration - newRegion.startTime);
-        }
-
-        set(state => {
-          state.cutRegions[id] = newRegion;
-          state.selectedRegionId = id;
-        });
-
-        // Only recalculate for non-trim regions
-        if (!regionData?.trimType) {
-          get()._recalculateZIndices();
-        }
-      },
-
-      updateRegion: (id, updates) => {
-        set(state => {
-          const region = state.zoomRegions[id] || state.cutRegions[id];
-
-          if (region) {
-            const oldDuration = region.duration;
-            Object.assign(region, updates);
-            const videoDuration = state.duration;
-            if (videoDuration > 0) {
-              region.startTime = Math.max(0, Math.min(region.startTime, videoDuration - MINIMUM_REGION_DURATION));
-              const maxPossibleDuration = videoDuration - region.startTime;
-              region.duration = Math.max(MINIMUM_REGION_DURATION, Math.min(region.duration, maxPossibleDuration));
-            }
-
-            // Recalculate if duration changed, as it affects z-index order
-            if (oldDuration !== region.duration) {
-              get()._recalculateZIndices();
+        const mergedClickGroups: MetaDataItem[][] = [];
+        if (clicks.length > 0) {
+          let currentGroup = [clicks[0]];
+          for (let i = 1; i < clicks.length; i++) {
+            if (clicks[i].timestamp - currentGroup[currentGroup.length - 1].timestamp < 3.0) {
+              currentGroup.push(clicks[i]);
+            } else {
+              mergedClickGroups.push(currentGroup);
+              currentGroup = [clicks[i]];
             }
           }
-        });
-      },
+          mergedClickGroups.push(currentGroup);
+        }
 
+        const newZoomRegions: Record<string, ZoomRegion> = mergedClickGroups.reduce((acc, group, index) => {
+          const firstClick = group[0];
+          const lastClick = group[group.length - 1];
+          const startTime = Math.max(0, firstClick.timestamp - 0.25);
+          const duration = Math.max(3, (lastClick.timestamp - firstClick.timestamp) + 0.75);
+          const id = `auto-zoom-${Date.now()}-${index}`;
 
-      deleteRegion: (id) => {
+          acc[id] = {
+            id,
+            type: 'zoom',
+            startTime,
+            duration,
+            zoomLevel: 2.0,
+            easing: 'ease-in-out',
+            targetX: firstClick.x,
+            targetY: firstClick.y,
+            mode: 'auto',
+            zIndex: 0, // Will be set by _recalculateZIndices
+          };
+          return acc;
+        }, {} as Record<string, ZoomRegion>);
+
         set(state => {
-          delete state.zoomRegions[id];
-          delete state.cutRegions[id];
-          if (state.selectedRegionId === id) {
-            state.selectedRegionId = null;
-          }
+          state.zoomRegions = newZoomRegions;
         });
         get()._recalculateZIndices();
-      },
 
-      setSelectedRegionId: (id) => set(state => { state.selectedRegionId = id; }),
-      toggleTheme: () => {
-        const newTheme = get().theme === 'dark' ? 'light' : 'dark';
-        set(state => { state.theme = newTheme; });
-        window.electronAPI.setSetting('appearance.theme', newTheme);
-      },
-      setPreviewCutRegion: (region) => set(state => { state.previewCutRegion = region; }),
-      setTimelineZoom: (zoom) => set(state => { state.timelineZoom = zoom; }),
 
-      _debouncedUpdatePreset: () => {
-        clearTimeout(debounceTimer);
-        debounceTimer = setTimeout(() => {
-          const { activePresetId, presets, frameStyles, aspectRatio } = get();
-          if (activePresetId && presets[activePresetId]) {
-            set({ presetSaveStatus: 'saving' });
-            set(state => {
-              state.presets[activePresetId].styles = JSON.parse(JSON.stringify(frameStyles));
-              state.presets[activePresetId].aspectRatio = aspectRatio;
-            });
+      } catch (error) {
+        console.error("Failed to process metadata file:", error);
+      }
+    },
 
-            window.electronAPI.setSetting('presets', get().presets);
-            
-            console.log(`Auto-saved preset: "${presets[activePresetId].name}"`);
-            set({ presetSaveStatus: 'saved' });
-            setTimeout(() => {
-              if (get().presetSaveStatus === 'saved') {
-                set({ presetSaveStatus: 'idle' });
-              }
-            }, 1500);
+    setVideoDimensions: (dims) => set(state => { state.videoDimensions = dims }),
+
+    setDuration: (duration) => set(state => {
+      state.duration = duration;
+
+      if (duration > 0) {
+        Object.values(state.zoomRegions).forEach(region => {
+          const regionEndTime = region.startTime + region.duration;
+          if (regionEndTime > duration) {
+            const newDuration = duration - region.startTime;
+            region.duration = Math.max(MINIMUM_REGION_DURATION, newDuration);
           }
-        }, 1500);
-      },
-
-      initializeSettings: async () => {
-        try {
-          const appearance = await window.electronAPI.getSetting<{ theme: 'light' | 'dark' }>('appearance');
-          if (appearance && appearance.theme) {
-            set({ theme: appearance.theme });
+        });
+        Object.values(state.cutRegions).forEach(region => {
+          const regionEndTime = region.startTime + region.duration;
+          if (regionEndTime > duration) {
+            const newDuration = duration - region.startTime;
+            region.duration = Math.max(MINIMUM_REGION_DURATION, newDuration);
           }
-        } catch (error) {
-          console.error("Could not load app settings:", error);
-        }
-      },
-      
-      initializePresets: async () => {
-        try {
-          let loadedPresets = await window.electronAPI.getSetting<Record<string, Preset>>('presets');
+        });
+      }
+    }),
 
-          if (!loadedPresets || Object.keys(loadedPresets).length === 0) {
-            const defaultId = `preset-default-${Date.now()}`;
-            loadedPresets = {
-              [defaultId]: {
-                id: defaultId,
-                name: 'Default',
-                styles: JSON.parse(JSON.stringify(initialFrameStyles)),
-                aspectRatio: '16:9',
-              }
+    setCurrentTime: (time) => set(state => {
+      state.currentTime = time;
+      const allZoomRegions = Object.values(state.zoomRegions);
+      const allCutRegions = Object.values(state.cutRegions);
+
+      const newActiveRegion = allZoomRegions.find(r => time >= r.startTime && time < r.startTime + r.duration);
+      state.activeZoomRegionId = newActiveRegion?.id ?? null;
+
+      const activeCutRegion = allCutRegions.find(r => time >= r.startTime && time < r.startTime + r.duration);
+      state.isCurrentlyCut = !!activeCutRegion;
+    }),
+
+    togglePlay: () => set(state => { state.isPlaying = !state.isPlaying; }),
+    setPlaying: (isPlaying) => set(state => { state.isPlaying = isPlaying; }),
+
+    updateFrameStyle: (style) => {
+      set(state => {
+        Object.assign(state.frameStyles, style);
+      });
+      get()._debouncedUpdatePreset();
+    },
+
+    updateBackground: (bg) => set((state) => {
+      const currentBg = state.frameStyles.background;
+
+      // If type is changing, create a new default state for that type first
+      if (bg.type && bg.type !== currentBg.type) {
+        let newBackgroundState: Background = { type: bg.type };
+        switch (bg.type) {
+          case 'color':
+            newBackgroundState = { type: 'color', color: '#ffffff' };
+            break;
+          case 'gradient':
+            newBackgroundState = {
+              type: 'gradient',
+              gradientStart: '#6366f1',
+              gradientEnd: '#9ca9ff',
+              gradientDirection: 'to bottom right',
             };
-            window.electronAPI.setSetting('presets', loadedPresets);
+            break;
+          case 'image':
+          case 'wallpaper':
+            newBackgroundState = {
+              type: bg.type,
+              imageUrl: WALLPAPERS[0].imageUrl,
+              thumbnailUrl: WALLPAPERS[0].thumbnailUrl,
+            };
+            break;
+        }
+        // IMPORTANT: Merge the incoming changes (bg) over the new default state
+        // This ensures the selected wallpaper/color is applied immediately, not the default.
+        state.frameStyles.background = { ...newBackgroundState, ...bg };
+      } else {
+        // If type is not changing, just merge the properties
+        Object.assign(state.frameStyles.background, bg);
+      }
+
+      get()._debouncedUpdatePreset();
+    }),
+
+    setAspectRatio: (ratio) => set(state => { state.aspectRatio = ratio; }),
+
+    addZoomRegion: () => {
+      const { metadata, currentTime, videoDimensions, duration } = get();
+      if (duration === 0) return;
+
+      const lastMousePos = metadata.find(m => m.timestamp <= currentTime);
+      const id = `zoom-${Date.now()}`;
+
+      const newRegion: ZoomRegion = {
+        id,
+        type: 'zoom',
+        startTime: currentTime,
+        duration: 3,
+        zoomLevel: 2,
+        easing: 'ease-in-out',
+        targetX: lastMousePos?.x || videoDimensions.width / 2,
+        targetY: lastMousePos?.y || videoDimensions.height / 2,
+        mode: 'auto',
+        zIndex: 0,  // will be set by _recalculateZIndices
+      };
+
+      if (newRegion.startTime + newRegion.duration > duration) {
+        newRegion.duration = Math.max(MINIMUM_REGION_DURATION, duration - newRegion.startTime);
+      }
+
+      set(state => {
+        state.zoomRegions[id] = newRegion;
+        state.selectedRegionId = id;
+      });
+      get()._recalculateZIndices();
+    },
+
+    addCutRegion: (regionData) => {
+      const { currentTime, duration } = get();
+      if (duration === 0) return;
+
+      const id = `cut-${Date.now()}`;
+
+      const newRegion: CutRegion = {
+        id,
+        type: 'cut',
+        startTime: currentTime,
+        duration: 2,
+        zIndex: 0,  // will be set by _recalculateZIndices
+        ...regionData,
+      };
+
+      if (newRegion.startTime + newRegion.duration > duration) {
+        newRegion.duration = Math.max(MINIMUM_REGION_DURATION, duration - newRegion.startTime);
+      }
+
+      set(state => {
+        state.cutRegions[id] = newRegion;
+        state.selectedRegionId = id;
+      });
+
+      // Only recalculate for non-trim regions
+      if (!regionData?.trimType) {
+        get()._recalculateZIndices();
+      }
+    },
+
+    updateRegion: (id, updates) => {
+      set(state => {
+        const region = state.zoomRegions[id] || state.cutRegions[id];
+
+        if (region) {
+          const oldDuration = region.duration;
+          Object.assign(region, updates);
+          const videoDuration = state.duration;
+          if (videoDuration > 0) {
+            region.startTime = Math.max(0, Math.min(region.startTime, videoDuration - MINIMUM_REGION_DURATION));
+            const maxPossibleDuration = videoDuration - region.startTime;
+            region.duration = Math.max(MINIMUM_REGION_DURATION, Math.min(region.duration, maxPossibleDuration));
           }
 
-          const lastUsedId = localStorage.getItem(LAST_PRESET_ID_KEY);
-          set(state => {
-            state.presets = loadedPresets;
-            if (lastUsedId && loadedPresets[lastUsedId]) {
-              state.activePresetId = lastUsedId;
-              state.frameStyles = JSON.parse(JSON.stringify(loadedPresets[lastUsedId].styles));
-              state.aspectRatio = loadedPresets[lastUsedId].aspectRatio;
-            }
-          });
-
-        } catch (error) {
-          console.error("Could not initialize presets:", error);
+          // Recalculate if duration changed, as it affects z-index order
+          if (oldDuration !== region.duration) {
+            get()._recalculateZIndices();
+          }
         }
-      },
+      });
+    },
 
-      applyPreset: (id) => {
-        const preset = get().presets[id];
-        if (preset) {
-          set(state => {
-            state.frameStyles = JSON.parse(JSON.stringify(preset.styles));
-            state.aspectRatio = preset.aspectRatio;
-            state.activePresetId = id;
-          });
-          localStorage.setItem(LAST_PRESET_ID_KEY, id);
+
+    deleteRegion: (id) => {
+      set(state => {
+        delete state.zoomRegions[id];
+        delete state.cutRegions[id];
+        if (state.selectedRegionId === id) {
+          state.selectedRegionId = null;
         }
-      },
+      });
+      get()._recalculateZIndices();
+    },
 
-      _recalculateZIndices: () => _recalculateZIndices(set),
+    setSelectedRegionId: (id) => set(state => { state.selectedRegionId = id; }),
+    toggleTheme: () => {
+      const newTheme = get().theme === 'dark' ? 'light' : 'dark';
+      set(state => { state.theme = newTheme; });
+      window.electronAPI.setSetting('appearance.theme', newTheme);
+    },
+    setPreviewCutRegion: (region) => set(state => { state.previewCutRegion = region; }),
+    setTimelineZoom: (zoom) => set(state => { state.timelineZoom = zoom; }),
 
-      saveCurrentStyleAsPreset: (name) => {
-        const id = `preset-${Date.now()}`;
-        const newPreset: Preset = {
-          id,
-          name,
-          styles: JSON.parse(JSON.stringify(get().frameStyles)),
-          aspectRatio: get().aspectRatio,
-        };
-        set(state => {
-          state.presets[id] = newPreset;
-          state.activePresetId = id;
-        });
-        localStorage.setItem(LAST_PRESET_ID_KEY, id);
-        window.electronAPI.setSetting('presets', get().presets);
-      },
-
-      updateActivePreset: () => {
+    _debouncedUpdatePreset: () => {
+      clearTimeout(debounceTimer);
+      debounceTimer = setTimeout(() => {
         const { activePresetId, presets, frameStyles, aspectRatio } = get();
         if (activePresetId && presets[activePresetId]) {
+          set({ presetSaveStatus: 'saving' });
           set(state => {
             state.presets[activePresetId].styles = JSON.parse(JSON.stringify(frameStyles));
             state.presets[activePresetId].aspectRatio = aspectRatio;
           });
-          _persistPresets(get().presets);
-        }
-      },
 
-      deletePreset: (id) => {
+          window.electronAPI.setSetting('presets', get().presets);
+          
+          console.log(`Auto-saved preset: "${presets[activePresetId].name}"`);
+          set({ presetSaveStatus: 'saved' });
+          setTimeout(() => {
+            if (get().presetSaveStatus === 'saved') {
+              set({ presetSaveStatus: 'idle' });
+            }
+          }, 1500);
+        }
+      }, 1500);
+    },
+
+    initializeSettings: async () => {
+      try {
+        const appearance = await window.electronAPI.getSetting<{ theme: 'light' | 'dark' }>('appearance');
+        if (appearance && appearance.theme) {
+          set({ theme: appearance.theme });
+        }
+      } catch (error) {
+        console.error("Could not load app settings:", error);
+      }
+    },
+    
+    initializePresets: async () => {
+      try {
+        let loadedPresets = await window.electronAPI.getSetting<Record<string, Preset>>('presets');
+
+        if (!loadedPresets || Object.keys(loadedPresets).length === 0) {
+          const defaultId = `preset-default-${Date.now()}`;
+          loadedPresets = {
+            [defaultId]: {
+              id: defaultId,
+              name: 'Default',
+              styles: JSON.parse(JSON.stringify(initialFrameStyles)),
+              aspectRatio: '16:9',
+            }
+          };
+          window.electronAPI.setSetting('presets', loadedPresets);
+        }
+
+        const lastUsedId = localStorage.getItem(LAST_PRESET_ID_KEY);
         set(state => {
-          delete state.presets[id];
-          if (state.activePresetId === id) {
-            state.activePresetId = null;
-            localStorage.removeItem(LAST_PRESET_ID_KEY);
+          state.presets = loadedPresets;
+          if (lastUsedId && loadedPresets[lastUsedId]) {
+            state.activePresetId = lastUsedId;
+            state.frameStyles = JSON.parse(JSON.stringify(loadedPresets[lastUsedId].styles));
+            state.aspectRatio = loadedPresets[lastUsedId].aspectRatio;
           }
         });
-        window.electronAPI.setSetting('presets', get().presets);
-      },
 
-      reset: () => set(state => {
-        Object.assign(state, initialProjectState);
-        Object.assign(state, initialAppState);
-        state.frameStyles = initialFrameStyles;
-      }),
+      } catch (error) {
+        console.error("Could not initialize presets:", error);
+      }
+    },
 
-      setWebcamPosition: (position) => set({ webcamPosition: position }),
-      setWebcamVisibility: (isVisible) => set({ isWebcamVisible: isVisible }),
-      updateWebcamStyle: (style) => set(state => {
-        Object.assign(state.webcamStyles, style);
-      }),
-    })),
-    {
-      equality: shallow,
-    }
-  )
+    applyPreset: (id) => {
+      const preset = get().presets[id];
+      if (preset) {
+        set(state => {
+          state.frameStyles = JSON.parse(JSON.stringify(preset.styles));
+          state.aspectRatio = preset.aspectRatio;
+          state.activePresetId = id;
+        });
+        localStorage.setItem(LAST_PRESET_ID_KEY, id);
+      }
+    },
+
+    _recalculateZIndices: () => _recalculateZIndices(set),
+
+    saveCurrentStyleAsPreset: (name) => {
+      const id = `preset-${Date.now()}`;
+      const newPreset: Preset = {
+        id,
+        name,
+        styles: JSON.parse(JSON.stringify(get().frameStyles)),
+        aspectRatio: get().aspectRatio,
+      };
+      set(state => {
+        state.presets[id] = newPreset;
+        state.activePresetId = id;
+      });
+      localStorage.setItem(LAST_PRESET_ID_KEY, id);
+      window.electronAPI.setSetting('presets', get().presets);
+    },
+
+    updateActivePreset: () => {
+      const { activePresetId, presets, frameStyles, aspectRatio } = get();
+      if (activePresetId && presets[activePresetId]) {
+        set(state => {
+          state.presets[activePresetId].styles = JSON.parse(JSON.stringify(frameStyles));
+          state.presets[activePresetId].aspectRatio = aspectRatio;
+        });
+        _persistPresets(get().presets);
+      }
+    },
+
+    deletePreset: (id) => {
+      set(state => {
+        delete state.presets[id];
+        if (state.activePresetId === id) {
+          state.activePresetId = null;
+          localStorage.removeItem(LAST_PRESET_ID_KEY);
+        }
+      });
+      window.electronAPI.setSetting('presets', get().presets);
+    },
+
+    reset: () => set(state => {
+      Object.assign(state, initialProjectState);
+      Object.assign(state, initialAppState);
+      state.frameStyles = initialFrameStyles;
+    }),
+
+    setWebcamPosition: (position) => set({ webcamPosition: position }),
+    setWebcamVisibility: (isVisible) => set({ isWebcamVisible: isVisible }),
+    updateWebcamStyle: (style) => set(state => {
+      Object.assign(state.webcamStyles, style);
+    }),
+  })),
+  {
+    // Configuration for Zundo (undo/redo)
+    partialize: (state) => {
+      // Only include these properties in the history.
+      // Excludes transient state like `currentTime`, `isPlaying`, etc.
+      const {
+        frameStyles,
+        aspectRatio,
+        zoomRegions,
+        cutRegions,
+        presets,
+        activePresetId,
+        webcamPosition,
+        webcamStyles,
+        isWebcamVisible
+      } = state;
+
+      return {
+        frameStyles,
+        aspectRatio,
+        zoomRegions,
+        cutRegions,
+        presets,
+        activePresetId,
+        webcamPosition,
+        webcamStyles,
+        isWebcamVisible
+      };
+    },
+    equality: shallow,
+  }
+)
 );
 
 export const usePlaybackState = () => useEditorStore(useShallow(state => ({
