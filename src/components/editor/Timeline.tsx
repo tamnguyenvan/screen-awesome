@@ -346,7 +346,7 @@ export function Timeline({ videoRef }: { videoRef: React.RefObject<HTMLVideoElem
           });
         }
       }
-      
+
       setIsDraggingLeftStrip(false);
       setIsDraggingRightStrip(false);
       setPreviewCutRegion(null);
@@ -445,8 +445,7 @@ export function Timeline({ videoRef }: { videoRef: React.RefObject<HTMLVideoElem
             {/* Layer 2: Cut Regions (Full height overlays) */}
             <div className="absolute top-0 left-0 right-0 bottom-0 pointer-events-none">
               {allCutRegionsToRender.map(region => {
-                const isTrim = region.trimType !== undefined;
-                const z = isTrim ? 10 : (region.id === selectedRegionId ? 39 : 15 + ((region as CutRegion).zIndex ?? 0));
+                const z = region.trimType !== undefined ? 10 : (region.id === selectedRegionId ? 39 : 15 + ((region as CutRegion).zIndex ?? 0));
                 return (
                   <div
                     key={region.id}
@@ -456,6 +455,7 @@ export function Timeline({ videoRef }: { videoRef: React.RefObject<HTMLVideoElem
                     <CutRegionBlock
                       region={region}
                       isSelected={selectedRegionId === region.id}
+                      isDragging={draggingRegion?.id === region.id}
                       isDraggable={region.id !== previewCutRegion?.id}
                       onMouseDown={handleRegionMouseDown}
                       setRef={el => regionRefs.current.set(region.id, el)}
@@ -479,6 +479,7 @@ export function Timeline({ videoRef }: { videoRef: React.RefObject<HTMLVideoElem
                       <ZoomRegionBlock
                         region={region}
                         isSelected={selectedRegionId === region.id}
+                        isDragging={draggingRegion?.id === region.id}
                         onMouseDown={handleRegionMouseDown}
                         setRef={el => regionRefs.current.set(region.id, el)}
                       />
@@ -491,7 +492,7 @@ export function Timeline({ videoRef }: { videoRef: React.RefObject<HTMLVideoElem
             {/* Layer 4: Playhead (Always on top) */}
             {duration > 0 &&
               <div ref={playheadRef} className="absolute top-0 bottom-0 z-40" style={{ transform: `translateX(${timeToPx(currentTime)}px)`, pointerEvents: "none" }}>
-                <Playhead height={timelineRef.current?.clientHeight ?? 200} isDragging={isDraggingPlayhead} onMouseDown={(e) => { e.stopPropagation(); setIsDraggingPlayhead(true); document.body.style.cursor = 'grabbing'; }} />
+                <Playhead height={Math.floor((timelineRef.current?.clientHeight ?? 200) * 0.9)} isDragging={isDraggingPlayhead} onMouseDown={(e) => { e.stopPropagation(); setIsDraggingPlayhead(true); document.body.style.cursor = 'grabbing'; }} />
               </div>
             }
           </div>
