@@ -16,7 +16,7 @@ jobs:
 
       - name: Install Modules and Publish build
         run: |
-          npm install --force
+          npm install --force --silent
           GH_TOKEN=${{ secrets.GITHUB_TOKEN }} npm run publish-linux-app
 
   # windows:
