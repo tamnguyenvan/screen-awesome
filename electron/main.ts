@@ -1079,9 +1079,7 @@ async function handleExportStart(
 
   ipcMain.on('export:frame-data', frameListener);
   ipcMain.on('export:render-finished', finishListener);
-  // Use .once() to listen to cancellation event. Listener will be automatically removed after being called.
-  ipcMain.once('export:cancel', cancellationHandler);
-
+  ipcMain.on('export:cancel', cancellationHandler);
 
   // 7. Handle when FFmpeg process ends
   ffmpeg.on('close', (code) => {
@@ -1112,7 +1110,6 @@ async function handleExportStart(
       }
     }
 
-    // Important: Remove listeners to avoid memory leaks for subsequent exports
     ipcMain.removeListener('export:frame-data', frameListener);
     ipcMain.removeListener('export:render-finished', finishListener);
     ipcMain.removeListener('export:cancel', cancellationHandler);
