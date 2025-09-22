@@ -40,7 +40,7 @@ jobs:
           sudo apt-get install -y libx11-dev libxext-dev libxfixes-dev libxdamage-dev libxcomposite-dev libxtst-dev libxkbcommon-dev
 
       - name: Install project dependencies
-        run: npm install --force
+        run: npm ci
 
       - name: Build the application
         run: |
