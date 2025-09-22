@@ -25,6 +25,7 @@ export interface Preset {
   name: string;
   styles: FrameStyles;
   aspectRatio: AspectRatio;
+  isDefault?: boolean;
 }
 
 export interface AnchorPoint {

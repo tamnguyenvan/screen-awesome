@@ -194,14 +194,18 @@ export const useEditorStore = create(
       loadProject: async ({ videoPath, metadataPath, webcamVideoPath }) => {
         const videoUrl = `media://${videoPath}`;
         const webcamVideoUrl = webcamVideoPath ? `media://${webcamVideoPath}` : null;
-        const lastActiveId = get().activePresetId;
+        const activePresetId = get().activePresetId;
         const currentPresets = get().presets;
+        const defaultPreset = Object.values(currentPresets).find(p => p.isDefault);
 
         set(state => {
           Object.assign(state, initialProjectState);
+          
+          const presetToApply = (activePresetId && currentPresets[activePresetId]) || defaultPreset;
 
-          if (lastActiveId && currentPresets[lastActiveId]) {
-            state.frameStyles = JSON.parse(JSON.stringify(currentPresets[lastActiveId].styles));
+          if (presetToApply) {
+            state.frameStyles = JSON.parse(JSON.stringify(presetToApply.styles));
+            state.aspectRatio = presetToApply.aspectRatio;
           } else {
             state.frameStyles = initialFrameStyles;
           }
@@ -471,6 +475,12 @@ export const useEditorStore = create(
 
 
       deleteRegion: (id) => {
+        const presetToDelete = get().presets[id];
+        if (presetToDelete?.isDefault) {
+          console.warn("Attempted to delete the default preset. Operation blocked.");
+          return;
+        }
+
         set(state => {
           delete state.zoomRegions[id];
           delete state.cutRegions[id];
@@ -494,16 +504,20 @@ export const useEditorStore = create(
         clearTimeout(debounceTimer);
         debounceTimer = setTimeout(() => {
           const { activePresetId, presets, frameStyles, aspectRatio } = get();
-          if (activePresetId && presets[activePresetId]) {
+          
+          const defaultPresetId = Object.values(presets).find(p => p.isDefault)?.id;
+          const idToUpdate = activePresetId ?? defaultPresetId;
+
+          if (idToUpdate && presets[idToUpdate]) {
             set({ presetSaveStatus: 'saving' });
             set(state => {
-              state.presets[activePresetId].styles = JSON.parse(JSON.stringify(frameStyles));
-              state.presets[activePresetId].aspectRatio = aspectRatio;
+              state.presets[idToUpdate].styles = JSON.parse(JSON.stringify(frameStyles));
+              state.presets[idToUpdate].aspectRatio = aspectRatio;
             });
 
             window.electronAPI.setSetting('presets', get().presets);
 
-            console.log(`Auto-saved preset: "${presets[activePresetId].name}"`);
+            console.log(`Auto-saved preset: "${presets[idToUpdate].name}"`);
             set({ presetSaveStatus: 'saved' });
             setTimeout(() => {
               if (get().presetSaveStatus === 'saved') {
@@ -527,29 +541,45 @@ export const useEditorStore = create(
 
       initializePresets: async () => {
         try {
-          let loadedPresets = await window.electronAPI.getSetting<Record<string, Preset>>('presets');
+          const loadedPresets = await window.electronAPI.getSetting<Record<string, Preset>>('presets') || {};
 
-          if (!loadedPresets || Object.keys(loadedPresets).length === 0) {
-            const defaultId = `preset-default-${Date.now()}`;
-            loadedPresets = {
-              [defaultId]: {
+          let defaultPreset = Object.values(loadedPresets).find(p => p.isDefault);
+          let presetsModified = false;
+
+          // If no default preset exists, create or designate one.
+          if (!defaultPreset) {
+            presetsModified = true;
+            if (Object.keys(loadedPresets).length === 0) {
+              // Case 1: No presets exist at all. Create a new default.
+              const defaultId = `preset-default-${Date.now()}`;
+              loadedPresets[defaultId] = {
                 id: defaultId,
                 name: 'Default',
                 styles: JSON.parse(JSON.stringify(initialFrameStyles)),
                 aspectRatio: '16:9',
-              }
-            };
-            window.electronAPI.setSetting('presets', loadedPresets);
+                isDefault: true,
+              };
+              defaultPreset = loadedPresets[defaultId];
+            } else {
+              // Case 2: Presets exist but none are marked as default (migration).
+              const firstPreset = Object.values(loadedPresets)[0];
+              firstPreset.isDefault = true;
+              defaultPreset = firstPreset;
+            }
+          }
+          
+          if (presetsModified) {
+            await window.electronAPI.setSetting('presets', loadedPresets);
           }
 
           const lastUsedId = localStorage.getItem(LAST_PRESET_ID_KEY);
+          const activeId = (lastUsedId && loadedPresets[lastUsedId]) ? lastUsedId : defaultPreset!.id;
+          
           set(state => {
             state.presets = loadedPresets;
-            if (lastUsedId && loadedPresets[lastUsedId]) {
-              state.activePresetId = lastUsedId;
-              state.frameStyles = JSON.parse(JSON.stringify(loadedPresets[lastUsedId].styles));
-              state.aspectRatio = loadedPresets[lastUsedId].aspectRatio;
-            }
+            state.activePresetId = activeId;
+            state.frameStyles = JSON.parse(JSON.stringify(loadedPresets[activeId].styles));
+            state.aspectRatio = loadedPresets[activeId].aspectRatio;
           });
 
         } catch (error) {
@@ -578,6 +608,7 @@ export const useEditorStore = create(
           name,
           styles: JSON.parse(JSON.stringify(get().frameStyles)),
           aspectRatio: get().aspectRatio,
+          isDefault: false, // New presets are never the default one
         };
         set(state => {
           state.presets[id] = newPreset;
@@ -599,11 +630,24 @@ export const useEditorStore = create(
       },
 
       deletePreset: (id) => {
+        const state = get();
+        if (state.presets[id]?.isDefault) {
+          console.warn("Cannot delete the default preset.");
+          return;
+        }
+
         set(state => {
           delete state.presets[id];
           if (state.activePresetId === id) {
-            state.activePresetId = null;
-            localStorage.removeItem(LAST_PRESET_ID_KEY);
+            // Fallback to the default preset if the active one is deleted
+            const defaultPreset = Object.values(state.presets).find(p => p.isDefault);
+            if (defaultPreset) {
+              get().applyPreset(defaultPreset.id);
+            } else {
+              // This should theoretically never happen due to initializePresets
+              state.activePresetId = null;
+              localStorage.removeItem(LAST_PRESET_ID_KEY);
+            }
           }
         });
         window.electronAPI.setSetting('presets', get().presets);
