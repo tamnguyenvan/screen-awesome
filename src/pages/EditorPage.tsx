@@ -75,21 +75,7 @@ export function EditorPage() {
     };
   }, [loadProject, initializePresets, initializeSettings]);
 
-  const handleStartExport = useCallback(async (settings: ExportSettings) => {
-    const defaultPath = `ScreenAwesome-Export-${Date.now()}.${settings.format}`;
-    const result = await window.electronAPI.showSaveDialog({
-      title: 'Save Video',
-      defaultPath,
-      filters: settings.format === 'mp4'
-        ? [{ name: 'MP4 Video', extensions: ['mp4'] }]
-        : [{ name: 'GIF Animation', extensions: ['gif'] }],
-    });
-
-    if (result.canceled || !result.filePath) {
-      console.log('User cancelled the save dialog.');
-      return;
-    }
-
+  const handleStartExport = useCallback(async (settings: ExportSettings, outputPath: string) => {
     const fullState = useEditorStore.getState();
 
     const plainState = {
@@ -115,7 +101,7 @@ export function EditorPage() {
       await window.electronAPI.startExport({
         projectState: plainState,
         exportSettings: settings,
-        outputPath: result.filePath,
+        outputPath: outputPath,
       });
     } catch (e) {
       console.error("Export invocation failed", e);
@@ -131,6 +117,9 @@ export function EditorPage() {
   const currentTheme = useEditorStore(state => state.theme);
 
   const handleCloseExportModal = () => {
+    if (exportResult) {
+      setExportResult(null);
+    }
     setExportModalOpen(false);
   };
 
