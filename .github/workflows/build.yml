@@ -28,6 +28,36 @@ jobs:
         with:
           node-version: 20
 
+      - name: Download and setup FFmpeg
+        run: |
+          # 1. Tạo thư mục đích cho file nhị phân ffmpeg
+          echo "Creating target directory: binaries/linux"
+          mkdir -p binaries/linux
+          
+          # 2. Tải về phiên bản ffmpeg tĩnh
+          echo "Downloading FFmpeg..."
+          curl -L https://johnvansickle.com/ffmpeg/releases/ffmpeg-release-amd64-static.tar.xz -o ffmpeg.tar.xz
+          
+          # 3. Giải nén file
+          echo "Extracting FFmpeg..."
+          tar -xf ffmpeg.tar.xz
+          
+          # 4. Di chuyển file ffmpeg vào đúng vị trí
+          # Tên thư mục sau khi giải nén có thể thay đổi (ví dụ: ffmpeg-6.1.1-amd64-static)
+          # Sử dụng ký tự đại diện (*) để lệnh này luôn hoạt động với các phiên bản mới.
+          echo "Moving ffmpeg executable to binaries/linux/"
+          mv ffmpeg-*/ffmpeg binaries/linux/
+          
+          # 5. Xác minh rằng file đã ở đúng chỗ
+          echo "Verifying ffmpeg location..."
+          ls -l binaries/linux/ffmpeg
+
+      - name: Install Python dependencies
+        run: |
+          # Cài đặt các thư viện cần thiết để build tracker
+          python3 -m pip install pyinstaller pynput
+          npm run build:python
+
       - name: Install Modules and Publish build
         run: |
           source ${{ env.PYTHON_VENV }}/bin/activate
