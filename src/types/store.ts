@@ -1,5 +1,3 @@
-// src/store/editorStore.ts
-
 // --- Types ---
 export type BackgroundType = 'color' | 'gradient' | 'image' | 'wallpaper';
 export type AspectRatio = '16:9' | '9:16' | '4:3' | '3:4' | '1:1';
@@ -62,6 +60,16 @@ export interface MetaDataItem {
   pressed?: boolean;
 }
 
+export interface WebcamPosition {
+  pos: 'top-left' | 'top-right' | 'bottom-left' | 'bottom-right';
+}
+
+export interface WebcamStyles {
+  size: number; // percentage of container height
+  shadow: number; // 0-50 for shadow strength
+}
+
+
 // --- State ---
 export interface EditorState {
   videoPath: string | null;
@@ -74,8 +82,8 @@ export interface EditorState {
   isPlaying: boolean;
   frameStyles: FrameStyles;
   aspectRatio: AspectRatio;
-  zoomRegions: Record<string, ZoomRegion>; // OPTIMIZATION: Array -> Record
-  cutRegions: Record<string, CutRegion>;   // OPTIMIZATION: Array -> Record
+  zoomRegions: Record<string, ZoomRegion>;
+  cutRegions: Record<string, CutRegion>;
   previewCutRegion: CutRegion | null;
   selectedRegionId: string | null;
   activeZoomRegionId: string | null;
@@ -86,5 +94,11 @@ export interface EditorState {
   presets: Record<string, Preset>;
   activePresetId: string | null;
   presetSaveStatus: 'idle' | 'saving' | 'saved';
-}
 
+  // webcam
+  webcamVideoPath: string | null;
+  webcamVideoUrl: string | null;
+  isWebcamVisible: boolean;
+  webcamPosition: WebcamPosition;
+  webcamStyles: WebcamStyles;
+}

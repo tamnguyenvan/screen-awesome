@@ -1,5 +1,3 @@
-// src/store/editorStore.ts
-
 import { create } from 'zustand';
 import { immer } from 'zustand/middleware/immer';
 import { useShallow } from 'zustand/react/shallow';
@@ -8,7 +6,8 @@ import { WALLPAPERS } from '../lib/constants';
 import { shallow } from 'zustand/shallow';
 import {
   AspectRatio, Background, FrameStyles, Preset, ZoomRegion, CutRegion, TimelineRegion,
-  EditorState, MetaDataItem
+  EditorState, MetaDataItem, WebcamStyles,
+  WebcamPosition
 } from '../types/store';
 
 // --- Types ---
@@ -16,7 +15,7 @@ let debounceTimer: NodeJS.Timeout;
 
 // --- Actions ---
 export interface EditorActions {
-  loadProject: (paths: { videoPath: string; metadataPath: string }) => Promise<void>;
+  loadProject: (paths: { videoPath: string; metadataPath: string; webcamVideoPath?: string }) => Promise<void>;
   setVideoDimensions: (dims: { width: number; height: number }) => void;
   setDuration: (duration: number) => void;
   setCurrentTime: (time: number) => void;
@@ -41,6 +40,11 @@ export interface EditorActions {
   saveCurrentStyleAsPreset: (name: string) => void;
   updateActivePreset: () => void;
   deletePreset: (id: string) => void;
+
+  // webcam
+  setWebcamPosition: (position: WebcamPosition) => void;
+  setWebcamVisibility: (isVisible: boolean) => void;
+  updateWebcamStyle: (style: Partial<WebcamStyles>) => void;
 }
 
 // --- Initial State ---
@@ -62,9 +66,13 @@ const initialProjectState = {
   isCurrentlyCut: false,
   timelineZoom: 1,
   nextZIndex: 1,
+  webcamVideoPath: null,
+  webcamVideoUrl: null,
+  isWebcamVisible: false,
+  webcamPosition: { pos: 'bottom-right' } as WebcamPosition,
+  webcamStyles: { size: 30, shadow: 15 },
 };
 
-// State toàn cục của ứng dụng, không bị reset bởi loadProject
 const initialAppState = {
   theme: 'light' as 'light' | 'dark',
   presets: {},
@@ -105,26 +113,28 @@ export const useEditorStore = create(
       ...initialAppState,
       frameStyles: initialFrameStyles,
 
-      loadProject: async ({ videoPath, metadataPath }) => {
+      loadProject: async ({ videoPath, metadataPath, webcamVideoPath }) => {
         const videoUrl = `media://${videoPath}`;
+        const webcamVideoUrl = webcamVideoPath ? `media://${webcamVideoPath}` : null;
         const lastActiveId = get().activePresetId;
         const currentPresets = get().presets;
 
         set(state => {
-          // --- FIX: CHỈ RESET STATE CỦA PROJECT, KHÔNG RESET PRESETS/THEME ---
           Object.assign(state, initialProjectState);
 
-          // Khôi phục lại frame style từ preset đang active, nếu có
           if (lastActiveId && currentPresets[lastActiveId]) {
             state.frameStyles = JSON.parse(JSON.stringify(currentPresets[lastActiveId].styles));
           } else {
-            state.frameStyles = initialFrameStyles; // Nếu không thì dùng style mặc định
+            state.frameStyles = initialFrameStyles;
           }
 
-          // Cập nhật thông tin project mới
+          // Update the new project information
           state.videoPath = videoPath;
           state.metadataPath = metadataPath;
           state.videoUrl = videoUrl;
+          state.webcamVideoPath = webcamVideoPath || null;
+          state.webcamVideoUrl = webcamVideoUrl;
+          state.isWebcamVisible = !!webcamVideoUrl;
         });
 
         try {
@@ -223,9 +233,7 @@ export const useEditorStore = create(
       updateFrameStyle: (style) => {
         set(state => {
           Object.assign(state.frameStyles, style);
-          // BỎ DÒNG NÀY: state.activePresetId = null; 
         });
-        // GỌI HÀM DEBOUNCE
         get()._debouncedUpdatePreset();
       },
 
@@ -354,7 +362,6 @@ export const useEditorStore = create(
       toggleTheme: () => {
         const newTheme = get().theme === 'dark' ? 'light' : 'dark';
         set(state => { state.theme = newTheme; });
-        // NEW: Lưu lại cài đặt theme mới
         window.electronAPI.setSetting('appearance.theme', newTheme);
       },
       setPreviewCutRegion: (region) => set(state => { state.previewCutRegion = region; }),
@@ -371,7 +378,6 @@ export const useEditorStore = create(
               state.presets[activePresetId].aspectRatio = aspectRatio;
             });
 
-            // MODIFIED: Sử dụng setSetting để lưu presets
             window.electronAPI.setSetting('presets', get().presets);
             
             console.log(`Auto-saved preset: "${presets[activePresetId].name}"`);
@@ -385,14 +391,12 @@ export const useEditorStore = create(
         }, 1500);
       },
 
-      // NEW: Action để tải cài đặt từ main process khi app được mở
       initializeSettings: async () => {
         try {
           const appearance = await window.electronAPI.getSetting<{ theme: 'light' | 'dark' }>('appearance');
           if (appearance && appearance.theme) {
             set({ theme: appearance.theme });
           }
-          // Có thể tải các cài đặt khác ở đây trong tương lai
         } catch (error) {
           console.error("Could not load app settings:", error);
         }
@@ -400,7 +404,6 @@ export const useEditorStore = create(
       
       initializePresets: async () => {
         try {
-          // MODIFIED: Tải presets qua hệ thống settings chung
           let loadedPresets = await window.electronAPI.getSetting<Record<string, Preset>>('presets');
 
           if (!loadedPresets || Object.keys(loadedPresets).length === 0) {
@@ -413,7 +416,6 @@ export const useEditorStore = create(
                 aspectRatio: '16:9',
               }
             };
-            // MODIFIED: Lưu presets mặc định qua hệ thống settings chung
             window.electronAPI.setSetting('presets', loadedPresets);
           }
 
@@ -457,13 +459,10 @@ export const useEditorStore = create(
           state.activePresetId = id;
         });
         localStorage.setItem(LAST_PRESET_ID_KEY, id);
-        // MODIFIED: Lưu presets qua hệ thống settings chung
         window.electronAPI.setSetting('presets', get().presets);
       },
 
       updateActivePreset: () => {
-        // Hàm này giờ có thể được đơn giản hóa vì logic đã nằm trong _debouncedUpdatePreset
-        // Tuy nhiên, giữ lại để có thể gọi thủ công nếu cần
         const { activePresetId, presets, frameStyles, aspectRatio } = get();
         if (activePresetId && presets[activePresetId]) {
           set(state => {
@@ -482,15 +481,19 @@ export const useEditorStore = create(
             localStorage.removeItem(LAST_PRESET_ID_KEY);
           }
         });
-        // MODIFIED: Lưu presets qua hệ thống settings chung
         window.electronAPI.setSetting('presets', get().presets);
       },
 
       reset: () => set(state => {
-        // Hàm reset này sẽ reset tất cả, bao gồm cả project và app state
         Object.assign(state, initialProjectState);
         Object.assign(state, initialAppState);
         state.frameStyles = initialFrameStyles;
+      }),
+
+      setWebcamPosition: (position) => set({ webcamPosition: position }),
+      setWebcamVisibility: (isVisible) => set({ isWebcamVisible: isVisible }),
+      updateWebcamStyle: (style) => set(state => {
+        Object.assign(state.webcamStyles, style);
       }),
     })),
     {

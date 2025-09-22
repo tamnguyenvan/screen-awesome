@@ -1,5 +1,3 @@
-// src/components/editor/sidepanel/FocusPointPicker.tsx
-
 import React, { useRef, useState, useEffect, useCallback } from 'react';
 import { useEditorStore } from '../../../store/editorStore';
 
@@ -18,7 +16,7 @@ export function FocusPointPicker({ regionId, targetX, targetY, startTime, onTarg
   const containerRef = useRef<HTMLDivElement>(null);
   const [videoDims, setVideoDims] = useState({ width: 0, height: 0 });
 
-  // Tua video đến đầu region khi component được mount
+  // Seek video to the start of the region when the component mounts
   useEffect(() => {
     const video = videoRef.current;
     if (video && video.readyState >= 1) { // HAVE_METADATA
@@ -34,7 +32,7 @@ export function FocusPointPicker({ regionId, targetX, targetY, startTime, onTarg
     }
   };
 
-  // Xử lý sự kiện kéo thả để chọn điểm focus
+  // Handle mouse events to select focus point
   const handleMouseDown = useCallback((e: React.MouseEvent<HTMLDivElement>) => {
     const container = containerRef.current;
     if (!container || videoDims.width === 0) return;
@@ -47,7 +45,7 @@ export function FocusPointPicker({ regionId, targetX, targetY, startTime, onTarg
       const clampedX = Math.max(0, Math.min(x, rect.width));
       const clampedY = Math.max(0, Math.min(y, rect.height));
 
-      // Chuyển đổi từ tọa độ hiển thị sang tọa độ gốc của video
+      // Convert from display coordinates to video origin coordinates
       const nativeX = (clampedX / rect.width) * videoDims.width;
       const nativeY = (clampedY / rect.height) * videoDims.height;
 

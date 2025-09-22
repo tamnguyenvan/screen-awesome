@@ -1,4 +1,3 @@
-// src/lib/transform.ts
 import { useEditorStore } from '../store/editorStore';
 
 // --- Easing Functions ---
@@ -55,14 +54,14 @@ export const calculateZoomTransform = (currentTime: number) => {
     return defaultTransform;
   }
   
-  // CHÚ THÍCH: Lấy thêm thuộc tính 'mode'
+  // NOTE: Get the additional 'mode' property
   const { startTime, duration, zoomLevel, targetX, targetY, mode } = activeRegion;
   const elapsed = currentTime - startTime;
   const zoomInDuration = 0.8;
   const zoomOutDuration = 0.8;
   const zoomOutStartTime = duration - zoomOutDuration;
   
-  // --- Giai đoạn 1: Zoom In (0.8 giây đầu) ---
+  // --- Phase 1: Zoom In (first 0.8 seconds) ---
   if (elapsed <= zoomInDuration) {
     const t = easeInOutCubic(elapsed / zoomInDuration);
     const currentScale = lerp(1, zoomLevel, t);
@@ -71,22 +70,22 @@ export const calculateZoomTransform = (currentTime: number) => {
     return { scale: currentScale, ...calculatePan(currentScale, focusX, focusY, videoWidth, videoHeight) };
   }
 
-  // --- Giai đoạn 3: Zoom Out (0.8 giây cuối) ---
+  // --- Phase 3: Zoom Out (last 0.8 seconds) ---
   if (elapsed >= zoomOutStartTime) {
     const t = easeInOutCubic((elapsed - zoomOutStartTime) / zoomOutDuration);
     
-    // CHÚ THÍCH: Xác định điểm bắt đầu zoom-out dựa trên mode
+    // NOTE: Determine the starting point for zoom-out based on mode
     let startFocusX = targetX;
     let startFocusY = targetY;
 
-    // Nếu là 'auto', tìm vị trí chuột cuối cùng trước khi zoom-out
+    // If 'auto', find the last known mouse position before zoom-out
     if (mode === 'auto') {
       const lastMousePosIndex = findLastIndex(metadata, m => m.timestamp <= startTime + zoomOutStartTime);
       const lastKnownPos = lastMousePosIndex !== -1 ? metadata[lastMousePosIndex] : { x: targetX, y: targetY };
       startFocusX = lastKnownPos.x;
       startFocusY = lastKnownPos.y;
     }
-    // Nếu là 'fixed', điểm bắt đầu chính là targetX/Y đã được đặt.
+    // NOTE: If 'fixed', the starting point is the targetX/Y already set.
 
     const currentScale = lerp(zoomLevel, 1, t);
     const focusX = lerp(startFocusX, videoWidth / 2, t);
@@ -95,14 +94,14 @@ export const calculateZoomTransform = (currentTime: number) => {
     return { scale: currentScale, ...calculatePan(currentScale, focusX, focusY, videoWidth, videoHeight) };
   }
   
-  // --- Giai đoạn 2: Tracking (giữa zoom-in và zoom-out) ---
+  // --- Phase 2: Tracking (between zoom-in and zoom-out) ---
   
-  // CHÚ THÍCH: Nếu là 'fixed', chỉ cần giữ nguyên vị trí zoom
+  // NOTE: If 'fixed', just keep the zoom position
   if (mode === 'fixed') {
     return { scale: zoomLevel, ...calculatePan(zoomLevel, targetX, targetY, videoWidth, videoHeight) };
   }
   
-  // CHÚ THÍCH: Logic dưới đây chỉ chạy cho mode 'auto'
+  // NOTE: Logic below runs only for mode 'auto'
   const prevIndex = findLastIndex(metadata, m => m.timestamp <= currentTime);
   if (prevIndex === -1) {
     return { scale: zoomLevel, ...calculatePan(zoomLevel, targetX, targetY, videoWidth, videoHeight) };

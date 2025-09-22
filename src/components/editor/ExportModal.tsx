@@ -1,4 +1,3 @@
-// src/components/editor/ExportModal.tsx
 import React, { useState } from 'react';
 import { Button } from '../ui/button';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '../ui/select';
@@ -8,7 +7,7 @@ import { cn } from '../../lib/utils';
 export type ExportSettings = {
   format: 'mp4' | 'gif';
   resolution: '720p' | '1080p' | '2k';
-  fps: 30; // Only 30 FPS is supported
+  fps: 30; // Only 30 FPS is supported for now
   quality: 'low' | 'medium' | 'high';
 }
 
@@ -23,7 +22,6 @@ interface ExportModalProps {
 }
 
 // --- Sub-components for different views ---
-
 const SettingsView = ({ onStartExport, onClose }: { onStartExport: (settings: ExportSettings) => void, onClose: () => void }) => {
   const [settings, setSettings] = useState<ExportSettings>({
     format: 'mp4',
@@ -156,7 +154,6 @@ const ResultView = ({ result, onClose }: { result: NonNullable<ExportModalProps[
 
 
 // --- Main Modal Component ---
-
 export function ExportModal({ isOpen, onClose, onStartExport, onCancelExport, isExporting, progress, result }: ExportModalProps) {
   if (!isOpen) return null;
 

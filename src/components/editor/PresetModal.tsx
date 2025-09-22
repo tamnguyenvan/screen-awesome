@@ -1,5 +1,3 @@
-// --- FILE: src/components/editor/PresetModal.tsx ---
-
 import { useState, useEffect } from 'react';
 import { useShallow } from 'zustand/react/shallow';
 import { useEditorStore } from '../../store/editorStore';
@@ -25,11 +23,11 @@ export function PresetModal({ isOpen, onClose }: PresetModalProps) {
     }))
   );
   
-  // State nội bộ của modal để quản lý preset đang được chọn để preview
+  // Internal state of the modal to manage the currently selected preset for preview
   const [previewId, setPreviewId] = useState<string | null>(activePresetId);
   const [newPresetName, setNewPresetName] = useState('');
 
-  // Reset previewId khi modal được mở
+  // Reset previewId when modal is opened
   useEffect(() => {
     if (isOpen) {
       setPreviewId(activePresetId);
@@ -57,7 +55,7 @@ export function PresetModal({ isOpen, onClose }: PresetModalProps) {
   
   const handleDelete = (idToDelete: string) => {
     deletePreset(idToDelete);
-    // Nếu preset bị xóa đang được preview, reset preview
+    // If the deleted preset was being previewed, reset preview
     if (previewId === idToDelete) {
       setPreviewId(activePresetId);
     }

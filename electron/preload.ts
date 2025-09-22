@@ -1,4 +1,3 @@
-// electron/preload.ts
 import { contextBridge, ipcRenderer, IpcRendererEvent } from 'electron'
 
 // Define the type for the callback value
@@ -10,6 +9,7 @@ type RecordingResult = {
 type ProjectPayload = {
   videoPath: string;
   metadataPath: string;
+  webcamVideoPath?: string;
 }
 
 type ExportPayload = {
@@ -55,6 +55,12 @@ type WindowSource = {
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 type Preset = any;
 
+type DisplayInfo = {
+  id: number;
+  name: string;
+  bounds: { x: number; y: number; width: number; height: number };
+  isPrimary: boolean;
+}
 
 // Define API to be exposed to window object
 export const electronAPI = {
@@ -62,16 +68,15 @@ export const electronAPI = {
   startRecording: (options: { 
     source: 'area' | 'fullscreen' | 'window', 
     geometry?: WindowSource['geometry'];
-    windowTitle?: string 
+    windowTitle?: string; 
+    displayId?: number,
+    webcam?: { deviceId: string; deviceLabel: string; index: number };
   }): Promise<RecordingResult> => ipcRenderer.invoke('recording:start', options),
+  getDisplays: (): Promise<DisplayInfo[]> => ipcRenderer.invoke('desktop:get-displays'),
+  getWebcams: (): Promise<Electron.DesktopCapturerSource[]> => ipcRenderer.invoke('desktop:get-webcams'),
 
   getDesktopSources: (): Promise<WindowSource[]> => ipcRenderer.invoke('desktop:get-sources'),
   linuxCheckTools: (): Promise<{ [key: string]: boolean }> => ipcRenderer.invoke('linux:check-tools'),
-
-  // Removed the 'center' property as it's no longer used in the main process.
-  setRecorderSize: (options: { width: number, height: number }) => {
-    ipcRenderer.send('recorder:set-size', options);
-  },
 
   onRecordingFinished: (callback: (result: RecordingResult) => void) => {
     const listener = (_event: IpcRendererEvent, result: RecordingResult) => callback(result);

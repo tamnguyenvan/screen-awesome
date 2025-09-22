@@ -1,4 +1,3 @@
-// src/pages/EditorPage.tsx
 import { useEffect, useRef, useState, useCallback } from 'react';
 import { useEditorStore } from '../store/editorStore';
 import { Preview } from '../components/editor/Preview';
@@ -28,7 +27,6 @@ export function EditorPage() {
   const [platform, setPlatform] = useState<NodeJS.Platform | null>(null);
 
   const handleDeleteSelectedRegion = useCallback(() => {
-    // Dùng getState() để lấy selectedRegionId mới nhất bên trong callback
     const currentSelectedId = useEditorStore.getState().selectedRegionId;
     if (currentSelectedId) {
       deleteRegion(currentSelectedId);
@@ -72,7 +70,6 @@ export function EditorPage() {
       cleanProgressListener();
       cleanCompleteListener();
     };
-    // MODIFIED: Thêm initializeSettings vào dependency array
   }, [loadProject, initializePresets, initializeSettings]);
 
   const handleStartExport = useCallback(async (settings: ExportSettings) => {
@@ -101,6 +98,10 @@ export function EditorPage() {
       aspectRatio: fullState.aspectRatio,
       zoomRegions: fullState.zoomRegions,
       cutRegions: fullState.cutRegions,
+      webcamVideoPath: fullState.webcamVideoPath,
+      webcamPosition: fullState.webcamPosition,
+      webcamStyles: fullState.webcamStyles,
+      isWebcamVisible: fullState.isWebcamVisible,
     };
 
     setExportResult(null);
@@ -186,7 +187,7 @@ export function EditorPage() {
 
       {/* Main Layout */}
       <div className="flex flex-1 overflow-hidden">
-        <div className="w-96 flex-shrink-0 bg-sidebar border-r border-sidebar-border overflow-hidden">
+        <div className="w-[28rem] flex-shrink-0 bg-sidebar border-r border-sidebar-border overflow-hidden">
           <SidePanel />
         </div>
         <div className="flex-1 flex flex-col overflow-hidden bg-background">

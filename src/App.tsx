@@ -1,4 +1,3 @@
-// src/App.tsx
 import { useState, useEffect } from 'react';
 import { EditorPage } from './pages/EditorPage';
 import { RecorderPage } from './pages/RecorderPage';

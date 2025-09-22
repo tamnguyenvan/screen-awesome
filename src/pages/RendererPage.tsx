@@ -1,17 +1,10 @@
-// src/pages/RendererPage.tsx
-
 import log from 'electron-log/renderer';
 import { useEffect, useRef } from 'react';
 import { useEditorStore, EditorActions } from '../store/editorStore';
 import { EditorState, CutRegion } from '../types/store';
 import { calculateZoomTransform } from '../lib/transform';
 import { ExportSettings } from '../components/editor/ExportModal';
-
-const RESOLUTIONS = {
-  '720p': { width: 1280, height: 720 },
-  '1080p': { width: 1920, height: 1080 },
-  '2k': { width: 2560, height: 1440 },
-};
+import { RESOLUTIONS } from '../lib/constants';
 
 /**
  * Draws the background (color, gradient, image) onto the canvas.
@@ -116,7 +109,7 @@ const drawBackground = async (
         const finalUrl = backgroundState.imageUrl.startsWith('blob:')
           ? backgroundState.imageUrl
           : `media://${backgroundState.imageUrl}`;
-          
+
         img.src = finalUrl;
       });
       break;
@@ -135,6 +128,7 @@ type RenderStartPayload = {
 export function RendererPage() {
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const videoRef = useRef<HTMLVideoElement>(null);
+  const webcamVideoRef = useRef<HTMLVideoElement>(null);
 
   useEffect(() => {
     log.info('[RendererPage] Component mounted. Setting up listeners.');
@@ -142,6 +136,7 @@ export function RendererPage() {
     const cleanup = window.electronAPI.onRenderStart(async ({ projectState, exportSettings }: RenderStartPayload) => {
       const canvas = canvasRef.current;
       const video = videoRef.current;
+      const webcamVideo = webcamVideoRef.current;
 
       try {
         log.info('[RendererPage] Received "render:start" event.', { exportSettings });
@@ -153,7 +148,7 @@ export function RendererPage() {
         const [ratioW, ratioH] = projectState.aspectRatio.split(':').map(Number);
         const baseHeight = RESOLUTIONS[resolution as keyof typeof RESOLUTIONS].height;
         const aspectValue = ratioW / ratioH;
-        
+
         // Calculate width and ensure it's even for FFmpeg compatibility
         let outputWidth = Math.round(baseHeight * aspectValue);
         outputWidth = outputWidth % 2 === 0 ? outputWidth : outputWidth + 1;
@@ -161,6 +156,35 @@ export function RendererPage() {
 
         canvas.width = outputWidth;
         canvas.height = outputHeight;
+
+        // Webcam layout calculations
+        const { webcamPosition, webcamStyles, isWebcamVisible } = projectState;
+        const webcamHeight = outputHeight * (webcamStyles.size / 100);
+        const webcamWidth = webcamHeight; // Make it a square
+        const webcamRadius = webcamHeight * 0.35; // 35% radius for a `squircle` effect
+
+        // Calculate webcam coordinates with padding
+        const padding = outputHeight * 0.02; // 2% padding
+        let webcamX, webcamY;
+        switch (webcamPosition.pos) {
+          case 'top-left':
+            webcamX = padding;
+            webcamY = padding;
+            break;
+          case 'top-right':
+            webcamX = outputWidth - webcamWidth - padding;
+            webcamY = padding;
+            break;
+          case 'bottom-left':
+            webcamX = padding;
+            webcamY = outputHeight - webcamHeight - padding;
+            break;
+          case 'bottom-right':
+          default:
+            webcamX = outputWidth - webcamWidth - padding;
+            webcamY = outputHeight - webcamHeight - padding;
+            break;
+        }
 
         // Use alpha: false for performance as we always draw a background
         const ctx = canvas.getContext('2d', { alpha: false });
@@ -203,43 +227,103 @@ export function RendererPage() {
         const innerRadius = Math.max(0, frameStyles.borderRadius - borderWidth);
 
 
-        // 2. Load Video and Wait
-        await new Promise<void>((resolve, reject) => {
-            const onCanPlay = () => {
-                video.removeEventListener('canplay', onCanPlay);
-                video.removeEventListener('error', onError);
-                log.info('[RendererPage] Video is ready to play.');
-                resolve();
-            };
-            const onError = (e: Event) => {
-                video.removeEventListener('canplay', onCanPlay);
-                video.removeEventListener('error', onError);
-                log.error('[RendererPage] Video loading error:', e);
-                reject(new Error('Failed to load video for rendering.'));
-            };
-
-            video.addEventListener('canplay', onCanPlay);
-            video.addEventListener('error', onError);
-
-            video.src = `media://${projectState.videoPath}`;
-            video.muted = true;
-            video.load();
-        });
-
-        // Helper to seek video accurately
-        const seek = (time: number): Promise<void> => {
-          if (Math.abs(video.currentTime - time) < 0.01) return Promise.resolve();
+        // 2. Load Videos and Wait
+        const loadVideo = (videoElement: HTMLVideoElement, source: string): Promise<void> => {
           return new Promise((resolve, reject) => {
-            const onSeeked = () => { video.removeEventListener('seeked', onSeeked); video.removeEventListener('error', onError); resolve(); };
-            const onError = (e: Event) => { video.removeEventListener('seeked', onSeeked); video.removeEventListener('error', onError); log.error('[RendererPage] Video seek error:', e); reject(new Error('Failed to seek video')); };
-            video.addEventListener('seeked', onSeeked);
-            video.addEventListener('error', onError);
-            video.currentTime = time;
+            const onCanPlay = () => {
+              videoElement.removeEventListener('canplay', onCanPlay);
+              videoElement.removeEventListener('error', onError);
+              log.info(`[RendererPage] ${source === 'main' ? 'Main video' : 'Webcam video'} is ready to play.`);
+              resolve();
+            };
+
+            const onError = (e: Event) => {
+              videoElement.removeEventListener('canplay', onCanPlay);
+              videoElement.removeEventListener('error', onError);
+              log.error(`[RendererPage] ${source === 'main' ? 'Main video' : 'Webcam video'} loading error:`, e);
+              reject(new Error(`Failed to load ${source === 'main' ? 'main video' : 'webcam video'} for rendering.`));
+            };
+
+            videoElement.addEventListener('canplay', onCanPlay);
+            videoElement.addEventListener('error', onError);
+
+            videoElement.src = source === 'main'
+              ? `media://${projectState.videoPath}`
+              : `media://${projectState.webcamVideoPath}`;
+            videoElement.muted = true;
+            videoElement.load();
           });
         };
 
+        // Load both videos in parallel
+        try {
+          const loadPromises = [
+            loadVideo(video, 'main'),
+            projectState.webcamVideoPath && webcamVideo ? loadVideo(webcamVideo, 'webcam') : Promise.resolve()
+          ];
+          await Promise.all(loadPromises);
+          log.info('[RendererPage] All videos loaded successfully');
+        } catch (error) {
+          log.error('[RendererPage] Error loading videos:', error);
+          throw error;
+        }
+
+        // Helper to seek videos accurately and in sync
+        const seekVideos = async (time: number): Promise<void> => {
+          const seekPromises = [
+            new Promise<void>((resolve) => {
+              if (Math.abs(video.currentTime - time) < 0.01) {
+                resolve();
+                return;
+              }
+              const onSeeked = () => {
+                video.removeEventListener('seeked', onSeeked);
+                video.removeEventListener('error', onError);
+                resolve();
+              };
+              const onError = (e: Event) => {
+                video.removeEventListener('seeked', onSeeked);
+                video.removeEventListener('error', onError);
+                log.error('[RendererPage] Main video seek error:', e);
+                resolve(); // Don't reject on seek error, continue with current time
+              };
+              video.addEventListener('seeked', onSeeked);
+              video.addEventListener('error', onError);
+              video.currentTime = time;
+            })
+          ];
+
+          if (projectState.webcamVideoPath && webcamVideo) {
+            seekPromises.push(
+              new Promise<void>((resolve) => {
+                if (Math.abs(webcamVideo.currentTime - time) < 0.01) {
+                  resolve();
+                  return;
+                }
+                const onWebcamSeeked = () => {
+                  webcamVideo.removeEventListener('seeked', onWebcamSeeked);
+                  webcamVideo.removeEventListener('error', onWebcamError);
+                  resolve();
+                };
+                const onWebcamError = (e: Event) => {
+                  webcamVideo.removeEventListener('seeked', onWebcamSeeked);
+                  webcamVideo.removeEventListener('error', onWebcamError);
+                  log.error('[RendererPage] Webcam video seek error:', e);
+                  resolve(); // Don't reject on seek error, continue with current time
+                };
+                webcamVideo.addEventListener('seeked', onWebcamSeeked);
+                webcamVideo.addEventListener('error', onWebcamError);
+                webcamVideo.currentTime = time;
+              })
+            );
+          }
+
+          return Promise.all(seekPromises).then(() => { });
+        };
+
         // 3. Start Render Loop
-        const totalFrames = Math.floor(projectState.duration * fps);
+        const cutRegionsArray = Object.values(projectState.cutRegions);
+        const totalFrames = Math.ceil(projectState.duration * fps);
         log.info(`[RendererPage] Starting render for ${totalFrames} frames at ${fps} FPS.`);
 
         if (totalFrames <= 0) {
@@ -248,28 +332,29 @@ export function RendererPage() {
           return;
         }
 
-        const cutRegionsArray = Object.values(projectState.cutRegions);
+        let framesActuallyRendered = 0;
 
         for (let frameIndex = 0; frameIndex < totalFrames; frameIndex++) {
           const currentTime = frameIndex / fps;
 
+          if (currentTime > projectState.duration) {
+            break;
+          }
+
           // Skip cut regions
-          const activeCutRegion = cutRegionsArray.find(
-            (r: CutRegion) => currentTime >= r.startTime && currentTime < r.startTime + r.duration
+          const isInCutRegion = cutRegionsArray.some(
+            (r: CutRegion) => currentTime >= r.startTime && currentTime < (r.startTime + r.duration)
           );
 
-          if (activeCutRegion) {
-            const endOfCut = activeCutRegion.startTime + activeCutRegion.duration;
-            // Jump frameIndex to the frame just before the end of the cut
-            frameIndex = Math.floor(endOfCut * fps) - 1; 
+          // Skip frames that are in cut regions
+          if (isInCutRegion) {
             continue;
           }
 
           // Prepare for rendering
-          await seek(currentTime);
+          await seekVideos(currentTime);
           state.setCurrentTime(currentTime); // Update store for zoom calculations
 
-          // --- BEGIN FRAME RENDERING ---
 
           // 1. Draw Background
           await drawBackground(ctx, outputWidth, outputHeight, frameStyles.background);
@@ -349,19 +434,31 @@ export function RendererPage() {
 
           ctx.restore(); // End video clip
 
-          // --- END FRAME RENDERING ---
-
           ctx.restore(); // Restore context state (removes zoom/pan transform)
 
-          // 6. Extract and Send Frame Data
+          // Update webcam drawing logic
+          if (isWebcamVisible && projectState.webcamVideoPath && webcamVideo) {
+            ctx.save();
+            // Create rounded clipping path for webcam
+            const webcamPath = new Path2D();
+            webcamPath.roundRect(webcamX, webcamY, webcamWidth, webcamHeight, webcamRadius);
+            ctx.clip(webcamPath);
+
+            // Draw current webcam frame
+            ctx.drawImage(webcamVideo, webcamX, webcamY, webcamWidth, webcamHeight);
+            ctx.restore();
+          }
+
+          // Extract and Send Frame Data
           const imageData = ctx.getImageData(0, 0, outputWidth, outputHeight);
           const frameBuffer = Buffer.from(imageData.data.buffer);
           const progress = Math.round(((frameIndex + 1) / totalFrames) * 100);
 
           window.electronAPI.sendFrameToMain({ frame: frameBuffer, progress });
+          framesActuallyRendered++;
         }
 
-        log.info('[RendererPage] All frames rendered. Sending "finishRender" signal.');
+        log.info(`[RendererPage] All frames processed. Sent ${framesActuallyRendered} frames. Sending "finishRender" signal.`);
         window.electronAPI.finishRender();
 
       } catch (error) {
@@ -381,10 +478,11 @@ export function RendererPage() {
   }, []);
 
   return (
-    <div style={{ display: 'none' }}>
+    <div>
       <h1>Renderer Worker</h1>
       <canvas ref={canvasRef}></canvas>
       <video ref={videoRef}></video>
+      <video ref={webcamVideoRef}></video>
     </div>
   );
 }

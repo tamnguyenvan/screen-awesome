@@ -1,3 +1,4 @@
+// Wallpapers
 export const WALLPAPERS = [
   {imageUrl: 'wallpapers/images/wallpaper-0001.jpg', thumbnailUrl: 'wallpapers/thumbnails/wallpaper-0001.jpg'},
   {imageUrl: 'wallpapers/images/wallpaper-0002.jpg', thumbnailUrl: 'wallpapers/thumbnails/wallpaper-0002.jpg'},
@@ -18,3 +19,10 @@ export const WALLPAPERS = [
   {imageUrl: 'wallpapers/images/wallpaper-0017.jpg', thumbnailUrl: 'wallpapers/thumbnails/wallpaper-0017.jpg'},
 ]
 export const WALLPAPERS_THUMBNAILS = WALLPAPERS.map(w => w.thumbnailUrl);
+
+// Resolutions
+export const RESOLUTIONS = {
+  '720p': { width: 1280, height: 720 },
+  '1080p': { width: 1920, height: 1080 },
+  '2k': { width: 2560, height: 1440 },
+};

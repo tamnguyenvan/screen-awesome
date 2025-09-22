@@ -1,5 +1,3 @@
-// electron/main.ts
-
 import log from 'electron-log/main';
 
 log.transports.file.format = '[{y}-{m}-{d} {h}:{i}:{s}.{ms}] [{level}] {text}';
@@ -34,16 +32,16 @@ import fsSync from 'node:fs'
 import Store from 'electron-store';
 
 const schema = {
-	windowBounds: {
-		type: 'object',
-		properties: {
-			width: { type: 'number' },
-			height: { type: 'number' },
-			x: { type: 'number' },
-			y: { type: 'number' },
-		},
-		default: { width: 1280, height: 800 } // Giá trị mặc định khi chưa có cài đặt
-	},
+  windowBounds: {
+    type: 'object',
+    properties: {
+      width: { type: 'number' },
+      height: { type: 'number' },
+      x: { type: 'number' },
+      y: { type: 'number' },
+    },
+    default: { width: 1280, height: 800 } // Default values when no settings exist
+  },
   appearance: {
     type: 'object',
     properties: {
@@ -57,7 +55,6 @@ const schema = {
   }
 };
 
-// NEW: Khởi tạo store với schema đã định nghĩa
 const store = new Store({ schema });
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url))
@@ -68,6 +65,12 @@ export const VITE_DEV_SERVER_URL = process.env['VITE_DEV_SERVER_URL']
 export const MAIN_DIST = path.join(process.env.APP_ROOT, 'dist-electron')
 export const RENDERER_DIST = path.join(process.env.APP_ROOT, 'dist')
 type ResolutionKey = '720p' | '1080p' | '2k';
+type DisplayInfo = {
+  id: number;
+  name: string;
+  bounds: Electron.Rectangle;
+  isPrimary: boolean;
+}
 
 const RESOLUTIONS: Record<ResolutionKey, { width: number; height: number }> = {
   '720p': { width: 1280, height: 720 },
@@ -92,6 +95,9 @@ let metadataStream: fsSync.WriteStream | null = null
 let pythonDataBuffer = ''
 let firstChunkWritten = true
 
+let framesSentCount = 0; // Counter for frames actually sent during export
+
+
 async function handleLoadPresets() {
   log.info('[Main] Loading presets from electron-store.');
   const presets = store.get('presets');
@@ -99,7 +105,6 @@ async function handleLoadPresets() {
   return presets;
 }
 
-// MODIFIED: Thay thế logic ghi file cũ bằng electron-store
 async function handleSavePresets(_event: IpcMainInvokeEvent, presets: unknown) {
   log.info('[Main] Saving presets to electron-store.');
   store.set('presets', presets);
@@ -113,10 +118,26 @@ function calculateExportDimensions(resolutionKey: ResolutionKey, aspectRatio: st
   const aspectRatioValue = ratioW / ratioH;
 
   const width = Math.round(baseHeight * aspectRatioValue);
-  // Đảm bảo chiều rộng là số chẵn để tương thích với nhiều codec video
+  // Ensure width is even for better compatibility with many video codecs
   const finalWidth = width % 2 === 0 ? width : width + 1;
 
   return { width: finalWidth, height: baseHeight };
+}
+
+async function handleGetDisplays(): Promise<DisplayInfo[]> {
+  log.info('[Main] Getting all displays...');
+  const primaryDisplay = screen.getPrimaryDisplay();
+  const allDisplays = screen.getAllDisplays();
+
+  const displays = allDisplays.map((display, index) => ({
+    id: display.id,
+    name: `Display ${index + 1} (${display.bounds.width}x${display.bounds.height})`,
+    bounds: display.bounds,
+    isPrimary: display.id === primaryDisplay.id,
+  }));
+
+  log.info('[Main] Found displays:', displays);
+  return displays;
 }
 
 function getFFmpegPath(): string {
@@ -175,13 +196,12 @@ function createSavingWindow() {
 }
 
 // --- Editor Window Creation ---
-function createEditorWindow(videoPath: string, metadataPath: string) {
+function createEditorWindow(videoPath: string, metadataPath: string, webcamVideoPath: string | undefined) {
   const { x, y, width, height } = store.get('windowBounds') as { x?: number; y?: number; width: number; height: number; };
 
   editorWin = new BrowserWindow({
     icon: path.join(process.env.VITE_PUBLIC, 'screenawesome-appicon.png'),
     autoHideMenuBar: true,
-    // MODIFIED: Sử dụng kích thước và vị trí đã lưu
     x,
     y,
     width,
@@ -197,7 +217,7 @@ function createEditorWindow(videoPath: string, metadataPath: string) {
     },
   })
 
-  // NEW: Logic lưu vị trí và kích thước cửa sổ khi thay đổi hoặc đóng
+  // Logic to save window position and size when changed or closed
   let resizeTimeout: NodeJS.Timeout;
   const saveBounds = () => {
     if (editorWin && !editorWin.isDestroyed()) {
@@ -207,7 +227,7 @@ function createEditorWindow(videoPath: string, metadataPath: string) {
     }
   };
 
-  // Sử dụng debounce để tránh ghi file liên tục khi thay đổi kích thước
+  // Use debounce to avoid continuous file writing when resizing
   const debouncedSaveBounds = () => {
     clearTimeout(resizeTimeout);
     resizeTimeout = setTimeout(saveBounds, 500);
@@ -215,10 +235,9 @@ function createEditorWindow(videoPath: string, metadataPath: string) {
 
   editorWin.on('resize', debouncedSaveBounds);
   editorWin.on('move', debouncedSaveBounds);
-  editorWin.on('close', saveBounds); // Lưu ngay lập tức khi đóng
+  editorWin.on('close', saveBounds); // Save immediately when closing
 
   // Maximize the window and show it when it's ready
-  // editorWin.maximize() // REMOVED: Không maximize mặc định nữa để nhớ vị trí
   editorWin.show()
 
   let editorUrl: string;
@@ -241,7 +260,7 @@ function createEditorWindow(videoPath: string, metadataPath: string) {
   // Send project files to the editor window once it's ready
   editorWin.webContents.on('did-finish-load', () => {
     log.info(`[Main] Editor window finished loading. Sending project data...`);
-    editorWin?.webContents.send('project:open', { videoPath, metadataPath });
+    editorWin?.webContents.send('project:open', { videoPath, metadataPath, webcamVideoPath });
   });
 
   // if (process.env.NODE_ENV === 'development') {
@@ -357,11 +376,14 @@ async function ensureDirectoryExists(dirPath: string) {
   }
 }
 
-async function startActualRecording(ffmpegArgs: string[]) {
+async function startActualRecording(inputArgs: string[], hasWebcam: boolean) {
   const recordingDir = path.join(process.env.HOME || process.env.USERPROFILE || '.', '.screenawesome');
   await ensureDirectoryExists(recordingDir);
-  const baseName = `ScreenAwesome-recording-${Date.now()}`
-  const videoPath = path.join(recordingDir, `${baseName}.mp4`);
+  const baseName = `ScreenAwesome-recording-${Date.now()}`;
+
+  // Create separate paths for screen and webcam
+  const screenVideoPath = path.join(recordingDir, `${baseName}-screen.mp4`);
+  const webcamVideoPath = hasWebcam ? path.join(recordingDir, `${baseName}-webcam.mp4`) : undefined;
   const metadataPath = path.join(recordingDir, `${baseName}.json`);
 
   recorderWin?.hide()
@@ -400,7 +422,6 @@ async function startActualRecording(ffmpegArgs: string[]) {
     metadataStream.write('[\n')
 
     pythonTracker.stdout.on('data', (data) => {
-      // ... (logic xử lý data của python không đổi)
       pythonDataBuffer += data.toString('utf-8')
       const lines = pythonDataBuffer.split('\n')
       const completeLines = lines.slice(0, -1)
@@ -424,10 +445,23 @@ async function startActualRecording(ffmpegArgs: string[]) {
     })
 
     // 4. Start FFmpeg with the provided arguments
-    const finalArgs = [...ffmpegArgs, videoPath]; // Add output path
+    const finalArgs = [...inputArgs];
+    if (hasWebcam) {
+      // Input 0 is webcam, Input 1 is screen.
+      // We want the main (first) file to be the screen recording.
+      finalArgs.push(
+        '-map', '1:v', '-c:v', 'libx264', '-preset', 'ultrafast', '-pix_fmt', 'yuv420p', screenVideoPath,
+        '-map', '0:v', '-c:v', 'libx264', '-preset', 'ultrafast', '-pix_fmt', 'yuv420p', webcamVideoPath!
+      );
+    } else {
+      // Only one input (screen)
+      finalArgs.push(
+        '-map', '0:v', '-c:v', 'libx264', '-preset', 'ultrafast', '-pix_fmt', 'yuv420p', screenVideoPath
+      );
+    }
     log.info(`FFmpeg path: ${FFMPEG_PATH}`)
     log.info(`Starting FFmpeg with args: ${finalArgs.join(' ')}`)
-    ffmpegProcess = spawn(FFMPEG_PATH, finalArgs)
+    ffmpegProcess = spawn(FFMPEG_PATH, finalArgs);
     ffmpegProcess.stderr.on('data', (data) => {
       log.info(`FFmpeg: ${data}`)
     })
@@ -439,15 +473,15 @@ async function startActualRecording(ffmpegArgs: string[]) {
       {
         label: 'Stop Recording',
         click: async () => {
-          await handleStopRecording(videoPath, metadataPath)
-          recorderWin?.webContents.send('recording-finished', { canceled: false, filePath: videoPath });
+          await handleStopRecording(screenVideoPath, webcamVideoPath, metadataPath)
+          recorderWin?.webContents.send('recording-finished', { canceled: false, screenVideoPath, webcamVideoPath });
         },
       },
       {
         label: 'Cancel Recording',
         click: async () => {
-          await handleCancelRecording(videoPath, metadataPath)
-          recorderWin?.webContents.send('recording-finished', { canceled: true, filePath: undefined });
+          await handleCancelRecording(screenVideoPath, webcamVideoPath, metadataPath)
+          recorderWin?.webContents.send('recording-finished', { canceled: true });
         },
       },
     ])
@@ -456,14 +490,14 @@ async function startActualRecording(ffmpegArgs: string[]) {
 
   }, 3800) // Countdown delay
 
-  return { canceled: false, filePath: videoPath }
+  return { canceled: false, screenVideoPath, webcamVideoPath };
 }
 
 async function checkLinuxTools(): Promise<{ [key: string]: boolean }> {
   log.info('Checking Linux tools...');
   if (process.platform !== 'linux') {
     log.info(`Linux tools check skipped for platform ${process.platform}`);
-    return { wmctrl: true, xwininfo: true, import: true }; // Mặc định là true cho các OS khác
+    return { wmctrl: true, xwininfo: true, import: true }; // Default to true for other OS
   }
   log.info(`Checking Linux tools: ${['wmctrl', 'xwininfo', 'import'].join(', ')}`);
   const tools = ['wmctrl', 'xwininfo', 'import'];
@@ -490,7 +524,7 @@ const EXCLUDED_WINDOW_NAMES = ['Screen Awesome'];
 async function handleGetDesktopSources() {
   if (process.platform === 'linux') {
     return new Promise((resolve, reject) => {
-      // Dùng -lG để lấy ID, geometry và title cùng lúc
+      // Use -lG to get ID, geometry and title at the same time
       log.info('Executing wmctrl -lG');
       exec('wmctrl -lG', (error, stdout) => {
         if (error) {
@@ -508,7 +542,7 @@ async function handleGetDesktopSources() {
 
             const [, id, x, y, width, height, name] = match;
 
-            // Lọc các cửa sổ không phù hợp (VD: panels, docks, chính app)
+            // Filter out windows that are not suitable (e.g. panels, docks, main app)
             if (!name || EXCLUDED_WINDOW_NAMES.some(excludedName => name.includes(excludedName)) ||
               parseInt(width) < 50 || parseInt(height) < 50) {
               return null;
@@ -522,19 +556,19 @@ async function handleGetDesktopSources() {
                 height: parseInt(height)
               };
 
-              // Thêm -resize 320x180! vào lệnh. 
-              // Dấu '!' buộc resize chính xác kích thước, không giữ tỷ lệ gốc,
-              // phù hợp cho thumbnail.
+              // Add -resize 320x180! to the command. 
+              // The '!' forces the resize to be exact, not maintaining the original aspect ratio,
+              // suitable for thumbnails.
               const command = `import -window ${id} -resize 320x180! png:-`;
 
               console.log(`window ${id} ${name} command: ${command}`);
 
               exec(command, { encoding: 'binary', maxBuffer: 10 * 1024 * 1024 }, (err, stdout) => {
-                let thumbnailUrl = GRAY_PLACEHOLDER_URL; // Mặc định là ảnh placeholder
+                let thumbnailUrl = GRAY_PLACEHOLDER_URL; // Default to placeholder image
 
                 if (err) {
                   log.warn(`Failed to capture thumbnail for window ${id} (${name}), using placeholder. Error:`, err.message);
-                  // Không return null nữa, vẫn resolve để cửa sổ hiện ra
+                  // Do not return null, still resolve to show the window
                 } else {
                   const buffer = Buffer.from(stdout, 'binary');
                   thumbnailUrl = `data:image/png;base64,${buffer.toString('base64')}`;
@@ -553,14 +587,14 @@ async function handleGetDesktopSources() {
           .filter(p => p !== null);
 
         Promise.all(sourcesPromises).then(sources => {
-          // Không cần lọc null nữa vì chúng ta luôn resolve một object
+          // No need to filter null anymore since we always resolve an object
           resolve(sources);
         });
       });
     });
   }
 
-  // Logic cũ cho Windows/macOS không đổi
+  // Logic for Windows/macOS
   const sources = await desktopCapturer.getSources({
     types: ['window'],
     thumbnailSize: { width: 320, height: 180 }
@@ -577,11 +611,37 @@ async function handleGetDesktopSources() {
 
 async function handleStartRecording(_event: IpcMainInvokeEvent, options: {
   source: 'fullscreen' | 'area' | 'window',
-  geometry?: { x: number, y: number, width: number, height: number }; // Thêm geometry
+  geometry?: { x: number, y: number, width: number, height: number };
   windowTitle?: string;
+  displayId?: number;
+  webcam?: { deviceId: string; deviceLabel: string; index: number };
 }) {
-  const { source, geometry, windowTitle } = options;
+  const { source, geometry, windowTitle, displayId, webcam } = options;
   const display = process.env.DISPLAY || ':0.0';
+  const baseFfmpegArgs: string[] = [];
+  let webcamInputAdded = false;
+
+  // --- Webcam Input ---
+  // This is the core fix. Use the correct identifier for each platform.
+  if (webcam) {
+    log.info('[Main] Adding webcam input:', webcam.deviceLabel);
+    switch (process.platform) {
+      case 'linux':
+        // On Linux, we need the device path, which we construct from the index.
+        // The first camera found is almost always /dev/video0, the second /dev/video1, etc.
+        baseFfmpegArgs.push('-f', 'v4l2', '-i', `/dev/video${webcam.index}`);
+        break;
+      case 'win32':
+        // On Windows, dshow uses the human-readable device name (the label).
+        baseFfmpegArgs.push('-f', 'dshow', '-i', `video=${webcam.deviceLabel}`);
+        break;
+      case 'darwin':
+        // On macOS, avfoundation uses the device index.
+        baseFfmpegArgs.push('-f', 'avfoundation', '-i', `${webcam.index}:none`);
+        break;
+    }
+    webcamInputAdded = true;
+  }
 
   if (source === 'window') {
     if (process.platform === 'linux') {
@@ -619,56 +679,39 @@ async function handleStartRecording(_event: IpcMainInvokeEvent, options: {
       }
 
       if (process.platform === 'linux') {
-        const ffmpegArgs = [
-          '-f', 'x11grab',
-          '-video_size', `${safeWidth}x${safeHeight}`,
-          '-i', `${display}+${intX},${intY}`,
-          '-c:v', 'libx264',
-          '-preset', 'ultrafast',
-          '-pix_fmt', 'yuv420p',
-        ];
         log.info(`Starting WINDOW recording for geometry: ${safeWidth}x${safeHeight}+${intX},${intY}`);
-        return startActualRecording(ffmpegArgs);
+        const { x, y, width, height } = geometry;
+        baseFfmpegArgs.push('-f', 'x11grab', '-video_size', `${width}x${height}`, '-i', `${display}+${x},${y}`);
       } else if (process.platform === 'win32') {
         if (!windowTitle) {
           log.error('Window recording started without a window title.');
           dialog.showErrorBox('Recording Error', 'No window was selected for recording.');
           return { canceled: true, filePath: undefined };
         }
-        const ffmpegArgs = [
-          '-f', 'gdigrab',
-          '-i', `title=${windowTitle}`,
-          '-c:v', 'libx264',
-          '-preset', 'ultrafast',
-          '-pix_fmt', 'yuv420p',
-        ];
         log.info(`Starting WINDOW recording for title: "${windowTitle}"`);
-        return startActualRecording(ffmpegArgs);
+        baseFfmpegArgs.push('-f', 'gdigrab', '-i', `title=${windowTitle}`);
       } else if (process.platform === 'darwin') {
-        const ffmpegArgs = [
-          '-f', 'avfoundation',
-          '-i', '1',
-          '-c:v', 'libx264',
-          '-preset', 'ultrafast',
-          '-pix_fmt', 'yuv420p',
-        ];
-        log.info('Starting SCREEN recording on macOS');
-        return startActualRecording(ffmpegArgs);
+        // const ffmpegArgs = [
+        //   '-f', 'avfoundation',
+        //   '-i', '1',
+        //   '-c:v', 'libx264',
+        //   '-preset', 'ultrafast',
+        //   '-pix_fmt', 'yuv420p',
+        // ];
+        // log.info('Starting SCREEN recording on macOS');
       } else {
         log.error('Window recording is not yet supported on this platform.');
         dialog.showErrorBox('Feature Not Supported', 'Window recording is not yet implemented for this OS.');
         return { canceled: true, filePath: undefined };
       }
     }
-  }
-
-  if (source === 'area') {
+  } else if (source === 'area') {
     // Hide the recorder and open selection window
     recorderWin?.hide();
     createSelectionWindow();
 
     // Await for selection to be made
-    return new Promise((resolve) => {
+    const selectedGeometry = await new Promise<{ x: number; y: number; width: number; height: number } | undefined>((resolve) => {
       ipcMain.once('selection:complete', (_event, geometry: { x: number; y: number; width: number; height: number }) => {
         selectionWin?.close();
 
@@ -681,45 +724,65 @@ async function handleStartRecording(_event: IpcMainInvokeEvent, options: {
           log.error('Selected area is too small to record after adjustment.');
           recorderWin?.show(); // Show recorder again
           dialog.showErrorBox('Recording Error', 'The selected area is too small to record. Please select a larger area.');
-          resolve({ canceled: true, filePath: undefined });
+          // resolve({ canceled: true, filePath: undefined });
+          resolve(undefined);
           return;
         }
 
         log.info(`Received selection geometry: ${JSON.stringify(geometry)}. Adjusted to: ${safeWidth}x${safeHeight}`);
 
-        const ffmpegArgs = [
-          '-f', 'x11grab',
-          // Use the adjusted safe dimensions
-          '-video_size', `${safeWidth}x${safeHeight}`,
-          '-i', `${display}+${geometry.x},${geometry.y}`,
-          '-c:v', 'libx264',
-          '-preset', 'ultrafast',
-          '-pix_fmt', 'yuv420p',
-        ];
-        resolve(startActualRecording(ffmpegArgs));
+        resolve(geometry);
       });
 
       ipcMain.once('selection:cancel', () => {
         log.info('Selection was cancelled.');
         selectionWin?.close();
         recorderWin?.show(); // Show recorder again
-        resolve({ canceled: true, filePath: undefined });
+        resolve(undefined);
       });
     });
 
-  } else { // Default to fullscreen
-    const ffmpegArgs = [
+    if (!selectedGeometry) {
+      return { canceled: true, filePath: undefined };
+    }
+
+    baseFfmpegArgs.push(
       '-f', 'x11grab',
-      '-i', display,
+      '-video_size', `${selectedGeometry.width}x${selectedGeometry.height}`,
+      '-i', `${display}+${selectedGeometry.x},${selectedGeometry.y}`,
       '-c:v', 'libx264',
       '-preset', 'ultrafast',
       '-pix_fmt', 'yuv420p',
-    ];
-    return startActualRecording(ffmpegArgs);
+    );
+
+    return startActualRecording(baseFfmpegArgs, webcamInputAdded);
+  } else {
+    const allDisplays = screen.getAllDisplays();
+    const targetDisplay = allDisplays.find(d => d.id === displayId) || screen.getPrimaryDisplay();
+    const { x, y, width, height } = targetDisplay.bounds;
+    const safeWidth = Math.floor(width / 2) * 2;
+    const safeHeight = Math.floor(height / 2) * 2;
+
+    // Add arguments to `baseFfmpegArgs`
+    switch (process.platform) {
+      case 'linux':
+        baseFfmpegArgs.push('-f', 'x11grab', '-video_size', `${safeWidth}x${safeHeight}`, '-i', `${display}+${x},${y}`);
+        break;
+      case 'win32':
+        baseFfmpegArgs.push('-f', 'gdigrab', '-offset_x', x.toString(), '-offset_y', y.toString(), '-video_size', `${safeWidth}x${safeHeight}`, '-i', 'desktop');
+        break;
+      case 'darwin': {
+        const displayIndex = allDisplays.findIndex(d => d.id === targetDisplay!.id);
+        baseFfmpegArgs.push('-f', 'avfoundation', '-i', `${displayIndex >= 0 ? displayIndex : 0}:none`);
+        break;
+      }
+    }
   }
+
+  return startActualRecording(baseFfmpegArgs, webcamInputAdded);
 }
 
-async function handleStopRecording(videoPath: string, metadataPath: string) {
+async function handleStopRecording(screenVideoPath: string, webcamVideoPath: string | undefined, metadataPath: string) {
   log.info('Stopping recording, preparing to save...');
 
   // 1. Destroy tray icon so user cannot click it
@@ -739,16 +802,20 @@ async function handleStopRecording(videoPath: string, metadataPath: string) {
 
   // 5. Open editor window
   if (!editorWin) {
-    createEditorWindow(videoPath, metadataPath);
+    createEditorWindow(screenVideoPath, metadataPath, webcamVideoPath);
   } else {
-    editorWin.webContents.send('project:open', { videoPath, metadataPath });
+    editorWin.webContents.send('project:open', {
+      videoPath: screenVideoPath,
+      webcamVideoPath,
+      metadataPath
+    });
     editorWin.focus();
   }
   // Close recorder window
   recorderWin?.close();
 }
 
-async function handleCancelRecording(videoPath: string, metadataPath: string) {
+async function handleCancelRecording(screenVideoPath: string, webcamVideoPath: string | undefined, metadataPath: string) {
   log.info('Cancelling recording and deleting files...');
 
   // Stop processes without waiting for saving
@@ -770,7 +837,8 @@ async function handleCancelRecording(videoPath: string, metadataPath: string) {
   try {
     // Wait a bit for the system to release file lock
     setTimeout(async () => {
-      if (fsSync.existsSync(videoPath)) await fs.unlink(videoPath);
+      if (fsSync.existsSync(screenVideoPath)) await fs.unlink(screenVideoPath);
+      if (webcamVideoPath && fsSync.existsSync(webcamVideoPath)) await fs.unlink(webcamVideoPath);
       if (fsSync.existsSync(metadataPath)) await fs.unlink(metadataPath);
       log.info('Temporary files deleted.');
     }, 100);
@@ -784,20 +852,29 @@ async function handleCancelRecording(videoPath: string, metadataPath: string) {
 }
 
 function createRecorderWindow() {
+  // Get primary display to calculate position
+  const primaryDisplay = screen.getPrimaryDisplay();
+  const { width: screenWidth, height: screenHeight } = primaryDisplay.workAreaSize;
+
+  const windowWidth = 800;
+  const windowHeight = 800;
+
+  // Calculate position: Center horizontally, 1/4 from top
+  const x = Math.round((screenWidth - windowWidth) / 2);
+  const y = Math.max(0, Math.round(screenHeight / 4));
+
+  log.info(`[Main] Creating recorder window at ${x}, ${y} with fixed size ${windowWidth}x${windowHeight}`);
+
   recorderWin = new BrowserWindow({
     icon: path.join(process.env.VITE_PUBLIC, 'screenawesome-appicon.png'),
-    width: 800,
-    height: 90,
+    width: windowWidth,
+    height: windowHeight,
+    x,
+    y,
     frame: false,
     transparent: true,
     alwaysOnTop: true,
     resizable: false,
-    // --- VIBRANCY SETTINGS ---
-    // For macOS, uncomment the line below for a native blur effect
-    // vibrancy: 'under-window',
-    // For Windows and Linux, 'transparent: true' is key.
-    // The blur effect is then handled by CSS in the renderer process.
-    // We must ensure no background color is set here if transparent is true.
     webPreferences: {
       nodeIntegration: true,
       preload: path.join(__dirname, 'preload.mjs'),
@@ -865,6 +942,9 @@ async function handleExportStart(
 
   // --- Start new strategy: Use Render Worker ---
 
+  // Reset framesSentCount for each new export
+  framesSentCount = 0;
+
   // 1. Clean up old worker if exists (to handle previous export errors)
   if (renderWorker) {
     renderWorker.close();
@@ -895,7 +975,7 @@ async function handleExportStart(
   const { resolution, fps, format } = exportSettings;
   const { width: outputWidth, height: outputHeight } = calculateExportDimensions(
     resolution as ResolutionKey,
-    projectState.aspectRatio // Lấy aspectRatio từ state của project
+    projectState.aspectRatio
   );
   log.info(`[Main] Calculated export dimensions for ${resolution} ${projectState.aspectRatio}: ${outputWidth}x${outputHeight}`);
 
@@ -935,23 +1015,23 @@ async function handleExportStart(
     log.info(`[FFmpeg stderr]: ${data.toString()}`);
   });
 
-  // CHÚ THÍCH: Định nghĩa hàm xử lý việc hủy export.
+  // Define cancellation handler
   const cancellationHandler = () => {
     log.warn('[Main] Received "export:cancel" event. Terminating export.');
 
-    // Giết tiến trình FFmpeg ngay lập tức
+    // Close FFmpeg process immediately
     if (!ffmpegClosed && ffmpeg) {
       ffmpeg.kill('SIGKILL');
       ffmpegClosed = true;
     }
 
-    // Đóng cửa sổ render worker
+    // Close render worker
     if (renderWorker) {
       renderWorker.close();
       renderWorker = null;
     }
 
-    // Xóa file output đang được tạo dở
+    // Delete partial export file
     if (fsSync.existsSync(outputPath)) {
       fs.unlink(outputPath).then(() => log.info(`[Main] Deleted partial export file: ${outputPath}`));
     }
@@ -963,6 +1043,7 @@ async function handleExportStart(
     // Write buffer of frame to FFmpeg stdin for processing
     if (!ffmpegClosed && ffmpeg.stdin.writable) {
       ffmpeg.stdin.write(frame);
+      framesSentCount++;
     }
     // Send progress to main editor window to update UI
     window.webContents.send('export:progress', { progress, stage: 'Rendering...' });
@@ -978,24 +1059,30 @@ async function handleExportStart(
 
   ipcMain.on('export:frame-data', frameListener);
   ipcMain.on('export:render-finished', finishListener);
-  // CHÚ THÍCH: Sử dụng .once() để lắng nghe sự kiện hủy. Listener sẽ tự động bị gỡ bỏ sau khi được gọi.
+  // Use .once() to listen to cancellation event. Listener will be automatically removed after being called.
   ipcMain.once('export:cancel', cancellationHandler);
 
 
   // 7. Handle when FFmpeg process ends
   ffmpeg.on('close', (code) => {
     ffmpegClosed = true;
-    log.info(`[Main] FFmpeg process exited with code ${code}.`);
-    renderWorker?.close(); // Close worker window
+    log.info(`[Main] FFmpeg process exited with code ${code}. Sent ${framesSentCount} frames.`);
+    renderWorker?.close();
     renderWorker = null;
 
-    // CHÚ THÍCH: Sửa đổi logic để xử lý trường hợp bị hủy.
-    // Nếu `code` là null, nghĩa là tiến trình đã bị giết bởi `cancellationHandler`.
+    // Handle cancellation
     if (code === null) {
       log.info(`[Main] Export was cancelled. Sending 'export:complete' to editor.`);
       window.webContents.send('export:complete', { success: false, error: 'Export cancelled by user.' });
+    } else if (code === 0 && framesSentCount === 0) {
+      log.error(`[Main] Export failed: Output file is empty (FFmpeg exited with code 0 but no frames were rendered).`);
+      // Delete empty output file here to avoid leaving it behind.
+      if (fsSync.existsSync(outputPath)) {
+          fs.unlink(outputPath).then(() => log.info(`[Main] Deleted empty output file: ${outputPath}`));
+      }
+      window.webContents.send('export:complete', { success: false, error: 'No video frames were rendered. Ensure no "cut" regions cover the entire video.' });
     } else {
-      // Logic cũ cho trường hợp thành công hoặc thất bại thông thường.
+      // Logic for successful or failed exports
       if (code === 0) {
         log.info(`[Main] Export successful. Sending 'export:complete' to editor.`);
         window.webContents.send('export:complete', { success: true, outputPath });
@@ -1008,12 +1095,10 @@ async function handleExportStart(
     // Important: Remove listeners to avoid memory leaks for subsequent exports
     ipcMain.removeListener('export:frame-data', frameListener);
     ipcMain.removeListener('export:render-finished', finishListener);
-    // CHÚ THÍCH: Gỡ bỏ listener hủy để tránh gọi nhầm trong lần export sau.
-    // (Không cần thiết nếu dùng .once() nhưng để đây cho rõ ràng)
     ipcMain.removeListener('export:cancel', cancellationHandler);
   });
 
-  // 8. Fix: Move data sending logic here, waiting for 'ready' signal from worker
+  // 8. Move data sending logic here, waiting for 'ready' signal from worker
   ipcMain.once('render:ready', () => {
     log.info('[Main] Received "render:ready" from worker. Sending project state...');
     renderWorker?.webContents.send('render:start', {
@@ -1029,7 +1114,7 @@ app.whenReady().then(() => {
     const url = request.url.replace('media://', '');
     const decodedUrl = decodeURIComponent(url);
 
-    // FIX: Handle both absolute paths (for videos) and relative paths (for assets).
+    // Handle both absolute paths (for videos) and relative paths (for assets).
 
     // 1. Check if the decoded path is absolute and exists.
     // This handles the video file path like /home/user/.screenawesome/recording.mp4
@@ -1058,7 +1143,7 @@ app.whenReady().then(() => {
     if (recorderWin) {
       log.info(`Resizing recorder window to ${width}x${height}`);
       // Set size with animation, but DO NOT re-center.
-      recorderWin.setSize(width, height, true); 
+      recorderWin.setSize(width, height, true);
     }
   });
 
@@ -1100,6 +1185,7 @@ app.whenReady().then(() => {
     store.set(key, value);
   });
 
+  ipcMain.handle('desktop:get-displays', handleGetDisplays);
   ipcMain.handle('linux:check-tools', checkLinuxTools);
   ipcMain.handle('desktop:get-sources', handleGetDesktopSources);
   ipcMain.handle('recording:start', handleStartRecording)

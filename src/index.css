@@ -1,15 +1,12 @@
 @import "tailwindcss";
 
 @layer components {
-  /* MODIFIED for macOS style */
   .modal-backdrop {
-    @apply fixed inset-0 bg-black/30 backdrop-blur-lg; /* Increased blur */
+    @apply fixed inset-0 bg-black/30 backdrop-blur-lg;
     animation: fadeIn 0.2s ease-out;
   }
-
-  /* MODIFIED for macOS style */
   .card-clean {
-    @apply bg-card/80 border border-border rounded-lg shadow-lg backdrop-blur-xl; /* More blur, softer shadow */
+    @apply bg-card/80 border border-border rounded-lg shadow-lg backdrop-blur-xl;
     animation: scaleIn 0.25s ease-out;
   }
   
@@ -28,7 +25,6 @@
   }
 }
 
-/* === NEW MACOS COLOR PALETTE (LIGHT) === */
 :root {
   --background: hsl(0 0% 97%);
   --foreground: hsl(0 0% 9%);
@@ -49,7 +45,7 @@
   --border: hsl(0 0% 89%);
   --input: hsl(0 0% 93%);
   --ring: hsl(217 91% 60%);
-  --sidebar: hsl(0 0% 92%); /* macOS sidebar color */
+  --sidebar: hsl(0 0% 92%);
   --sidebar-foreground: hsl(0 0% 9%);
   --sidebar-border: hsl(0 0% 85%);
   --radius: 0.5rem; /* 8px */
@@ -58,7 +54,6 @@
   --font-mono: "JetBrains Mono", "SF Mono", "Consolas", "Liberation Mono", Menlo, Courier, monospace;
 }
 
-/* === NEW MACOS COLOR PALETTE (DARK) === */
 .dark {
   --background: hsl(0 0% 15%);
   --foreground: hsl(0 0% 98%);
@@ -79,13 +74,12 @@
   --border: hsl(0 0% 30%);
   --input: hsl(0 0% 26%);
   --ring: hsl(217 91% 65%);
-  --sidebar: hsl(0 0% 22%); /* macOS dark sidebar */
+  --sidebar: hsl(0 0% 22%);
   --sidebar-foreground: hsl(0 0% 98%);
   --sidebar-border: hsl(0 0% 32%);
 }
 
 
-/* No changes below this line, they just inherit the new variables */
 @theme inline {
   --color-background: var(--background);
   --color-foreground: var(--foreground);

@@ -1,4 +1,3 @@
-// src/components/editor/Timeline.tsx
 import React, {
   useRef, useState, MouseEvent as ReactMouseEvent,
   useEffect, useCallback, useMemo, memo
@@ -96,10 +95,17 @@ export function Timeline({ videoRef }: { videoRef: React.RefObject<HTMLVideoElem
   const regionRefs = useRef<Map<string, HTMLDivElement | null>>(new Map());
   const animationFrameRef = useRef<number>();
   const { setPlaying } = useEditorStore();
-  const wasPlayingRef = useRef(false);
+  // ADDED: A ref to signal the 'seeked' event listener to resume playback.
+  const resumePlaybackAfterSeekRef = useRef(false);
   const isDraggingRegionHiddenRef = useRef(false);
 
-  const [draggingRegion, setDraggingRegion] = useState<{ id: string; type: 'move' | 'resize-left' | 'resize-right'; initialX: number; initialStartTime: number; initialDuration: number; } | null>(null);
+  const [draggingRegion, setDraggingRegion] = useState<{
+    id: string;
+    type: 'move' | 'resize-left' | 'resize-right';
+    initialX: number;
+    initialStartTime: number;
+    initialDuration: number;
+  } | null>(null);
   const [isDraggingPlayhead, setIsDraggingPlayhead] = useState(false);
   const [containerWidth, setContainerWidth] = useState(0);
   const [isDraggingLeftStrip, setIsDraggingLeftStrip] = useState(false);
@@ -126,13 +132,32 @@ export function Timeline({ videoRef }: { videoRef: React.RefObject<HTMLVideoElem
     if (videoRef.current) videoRef.current.currentTime = clampedTime;
   }, [duration, setCurrentTime, videoRef]);
 
+  // A single, persistent event listener for the 'seeked' event.
+  useEffect(() => {
+    const video = videoRef.current;
+    if (!video) return;
+
+    const handleSeeked = () => {
+      // If the flag is true, resume playback and reset the flag.
+      if (resumePlaybackAfterSeekRef.current) {
+        setPlaying(true);
+        resumePlaybackAfterSeekRef.current = false;
+      }
+    };
+
+    video.addEventListener('seeked', handleSeeked);
+    return () => {
+      video.removeEventListener('seeked', handleSeeked);
+    };
+  }, [videoRef, setPlaying]);
+
   const handleRegionMouseDown = useCallback((e: ReactMouseEvent<HTMLDivElement>, region: TimelineRegion, type: 'move' | 'resize-left' | 'resize-right') => {
     e.stopPropagation();
 
-    // Pause playback on drag/resize start
-    wasPlayingRef.current = useEditorStore.getState().isPlaying;
-    if (wasPlayingRef.current) {
+    // Simplified logic. If playing, pause and set the flag to resume later.
+    if (useEditorStore.getState().isPlaying) {
       setPlaying(false);
+      resumePlaybackAfterSeekRef.current = true;
     }
 
     isDraggingRegionHiddenRef.current = false;
@@ -200,15 +225,12 @@ export function Timeline({ videoRef }: { videoRef: React.RefObject<HTMLVideoElem
           const maxDuration = duration - draggingRegion.initialStartTime;
           const intendedDuration = draggingRegion.initialDuration + deltaTime;
 
-          // Check if it should vanish (without clamping to MINIMUM_REGION_DURATION yet)
           if (intendedDuration < REGION_DELETE_THRESHOLD) {
             element.style.display = 'none';
             isDraggingRegionHiddenRef.current = true;
-            updateVideoTime(draggingRegion.initialStartTime); // Reset playhead to start of region
+            updateVideoTime(draggingRegion.initialStartTime);
           } else {
-            // Clamp to valid range
             const newDuration = Math.min(intendedDuration, maxDuration);
-
             element.style.display = 'block';
             isDraggingRegionHiddenRef.current = false;
             element.style.width = `${timeToPx(newDuration)}px`;
@@ -216,19 +238,15 @@ export function Timeline({ videoRef }: { videoRef: React.RefObject<HTMLVideoElem
           }
         } else if (draggingRegion.type === 'resize-left') {
           const initialEndTime = draggingRegion.initialStartTime + draggingRegion.initialDuration;
-          // Calculate the potential new start time (clamped by 0 and the end time)
           const tentativeStartTime = Math.max(0, Math.min(draggingRegion.initialStartTime + deltaTime, initialEndTime));
-
-          // Calculate the potential new duration
           const newDuration = initialEndTime - tentativeStartTime;
 
           if (newDuration < REGION_DELETE_THRESHOLD) {
             element.style.display = 'none';
             isDraggingRegionHiddenRef.current = true;
-            updateVideoTime(initialEndTime); // Reset playhead to end of region
+            updateVideoTime(initialEndTime);
           } else {
             const newStartTime = tentativeStartTime;
-
             element.style.display = 'block';
             isDraggingRegionHiddenRef.current = false;
             element.style.width = `${timeToPx(newDuration)}px`;
@@ -243,7 +261,6 @@ export function Timeline({ videoRef }: { videoRef: React.RefObject<HTMLVideoElem
         const rect = timelineRef.current.getBoundingClientRect();
         const timeAtMouse = pxToTime(Math.max(0, e.clientX - rect.left));
         let newPreview: CutRegion | null = null;
-
         const currentDuration = useEditorStore.getState().duration;
 
         if (isDraggingLeftStrip) {
@@ -273,13 +290,12 @@ export function Timeline({ videoRef }: { videoRef: React.RefObject<HTMLVideoElem
         if (element) {
           element.style.transform = 'translateX(0px)';
           element.style.width = '';
-          element.style.display = 'block'; // Ensure it's visible if it wasn't deleted
+          element.style.display = 'block';
         }
 
         if (isDraggingRegionHiddenRef.current) {
           deleteRegion(draggingRegion.id);
         } else {
-          // Proceed with final calculation and standard threshold check
           const deltaTime = pxToTime(e.clientX - draggingRegion.initialX);
           const finalUpdates: Partial<TimelineRegion> = {};
 
@@ -293,7 +309,6 @@ export function Timeline({ videoRef }: { videoRef: React.RefObject<HTMLVideoElem
             const intendedDuration = draggingRegion.initialDuration + deltaTime;
             const maxDuration = duration - draggingRegion.initialStartTime;
             finalUpdates.duration = Math.max(MINIMUM_REGION_DURATION, Math.min(intendedDuration, maxDuration));
-
           } else {
             const initialEndTime = draggingRegion.initialStartTime + draggingRegion.initialDuration;
             const newStartTime = Math.min(
@@ -316,7 +331,7 @@ export function Timeline({ videoRef }: { videoRef: React.RefObject<HTMLVideoElem
         }
 
         setDraggingRegion(null);
-        isDraggingRegionHiddenRef.current = false; // Reset ref
+        isDraggingRegionHiddenRef.current = false;
       }
 
       if (isDraggingLeftStrip || isDraggingRightStrip) {
@@ -332,11 +347,6 @@ export function Timeline({ videoRef }: { videoRef: React.RefObject<HTMLVideoElem
         }
       }
 
-      if (wasPlayingRef.current) {
-        setPlaying(true);
-      }
-      wasPlayingRef.current = false;
-
       setIsDraggingLeftStrip(false);
       setIsDraggingRightStrip(false);
       setPreviewCutRegion(null);
@@ -351,7 +361,7 @@ export function Timeline({ videoRef }: { videoRef: React.RefObject<HTMLVideoElem
   }, [
     draggingRegion, isDraggingPlayhead, isDraggingLeftStrip, isDraggingRightStrip,
     pxToTime, timeToPx, updateVideoTime, updateRegion, addCutRegion,
-    setPreviewCutRegion, deleteRegion, setCurrentTime, videoRef, duration, setPlaying
+    setPreviewCutRegion, deleteRegion, setCurrentTime, videoRef, duration
   ]);
 
   useEffect(() => {
@@ -379,10 +389,7 @@ export function Timeline({ videoRef }: { videoRef: React.RefObject<HTMLVideoElem
   }, [currentTime, isPlaying, timeToPx]);
 
   const allCutRegionsToRender = useMemo(() => {
-    // We combine existing regions with the preview for rendering
     const existingCuts = Object.values(cutRegionsMap);
-    // Don't render the preview if its trim type is already represented by an existing region
-    // This prevents flicker when starting to drag
     if (previewCutRegion && !existingCuts.some(c => c.trimType === previewCutRegion.trimType)) {
       return [...existingCuts, previewCutRegion];
     }
@@ -395,8 +402,10 @@ export function Timeline({ videoRef }: { videoRef: React.RefObject<HTMLVideoElem
         {/* Left trim handle */}
         <div className="w-8 shrink-0 h-full bg-card flex items-center justify-center transition-colors cursor-ew-resize select-none border-r border-border/80 hover:bg-accent/50"
           onMouseDown={() => {
-            wasPlayingRef.current = useEditorStore.getState().isPlaying;
-            if (wasPlayingRef.current) setPlaying(false);
+            if (useEditorStore.getState().isPlaying) {
+              setPlaying(false);
+              resumePlaybackAfterSeekRef.current = true;
+            }
             const state = useEditorStore.getState();
             const existingLeftTrim = Object.values(state.cutRegions).find(r => r.trimType === 'start');
             if (existingLeftTrim) {
@@ -419,9 +428,10 @@ export function Timeline({ videoRef }: { videoRef: React.RefObject<HTMLVideoElem
               return;
             }
 
-            // Pause playback when dragging playhead
-            wasPlayingRef.current = useEditorStore.getState().isPlaying;
-            if (wasPlayingRef.current) setPlaying(false);
+            if (useEditorStore.getState().isPlaying) {
+              setPlaying(false);
+              resumePlaybackAfterSeekRef.current = true;
+            }
 
             const scrollableContainer = e.currentTarget as HTMLDivElement;
             const rect = scrollableContainer.getBoundingClientRect();
@@ -433,13 +443,9 @@ export function Timeline({ videoRef }: { videoRef: React.RefObject<HTMLVideoElem
             <Ruler ticks={rulerTicks} timeToPx={timeToPx} formatTime={formatTime} />
 
             {/* Layer 2: Cut Regions (Full height overlays) */}
-            {/* These are rendered here to be positioned relative to timelineRef */}
             <div className="absolute top-0 left-0 right-0 bottom-0 pointer-events-none">
               {allCutRegionsToRender.map(region => {
-                const isTrim = region.trimType !== undefined;
-                // zIndex logic: trim regions are lowest, selected is highest, others by creation order.
-                const z = isTrim ? 10 : (region.id === selectedRegionId ? 39 : 15 + ((region as CutRegion).zIndex ?? 0));
-
+                const z = region.trimType !== undefined ? 10 : (region.id === selectedRegionId ? 39 : 15 + ((region as CutRegion).zIndex ?? 0));
                 return (
                   <div
                     key={region.id}
@@ -449,6 +455,7 @@ export function Timeline({ videoRef }: { videoRef: React.RefObject<HTMLVideoElem
                     <CutRegionBlock
                       region={region}
                       isSelected={selectedRegionId === region.id}
+                      isDragging={draggingRegion?.id === region.id}
                       isDraggable={region.id !== previewCutRegion?.id}
                       onMouseDown={handleRegionMouseDown}
                       setRef={el => regionRefs.current.set(region.id, el)}
@@ -462,7 +469,6 @@ export function Timeline({ videoRef }: { videoRef: React.RefObject<HTMLVideoElem
             <div className="relative pt-6 space-y-4">
               <div className="h-24 relative bg-gradient-to-b from-background/50 to-background/20">
                 {zoomRegions.map(region => {
-                  // zIndex logic: selected is highest, others by creation order.
                   const z = region.id === selectedRegionId ? 39 : 15 + region.zIndex;
                   return (
                     <div
@@ -473,6 +479,7 @@ export function Timeline({ videoRef }: { videoRef: React.RefObject<HTMLVideoElem
                       <ZoomRegionBlock
                         region={region}
                         isSelected={selectedRegionId === region.id}
+                        isDragging={draggingRegion?.id === region.id}
                         onMouseDown={handleRegionMouseDown}
                         setRef={el => regionRefs.current.set(region.id, el)}
                       />
@@ -485,7 +492,7 @@ export function Timeline({ videoRef }: { videoRef: React.RefObject<HTMLVideoElem
             {/* Layer 4: Playhead (Always on top) */}
             {duration > 0 &&
               <div ref={playheadRef} className="absolute top-0 bottom-0 z-40" style={{ transform: `translateX(${timeToPx(currentTime)}px)`, pointerEvents: "none" }}>
-                <Playhead height={timelineRef.current?.clientHeight ?? 200} isDragging={isDraggingPlayhead} onMouseDown={(e) => { e.stopPropagation(); setIsDraggingPlayhead(true); document.body.style.cursor = 'grabbing'; }} />
+                <Playhead height={Math.floor((timelineRef.current?.clientHeight ?? 200) * 0.9)} isDragging={isDraggingPlayhead} onMouseDown={(e) => { e.stopPropagation(); setIsDraggingPlayhead(true); document.body.style.cursor = 'grabbing'; }} />
               </div>
             }
           </div>
@@ -494,16 +501,15 @@ export function Timeline({ videoRef }: { videoRef: React.RefObject<HTMLVideoElem
         {/* Right trim handle */}
         <div className="w-8 shrink-0 h-full bg-card flex items-center justify-center transition-colors cursor-ew-resize select-none border-l border-border/80 hover:bg-accent/50"
           onMouseDown={() => {
-            wasPlayingRef.current = useEditorStore.getState().isPlaying;
-            if (wasPlayingRef.current) setPlaying(false);
-
-            // --- FIX (Issue 2): Delete existing right trim region before starting new drag ---
+            if (useEditorStore.getState().isPlaying) {
+              setPlaying(false);
+              resumePlaybackAfterSeekRef.current = true;
+            }
             const state = useEditorStore.getState();
             const existingRightTrim = Object.values(state.cutRegions).find(r => r.trimType === 'end');
             if (existingRightTrim) {
               state.deleteRegion(existingRightTrim.id);
             }
-
             setIsDraggingRightStrip(true);
           }}>
           <FlipScissorsIcon className="text-muted-foreground size-4" />

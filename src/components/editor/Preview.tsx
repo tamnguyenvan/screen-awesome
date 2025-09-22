@@ -1,13 +1,11 @@
-// src/components/editor/Preview.tsx
-
 import React, { useEffect, useMemo, useRef, memo } from 'react';
 import { useEditorStore, usePlaybackState } from '../../store/editorStore';
 import { calculateZoomTransform } from '../../lib/transform';
 import { Film } from 'lucide-react';
 import { useShallow } from 'zustand/react/shallow';
+import { cn } from '../../lib/utils';
 
 const generateBackgroundStyle = (backgroundState: ReturnType<typeof useEditorStore.getState>['frameStyles']['background']) => {
-  // ... (no changes in this function, keeping it for brevity)
   switch (backgroundState.type) {
     case 'color':
       return { background: backgroundState.color || '#ffffff' };
@@ -33,14 +31,21 @@ const generateBackgroundStyle = (backgroundState: ReturnType<typeof useEditorSto
 };
 
 export const Preview = memo(({ videoRef }: { videoRef: React.RefObject<HTMLVideoElement> }) => {
-  const { frameStyles, videoUrl, aspectRatio, videoDimensions, cutRegions } = useEditorStore(
+  const { frameStyles, videoUrl, aspectRatio, videoDimensions, cutRegions,
+    webcamVideoUrl, webcamPosition, isWebcamVisible, webcamStyles
+  } = useEditorStore(
     useShallow(state => ({
       frameStyles: state.frameStyles,
       videoUrl: state.videoUrl,
       aspectRatio: state.aspectRatio,
       videoDimensions: state.videoDimensions,
       cutRegions: state.cutRegions,
+      webcamVideoUrl: state.webcamVideoUrl,
+      webcamPosition: state.webcamPosition,
+      isWebcamVisible: state.isWebcamVisible,
+      webcamStyles: state.webcamStyles,
     })));
+
   const { setPlaying, setCurrentTime, setDuration, setVideoDimensions } = useEditorStore(
     useShallow(state => ({
       setPlaying: state.setPlaying,
@@ -51,6 +56,20 @@ export const Preview = memo(({ videoRef }: { videoRef: React.RefObject<HTMLVideo
   const { isPlaying, isCurrentlyCut } = usePlaybackState();
 
   const frameContainerRef = useRef<HTMLDivElement>(null);
+  const webcamVideoRef = useRef<HTMLVideoElement>(null);
+
+  useEffect(() => {
+    const video = videoRef.current;
+    if (!video) return;
+    const webcamVideo = webcamVideoRef.current;
+    if (isPlaying) {
+      video.play();
+      webcamVideo?.play();
+    } else {
+      video.pause();
+      webcamVideo?.pause();
+    }
+  }, [isPlaying, videoRef]);
 
   useEffect(() => {
     let animationFrameId: number;
@@ -99,34 +118,35 @@ export const Preview = memo(({ videoRef }: { videoRef: React.RefObject<HTMLVideo
 
   const backgroundStyle = useMemo(() => generateBackgroundStyle(frameStyles.background), [frameStyles.background]);
   const cssAspectRatio = useMemo(() => aspectRatio.replace(':', ' / '), [aspectRatio]);
-  
+
   const { videoDisplayWidth, videoDisplayHeight } = useMemo(() => {
-      if (!videoDimensions.width || !videoDimensions.height) {
-        return { videoDisplayWidth: '100%', videoDisplayHeight: '100%' };
-      }
-      const [vpWidth, vpHeight] = aspectRatio.split(':').map(Number);
-      const viewportAspectRatio = vpWidth / vpHeight;
-      const nativeVideoAspectRatio = videoDimensions.width / videoDimensions.height;
-      if (nativeVideoAspectRatio > viewportAspectRatio) {
-        return { videoDisplayWidth: '100%', videoDisplayHeight: 'auto' };
-      } else {
-        return { videoDisplayWidth: 'auto', videoDisplayHeight: '100%' };
-      }
+    if (!videoDimensions.width || !videoDimensions.height) {
+      return { videoDisplayWidth: '100%', videoDisplayHeight: '100%' };
+    }
+    const [vpWidth, vpHeight] = aspectRatio.split(':').map(Number);
+    const viewportAspectRatio = vpWidth / vpHeight;
+    const nativeVideoAspectRatio = videoDimensions.width / videoDimensions.height;
+    if (nativeVideoAspectRatio > viewportAspectRatio) {
+      return { videoDisplayWidth: '100%', videoDisplayHeight: 'auto' };
+    } else {
+      return { videoDisplayWidth: 'auto', videoDisplayHeight: '100%' };
+    }
   }, [aspectRatio, videoDimensions]);
 
   const handleTimeUpdate = () => {
-    // ... (no changes in this function)
     if (!videoRef.current) return;
     const endTrimRegion = Object.values(cutRegions).find(r => r.trimType === 'end');
     if (endTrimRegion && videoRef.current.currentTime >= endTrimRegion.startTime) {
       videoRef.current.currentTime = endTrimRegion.startTime;
       videoRef.current.pause();
     }
+    if (webcamVideoRef.current) {
+      webcamVideoRef.current.currentTime = videoRef.current.currentTime;
+    }
     setCurrentTime(videoRef.current.currentTime);
   };
 
   const handleLoadedMetadata = () => {
-    // ... (no changes in this function)
     if (videoRef.current) {
       setDuration(videoRef.current.duration);
       setVideoDimensions({ width: videoRef.current.videoWidth, height: videoRef.current.videoHeight });
@@ -168,44 +188,83 @@ export const Preview = memo(({ videoRef }: { videoRef: React.RefObject<HTMLVideo
     zIndex: 1,
   }), [frameStyles.borderRadius, frameStyles.borderWidth]);
 
+  const webcamDynamicStyle = useMemo(() => {
+    const shadow = webcamStyles.shadow;
+    const shadowOpacity = Math.min(shadow * 0.015, 0.4);
+    const shadowBlur = shadow * 1.5;
+    const shadowY = shadow;
+    return {
+      height: `${webcamStyles.size}%`,
+      filter: `drop-shadow(0px ${shadowY}px ${shadowBlur}px rgba(0, 0, 0, ${shadowOpacity}))`,
+    };
+  }, [webcamStyles]);
+
+  const webcamWrapperClasses = cn(
+    'absolute z-20 aspect-square overflow-hidden rounded-[35%]',
+    'transition-all duration-300 ease-in-out',
+    {
+      'top-4 left-4': webcamPosition.pos === 'top-left',
+      'top-4 right-4': webcamPosition.pos === 'top-right',
+      'bottom-4 left-4': webcamPosition.pos === 'bottom-left',
+      'bottom-4 right-4': webcamPosition.pos === 'bottom-right',
+      'opacity-0 scale-95': !isWebcamVisible,
+      'opacity-100 scale-100': isWebcamVisible,
+    }
+  );
+
   return (
     <div
       className="transition-all duration-300 ease-out flex items-center justify-center relative overflow-hidden"
       style={{ ...backgroundStyle, aspectRatio: cssAspectRatio, maxWidth: '100%', maxHeight: '100%' }}
     >
-      <div className="w-full h-full flex items-center justify-center" style={{ padding: `${frameStyles.padding}%` }}>
+      <div className="w-full h-full flex items-center justify-center relative" style={{ padding: `${frameStyles.padding}%` }}>
         {videoUrl ? (
-          // Container receives transform (zoom/pan) and shadow.
-          <div
-            ref={frameContainerRef}
-            className="relative transition-transform duration-75"
-            style={{
-              width: videoDisplayWidth,
-              height: videoDisplayHeight,
-              aspectRatio: videoDimensions.width / videoDimensions.height,
-              maxWidth: '100%',
-              maxHeight: '100%',
-            }}
-          >
-            {/* Enhanced Glassy Frame with premium glass effect */}
+          <>
+            {/* Container receives transform (zoom/pan) and shadow. */}
             <div
-              className="w-full h-full transition-all duration-300 ease-out"
-              style={glassyFrameStyle}
+              ref={frameContainerRef}
+              className="relative transition-transform duration-75"
+              style={{
+                width: videoDisplayWidth,
+                height: videoDisplayHeight,
+                aspectRatio: videoDimensions.width / videoDimensions.height,
+                maxWidth: '100%',
+                maxHeight: '100%',
+              }}
             >
-              {/* Video Element with enhanced styling */}
-              <video
-                ref={videoRef}
-                src={videoUrl}
-                className="w-full h-full object-cover block relative z-10 transition-all duration-200"
-                style={videoStyle}
-                onTimeUpdate={handleTimeUpdate}
-                onLoadedMetadata={handleLoadedMetadata}
-                onPlay={() => setPlaying(true)}
-                onPause={() => setPlaying(false)}
-                onEnded={() => setPlaying(false)}
-              />
+              {/* Enhanced Glassy Frame with premium glass effect */}
+              <div
+                className="w-full h-full transition-all duration-300 ease-out"
+                style={glassyFrameStyle}
+              >
+                {/* Video Element with enhanced styling */}
+                <video
+                  ref={videoRef}
+                  src={videoUrl}
+                  className="w-full h-full object-cover block relative z-10 transition-all duration-200"
+                  style={videoStyle}
+                  onTimeUpdate={handleTimeUpdate}
+                  onLoadedMetadata={handleLoadedMetadata}
+                  onPlay={() => setPlaying(true)}
+                  onPause={() => setPlaying(false)}
+                  onEnded={() => setPlaying(false)}
+                />
+              </div>
             </div>
-          </div>
+
+            {/* Webcam is now outside of the scaling container */}
+            {webcamVideoUrl && (
+              <div className={webcamWrapperClasses} style={webcamDynamicStyle}>
+                <video
+                  ref={webcamVideoRef}
+                  src={webcamVideoUrl}
+                  muted
+                  playsInline
+                  className="w-full h-full object-cover"
+                />
+              </div>
+            )}
+          </>
         ) : (
           <div className="w-full h-full bg-gradient-to-br from-slate-50/10 to-slate-100/5 border-2 border-dashed border-white/20 rounded-xl flex flex-col items-center justify-center text-white/70 gap-4 backdrop-blur-sm">
             <div className="w-16 h-16 rounded-full bg-gradient-to-br from-white/20 to-white/5 flex items-center justify-center backdrop-blur-md border border-white/20">

@@ -1,4 +1,3 @@
-// src/components/editor/ExportProgressOverlay.tsx
 import { Loader2 } from 'lucide-react';
 
 interface ExportProgressOverlayProps {

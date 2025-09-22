@@ -1,4 +1,3 @@
-// src/hooks/useKeyboardShortcuts.ts
 import { useEffect, useCallback } from 'react';
 
 // Key format: 'key' or 'modifier+key' e.g., 'Delete', 'ctrl+z', 'ctrl+shift+z'
