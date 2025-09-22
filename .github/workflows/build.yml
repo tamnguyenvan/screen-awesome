@@ -30,7 +30,17 @@ jobs:
         run: |
           source ${{ env.PYTHON_VENV }}/bin/activate
           npm install --force --silent
-          GH_TOKEN=${{ secrets.GITHUB_TOKEN }} tsc && npm run build && electron-builder -l --publish always
+          tsc && npm run build && electron-builder -l --publish always
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      
+      - name: Upload Artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: ScreenAwesome-${{ matrix.os }}
+          path: |
+            dist/*.AppImage
+            dist/*.exe
 
   # windows:
   #   runs-on: windows-latest
