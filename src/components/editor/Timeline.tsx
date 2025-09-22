@@ -94,7 +94,6 @@ export function Timeline({ videoRef }: { videoRef: React.RefObject<HTMLVideoElem
   const playheadRef = useRef<HTMLDivElement>(null);
   const regionRefs = useRef<Map<string, HTMLDivElement | null>>(new Map());
   const animationFrameRef = useRef<number>();
-  const { setPlaying } = useEditorStore();
   const isDraggingRegionHiddenRef = useRef(false);
 
   const [draggingRegion, setDraggingRegion] = useState<{
@@ -411,12 +410,13 @@ export function Timeline({ videoRef }: { videoRef: React.RefObject<HTMLVideoElem
               {allCutRegionsToRender.map(region => {
                 // Logic to apply a temporary high z-index to the selected region
                 let z;
-                if (region.trimType) {
-                  z = 5; // Trim regions are always at the bottom
-                } else if (selectedRegionId === region.id) {
-                  z = 100; // Selected non-trim regions are temporarily on top
+                // Prioritize checking selection first, applies to both trim and cut region
+                if (selectedRegionId === region.id) {
+                  z = 100;
+                } else if (region.trimType) {
+                  z = 5;
                 } else {
-                  z = region.zIndex ?? 10; // Use calculated z-index
+                  z = region.zIndex ?? 10;
                 }
 
                 return (
