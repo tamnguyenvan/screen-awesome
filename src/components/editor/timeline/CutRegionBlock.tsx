@@ -8,7 +8,6 @@ import { Scissors } from 'lucide-react';
 interface CutRegionBlockProps {
   region: CutRegion;
   isSelected: boolean;
-  isDragging: boolean; // Prop mới
   isDraggable?: boolean;
   onMouseDown: (e: React.MouseEvent<HTMLDivElement>, region: TimelineRegion, type: 'move' | 'resize-left' | 'resize-right') => void;
   setRef: (el: HTMLDivElement | null) => void;
@@ -17,7 +16,6 @@ interface CutRegionBlockProps {
 export const CutRegionBlock = memo(({
   region,
   isSelected,
-  isDragging,
   isDraggable = true,
   onMouseDown,
   setRef
@@ -39,44 +37,38 @@ export const CutRegionBlock = memo(({
       data-region-id={region.id}
       className={cn(
         'w-full h-full pointer-events-none',
-        'bg-gray-100/30 dark:bg-gray-700/50',
       )}
       style={{ willChange: 'transform, width' }}
     >
+      <div className="absolute top-0 left-0 w-full h-[72px] bg-destructive/20" />
       <div
         className={cn(
-          'relative w-full h-14 mt-[72px] flex items-center justify-center rounded-lg',
-          'border-2 border-gray-400 dark:border-gray-500',
-          'bg-gray-200/80 dark:bg-gray-600/80',
-          'backdrop-blur-sm',
-          'pointer-events-auto',
-          'transition-colors duration-200',
+          'relative w-full h-14 mt-[72px] flex items-center justify-center rounded-lg border-2',
+          'pointer-events-auto transition-all duration-200',
           canMove ? 'cursor-grab' : 'cursor-default',
-          isSelected && !isDragging && [
-            'transform -translate-y-2',
-            'shadow-lg shadow-gray-400/20 dark:shadow-gray-700/50',
-            'border-gray-500 dark:border-gray-400',
-            'bg-gray-300/90 dark:bg-gray-500/90'
-          ],
-          isSelected ? 'z-20' : 'z-10'
+          isSelected
+            ? 'bg-card border-destructive transform -translate-y-2 shadow-lg shadow-destructive/20'
+            : 'bg-card/80 border-destructive/50 hover:border-destructive/80'
         )}
         onMouseDown={(e) => handleMouseDown(e, 'move')}
       >
         {canResizeLeft && (
           <div
             className="absolute left-0 top-0 w-4 h-full cursor-ew-resize rounded-l-md flex items-center justify-center z-30 group"
-            onMouseDown={(e) => handleMouseDown(e, 'resize-left')}>
-            <div className="w-0.5 h-1/2 bg-gray-500/70 dark:bg-gray-300/70 rounded-full group-hover:bg-gray-600 dark:group-hover:bg-white transition-colors" />
+            onMouseDown={(e) => handleMouseDown(e, 'resize-left')}
+          >
+            <div className="w-0.5 h-1/2 bg-destructive/70 rounded-full group-hover:bg-destructive transition-colors" />
           </div>
         )}
         <div className="pointer-events-none flex items-center gap-2 px-2">
-          <Scissors className="w-4 h-4 text-gray-700/90 dark:text-gray-200/90" />
+          <Scissors className="w-4 h-4 text-destructive" />
         </div>
         {canResizeRight && (
           <div
             className="absolute right-0 top-0 w-4 h-full cursor-ew-resize rounded-r-md flex items-center justify-center z-30 group"
-            onMouseDown={(e) => handleMouseDown(e, 'resize-right')}>
-            <div className="w-0.5 h-1/2 bg-gray-500/70 dark:bg-gray-300/70 rounded-full group-hover:bg-gray-600 dark:group-hover:bg-white transition-colors" />
+            onMouseDown={(e) => handleMouseDown(e, 'resize-right')}
+          >
+            <div className="w-0.5 h-1/2 bg-destructive/70 rounded-full group-hover:bg-destructive transition-colors" />
           </div>
         )}
       </div>

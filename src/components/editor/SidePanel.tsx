@@ -21,7 +21,7 @@ interface TabButtonProps {
 
 function TabButton({ label, icon, isActive, onClick, disabled }: TabButtonProps) {
   return (
-    <TooltipProvider delayDuration={300}>
+    <TooltipProvider delayDuration={500}>
       <Tooltip>
         <TooltipTrigger asChild>
           <button
@@ -45,7 +45,7 @@ function TabButton({ label, icon, isActive, onClick, disabled }: TabButtonProps)
         <TooltipContent 
           side="left" 
           sideOffset={8}
-          className="capitalize px-3 py-1.5 text-sm font-medium bg-popover text-popover-foreground shadow-md rounded-md border border-border/50 dark:border-border/80"
+          className="capitalize px-3 py-1.5 text-sm font-medium bg-popover text-popover-foreground shadow-md rounded-md border border-border/50 dark:bg-popover/95 dark:border-border/80 dark:text-foreground"
         >
           <p className="whitespace-nowrap">{label}</p>
         </TooltipContent>

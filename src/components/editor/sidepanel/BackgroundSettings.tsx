@@ -1,12 +1,15 @@
+// src/components/editor/sidepanel/BackgroundSettings.tsx
+
 import React, { useState, useRef, useEffect } from 'react';
 import { useEditorStore } from '../../../store/editorStore';
 import { cn } from '../../../lib/utils';
 import { WALLPAPERS } from '../../../lib/constants';
 import {
   Image, Check, UploadCloud, X, Zap,
-  ArrowUp, ArrowDown, ArrowLeft, ArrowRight, ArrowDownRight, ArrowUpLeft, ArrowDownLeft, Plus
+  ArrowUp, ArrowDown, ArrowLeft, ArrowRight, ArrowDownRight, ArrowUpLeft, ArrowDownLeft, Plus, Paintbrush
 } from 'lucide-react';
 import { ControlGroup } from './ControlGroup';
+import { Button } from '../../ui/button'; // Import Button component
 
 type BackgroundTab = 'color' | 'gradient' | 'image' | 'wallpaper';
 
@@ -78,10 +81,28 @@ export function BackgroundSettings() {
   const [activeTab, setActiveTab] = useState<BackgroundTab>(frameStyles.background.type);
   const imageInputRef = useRef<HTMLInputElement>(null);
 
+  // CHÚ THÍCH: Thêm state cục bộ để quản lý màu gradient đang được chỉnh sửa.
+  // Điều này cho phép người dùng chọn màu mà không cập nhật ngay lập tức state toàn cục.
+  const [localGradient, setLocalGradient] = useState({
+    start: frameStyles.background.gradientStart || '#6366f1',
+    end: frameStyles.background.gradientEnd || '#9ca9ff'
+  });
+
   // Sync tab with global state if it changes from somewhere else
   useEffect(() => {
     setActiveTab(frameStyles.background.type);
   }, [frameStyles.background.type]);
+
+  // CHÚ THÍCH: Đồng bộ state cục bộ (localGradient) với state toàn cục (zustand)
+  // khi tab gradient được chọn hoặc khi state toàn cục thay đổi từ nơi khác (ví dụ: undo/redo).
+  useEffect(() => {
+    if (frameStyles.background.type === 'gradient') {
+      setLocalGradient({
+        start: frameStyles.background.gradientStart || '#6366f1',
+        end: frameStyles.background.gradientEnd || '#9ca9ff'
+      });
+    }
+  }, [frameStyles.background.gradientStart, frameStyles.background.gradientEnd, frameStyles.background.type]);
 
 
   const handleColorPresetClick = (color: string) => {
@@ -107,6 +128,17 @@ export function BackgroundSettings() {
   const handleReplaceImage = () => {
     imageInputRef.current?.click();
   }
+
+  // CHÚ THÍCH: Hàm mới để áp dụng các màu gradient từ state cục bộ vào state toàn cục.
+  const handleApplyGradient = () => {
+    updateBackground({
+      type: 'gradient',
+      gradientStart: localGradient.start,
+      gradientEnd: localGradient.end,
+      // Giữ lại direction hiện tại từ state toàn cục
+      gradientDirection: frameStyles.background.gradientDirection,
+    });
+  };
 
   const tabs = [
     { id: 'wallpaper', name: 'Wallpaper' },
@@ -239,63 +271,72 @@ export function BackgroundSettings() {
         )}
 
         {activeTab === 'gradient' && (
-          <div className="flex gap-6">
-            <div className="flex-shrink-0">
-              <h5 className="text-xs font-semibold text-muted-foreground mb-3 uppercase tracking-wider">Colors</h5>
-              <div className="flex flex-col items-center gap-4">
-                <ColorPickerRoundedRect
-                  label="Start"
-                  color={frameStyles.background.gradientStart || '#6366f1'}
-                  name="gradientStart"
-                  onChange={(e) => updateBackground({ type: 'gradient', gradientStart: e.target.value })}
-                  size="md"
-                />
-                <ColorPickerRoundedRect
-                  label="End"
-                  color={frameStyles.background.gradientEnd || '#9ca9ff'}
-                  name="gradientEnd"
-                  onChange={(e) => updateBackground({ type: 'gradient', gradientEnd: e.target.value })}
-                  size="md"
-                />
+          <div className="flex flex-col gap-6">
+            <div className="flex gap-6">
+              <div className="flex-shrink-0">
+                <h5 className="text-xs font-semibold text-muted-foreground mb-3 uppercase tracking-wider">Colors</h5>
+                <div className="flex flex-col items-center gap-4">
+                  <ColorPickerRoundedRect
+                    label="Start"
+                    color={localGradient.start}
+                    name="gradientStart"
+                    // CHÚ THÍCH: Cập nhật state cục bộ thay vì state toàn cục
+                    onChange={(e) => setLocalGradient(prev => ({ ...prev, start: e.target.value }))}
+                    size="md"
+                  />
+                  <ColorPickerRoundedRect
+                    label="End"
+                    color={localGradient.end}
+                    name="gradientEnd"
+                    // CHÚ THÍCH: Cập nhật state cục bộ thay vì state toàn cục
+                    onChange={(e) => setLocalGradient(prev => ({ ...prev, end: e.target.value }))}
+                    size="md"
+                  />
+                </div>
               </div>
-            </div>
 
-            <div className="flex-1">
-              <h5 className="text-xs font-semibold text-muted-foreground mb-3 uppercase tracking-wider">Style</h5>
-              <div className="grid grid-cols-4 gap-2">
-                {GRADIENT_PRESETS.map((preset, index) => {
-                  const startColor = '#ffffff';
-                  const endColor = '#9b9b9b';
-                  const gradientStyle = preset.direction === 'circle'
-                    ? { background: `radial-gradient(circle, ${startColor}, ${endColor})` }
-                    : { background: `linear-gradient(${preset.direction}, ${startColor}, ${endColor})` };
+              <div className="flex-1">
+                <h5 className="text-xs font-semibold text-muted-foreground mb-3 uppercase tracking-wider">Style</h5>
+                <div className="grid grid-cols-4 gap-6">
+                  {GRADIENT_PRESETS.map((preset, index) => {
+                    const startColor = '#808080';
+                    const endColor = '#ffffff';
+                    const gradientStyle = preset.direction === 'circle'
+                      ? { background: `radial-gradient(circle, ${startColor}, ${endColor})` }
+                      : { background: `linear-gradient(${preset.direction}, ${startColor}, ${endColor})` };
 
-                  return (
-                    <button
-                      key={index}
-                      className={cn(
-                        "relative w-full h-10 rounded-lg overflow-hidden border-2 transition-all duration-200",
-                        "flex items-center justify-center group",
-                        frameStyles.background.gradientDirection === preset.direction
-                          ? "border-primary ring-2 ring-primary/20"
-                          : "border-sidebar-border hover:border-primary/60"
-                      )}
-                      style={gradientStyle}
-                      onClick={() => updateBackground({ type: 'gradient', gradientDirection: preset.direction })}
-                      title={preset.name}
-                    >
-                      {frameStyles.background.gradientDirection === preset.direction && (
-                        <div className="absolute inset-0 bg-black/10 flex items-center justify-center">
-                          <div className="w-5 h-5 bg-white/90 rounded-full flex items-center justify-center shadow-sm">
-                            <Check className="w-3 h-3 text-gray-800" />
+                    return (
+                      <button
+                        key={index}
+                        className={cn(
+                          "relative h-14 aspect-square rounded-lg overflow-hidden border-2 transition-all duration-200",
+                          "flex items-center justify-center group",
+                          frameStyles.background.gradientDirection === preset.direction
+                            ? "border-primary ring-2 ring-primary/20"
+                            : "border-sidebar-border hover:border-primary/60"
+                        )}
+                        style={gradientStyle}
+                        onClick={() => updateBackground({ type: 'gradient', gradientDirection: preset.direction })}
+                        title={preset.name}
+                      >
+                        {frameStyles.background.gradientDirection === preset.direction && (
+                          <div className="absolute inset-0 bg-black/10 flex items-center justify-center">
+                            <div className="w-5 h-5 bg-white/90 rounded-full flex items-center justify-center shadow-sm">
+                              <Check className="w-3 h-3 text-gray-800" />
+                            </div>
                           </div>
-                        </div>
-                      )}
-                    </button>
-                  );
-                })}
+                        )}
+                      </button>
+                    );
+                  })}
+                </div>
               </div>
             </div>
+            {/* CHÚ THÍCH: Thêm nút "Apply Colors" */}
+            <Button onClick={handleApplyGradient} size="sm" className="w-full mt-2">
+              <Paintbrush className="w-4 h-4 mr-2" />
+              Apply Colors
+            </Button>
           </div>
         )}
 

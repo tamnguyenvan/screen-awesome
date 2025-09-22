@@ -1,7 +1,7 @@
 import log from 'electron-log/renderer';
 import { useEffect, useRef } from 'react';
 import { useEditorStore, EditorActions } from '../store/editorStore';
-import { EditorState, CutRegion } from '../types/store';
+import { EditorState } from '../types/store';
 import { calculateZoomTransform } from '../lib/transform';
 import { ExportSettings } from '../components/editor/ExportModal';
 import { RESOLUTIONS } from '../lib/constants';
@@ -60,56 +60,43 @@ const drawBackground = async (
     case 'image':
     case 'wallpaper': {
       if (!backgroundState.imageUrl) {
-        // Fallback background if no image
         ctx.fillStyle = 'oklch(0.2077 0.0398 265.7549)';
         ctx.fillRect(0, 0, width, height);
         return;
       }
-
-      await new Promise<void>((resolve, reject) => {
+      await new Promise<void>((resolve) => {
         const img = new Image();
         img.onload = () => {
-          // Cover scaling logic
           const imgRatio = img.width / img.height;
           const canvasRatio = width / height;
           let sx, sy, sWidth, sHeight;
-
           if (imgRatio > canvasRatio) {
-            // Image is wider than canvas
             sHeight = img.height;
             sWidth = sHeight * canvasRatio;
             sx = (img.width - sWidth) / 2;
             sy = 0;
           } else {
-            // Image is taller than canvas
             sWidth = img.width;
             sHeight = sWidth / canvasRatio;
             sx = 0;
             sy = (img.height - sHeight) / 2;
           }
-
           ctx.drawImage(img, sx, sy, sWidth, sHeight, 0, 0, width, height);
           resolve();
         };
         img.onerror = (err) => {
           log.error(`[RendererPage] Failed to load background image: ${img.src}`, err);
-          // Draw fallback on error
           ctx.fillStyle = 'oklch(0.2077 0.0398 265.7549)';
           ctx.fillRect(0, 0, width, height);
-          resolve(); // Resolve anyway to continue export
+          resolve();
         };
-
         if (!backgroundState.imageUrl) {
-          log.error('[RendererPage] No image URL provided');
-          reject(new Error('No image URL provided'));
+          resolve();
           return;
         }
-
-        // Use the custom media:// protocol for local file access
         const finalUrl = backgroundState.imageUrl.startsWith('blob:')
           ? backgroundState.imageUrl
           : `media://${backgroundState.imageUrl}`;
-
         img.src = finalUrl;
       });
       break;
@@ -140,71 +127,26 @@ export function RendererPage() {
 
       try {
         log.info('[RendererPage] Received "render:start" event.', { exportSettings });
-
         if (!canvas || !video) throw new Error('Canvas or Video ref is not available.');
 
-        // 1. Setup Output Dimensions
+        // --- Setup (kích thước, load video) ---
         const { resolution, fps } = exportSettings;
         const [ratioW, ratioH] = projectState.aspectRatio.split(':').map(Number);
         const baseHeight = RESOLUTIONS[resolution as keyof typeof RESOLUTIONS].height;
-        const aspectValue = ratioW / ratioH;
-
-        // Calculate width and ensure it's even for FFmpeg compatibility
-        let outputWidth = Math.round(baseHeight * aspectValue);
+        let outputWidth = Math.round(baseHeight * (ratioW / ratioH));
         outputWidth = outputWidth % 2 === 0 ? outputWidth : outputWidth + 1;
         const outputHeight = baseHeight;
-
         canvas.width = outputWidth;
         canvas.height = outputHeight;
-
-        // Webcam layout calculations
-        const { webcamPosition, webcamStyles, isWebcamVisible } = projectState;
-        const webcamHeight = outputHeight * (webcamStyles.size / 100);
-        const webcamWidth = webcamHeight; // Make it a square
-        const webcamRadius = webcamHeight * 0.35; // 35% radius for a `squircle` effect
-
-        // Calculate webcam coordinates with padding
-        const padding = outputHeight * 0.02; // 2% padding
-        let webcamX, webcamY;
-        switch (webcamPosition.pos) {
-          case 'top-left':
-            webcamX = padding;
-            webcamY = padding;
-            break;
-          case 'top-right':
-            webcamX = outputWidth - webcamWidth - padding;
-            webcamY = padding;
-            break;
-          case 'bottom-left':
-            webcamX = padding;
-            webcamY = outputHeight - webcamHeight - padding;
-            break;
-          case 'bottom-right':
-          default:
-            webcamX = outputWidth - webcamWidth - padding;
-            webcamY = outputHeight - webcamHeight - padding;
-            break;
-        }
-
-        // Use alpha: false for performance as we always draw a background
         const ctx = canvas.getContext('2d', { alpha: false });
         if (!ctx) throw new Error('Failed to get 2D context from canvas.');
-
-        // Load project state into the store for calculations (e.g., calculateZoomTransform)
         useEditorStore.setState(projectState);
         const state = useEditorStore.getState();
         const { frameStyles, videoDimensions } = state;
-
-        // --- Pre-calculate static layout values ---
-
-        // The area available for the "Frame" (Outer border included) after padding
         const paddingPercent = frameStyles.padding / 100;
         const availableWidth = outputWidth * (1 - 2 * paddingPercent);
         const availableHeight = outputHeight * (1 - 2 * paddingPercent);
-
         const videoAspectRatio = videoDimensions.width / videoDimensions.height;
-
-        // Calculate frame dimensions maintaining video aspect ratio within available space
         let frameWidth, frameHeight;
         if (availableWidth / availableHeight > videoAspectRatio) {
           frameHeight = availableHeight;
@@ -213,261 +155,135 @@ export function RendererPage() {
           frameWidth = availableWidth;
           frameHeight = frameWidth / videoAspectRatio;
         }
-
-        // Position of the frame's top-left corner
         const frameX = (outputWidth - frameWidth) / 2;
         const frameY = (outputHeight - frameHeight) / 2;
-
-        // Inner frame dimensions (where video is drawn)
         const borderWidth = frameStyles.borderWidth;
         const innerWidth = frameWidth - (borderWidth * 2);
         const innerHeight = frameHeight - (borderWidth * 2);
         const innerX = borderWidth;
         const innerY = borderWidth;
         const innerRadius = Math.max(0, frameStyles.borderRadius - borderWidth);
-
-
-        // 2. Load Videos and Wait
-        const loadVideo = (videoElement: HTMLVideoElement, source: string): Promise<void> => {
-          return new Promise((resolve, reject) => {
-            const onCanPlay = () => {
-              videoElement.removeEventListener('canplay', onCanPlay);
-              videoElement.removeEventListener('error', onError);
-              log.info(`[RendererPage] ${source === 'main' ? 'Main video' : 'Webcam video'} is ready to play.`);
-              resolve();
-            };
-
-            const onError = (e: Event) => {
-              videoElement.removeEventListener('canplay', onCanPlay);
-              videoElement.removeEventListener('error', onError);
-              log.error(`[RendererPage] ${source === 'main' ? 'Main video' : 'Webcam video'} loading error:`, e);
-              reject(new Error(`Failed to load ${source === 'main' ? 'main video' : 'webcam video'} for rendering.`));
-            };
-
-            videoElement.addEventListener('canplay', onCanPlay);
+        const { webcamPosition, webcamStyles, isWebcamVisible } = projectState;
+        const webcamHeight = outputHeight * (webcamStyles.size / 100);
+        const webcamWidth = webcamHeight;
+        const webcamRadius = webcamHeight * 0.35;
+        const padding = outputHeight * 0.02;
+        let webcamX, webcamY;
+        switch (webcamPosition.pos) {
+          case 'top-left': webcamX = padding; webcamY = padding; break;
+          case 'top-right': webcamX = outputWidth - webcamWidth - padding; webcamY = padding; break;
+          case 'bottom-left': webcamX = padding; webcamY = outputHeight - webcamHeight - padding; break;
+          default: webcamX = outputWidth - webcamWidth - padding; webcamY = outputHeight - webcamHeight - padding; break;
+        }
+        const loadVideo = (videoElement: HTMLVideoElement, source: string, path: string): Promise<void> =>
+          new Promise((resolve, reject) => {
+            const onCanPlay = () => { videoElement.removeEventListener('canplaythrough', onCanPlay); videoElement.removeEventListener('error', onError); log.info(`[RendererPage] ${source} video is ready.`); resolve(); };
+            const onError = (e: Event) => { videoElement.removeEventListener('canplaythrough', onCanPlay); videoElement.removeEventListener('error', onError); log.error(`[RendererPage] ${source} loading error:`, e); reject(new Error(`Failed to load ${source}.`)); };
+            videoElement.addEventListener('canplaythrough', onCanPlay);
             videoElement.addEventListener('error', onError);
-
-            videoElement.src = source === 'main'
-              ? `media://${projectState.videoPath}`
-              : `media://${projectState.webcamVideoPath}`;
+            videoElement.src = `media://${path}`;
             videoElement.muted = true;
             videoElement.load();
           });
-        };
+        const loadPromises: Promise<void>[] = [loadVideo(video, 'Main video', projectState.videoPath!)];
+        if (projectState.webcamVideoPath && webcamVideo) { loadPromises.push(loadVideo(webcamVideo, 'Webcam video', projectState.webcamVideoPath)); }
+        await Promise.all(loadPromises);
 
-        // Load both videos in parallel
-        try {
-          const loadPromises = [
-            loadVideo(video, 'main'),
-            projectState.webcamVideoPath && webcamVideo ? loadVideo(webcamVideo, 'webcam') : Promise.resolve()
-          ];
-          await Promise.all(loadPromises);
-          log.info('[RendererPage] All videos loaded successfully');
-        } catch (error) {
-          log.error('[RendererPage] Error loading videos:', error);
-          throw error;
-        }
+        // --- BẮT ĐẦU LOGIC RENDER MỚI ---
 
-        // Helper to seek videos accurately and in sync
-        const seekVideos = async (time: number): Promise<void> => {
-          const seekPromises = [
-            new Promise<void>((resolve) => {
-              if (Math.abs(video.currentTime - time) < 0.01) {
-                resolve();
-                return;
-              }
-              const onSeeked = () => {
-                video.removeEventListener('seeked', onSeeked);
-                video.removeEventListener('error', onError);
-                resolve();
-              };
-              const onError = (e: Event) => {
-                video.removeEventListener('seeked', onSeeked);
-                video.removeEventListener('error', onError);
-                log.error('[RendererPage] Main video seek error:', e);
-                resolve(); // Don't reject on seek error, continue with current time
-              };
-              video.addEventListener('seeked', onSeeked);
-              video.addEventListener('error', onError);
-              video.currentTime = time;
-            })
-          ];
-
-          if (projectState.webcamVideoPath && webcamVideo) {
-            seekPromises.push(
-              new Promise<void>((resolve) => {
-                if (Math.abs(webcamVideo.currentTime - time) < 0.01) {
-                  resolve();
-                  return;
-                }
-                const onWebcamSeeked = () => {
-                  webcamVideo.removeEventListener('seeked', onWebcamSeeked);
-                  webcamVideo.removeEventListener('error', onWebcamError);
-                  resolve();
-                };
-                const onWebcamError = (e: Event) => {
-                  webcamVideo.removeEventListener('seeked', onWebcamSeeked);
-                  webcamVideo.removeEventListener('error', onWebcamError);
-                  log.error('[RendererPage] Webcam video seek error:', e);
-                  resolve(); // Don't reject on seek error, continue with current time
-                };
-                webcamVideo.addEventListener('seeked', onWebcamSeeked);
-                webcamVideo.addEventListener('error', onWebcamError);
-                webcamVideo.currentTime = time;
-              })
-            );
-          }
-
-          return Promise.all(seekPromises).then(() => { });
-        };
-
-        // 3. Start Render Loop
+        log.info('[RendererPage] Starting frame-by-frame rendering...');
         const cutRegionsArray = Object.values(projectState.cutRegions);
-        const totalFrames = Math.ceil(projectState.duration * fps);
-        log.info(`[RendererPage] Starting render for ${totalFrames} frames at ${fps} FPS.`);
+        const totalDuration = projectState.duration;
+        const totalFrames = Math.floor(totalDuration * fps);
+        let framesSent = 0;
 
-        if (totalFrames <= 0) {
-          log.warn('[RendererPage] No frames to render. Aborting.');
-          window.electronAPI.finishRender();
-          return;
-        }
+        for (let i = 0; i < totalFrames; i++) {
+          const currentTime = i / fps;
 
-        let framesActuallyRendered = 0;
-
-        for (let frameIndex = 0; frameIndex < totalFrames; frameIndex++) {
-          const currentTime = frameIndex / fps;
-
-          if (currentTime > projectState.duration) {
-            break;
-          }
-
-          // Skip cut regions
+          // Bỏ qua các frame nằm trong vùng "cut"
           const isInCutRegion = cutRegionsArray.some(
-            (r: CutRegion) => currentTime >= r.startTime && currentTime < (r.startTime + r.duration)
+            (r) => currentTime >= r.startTime && currentTime < (r.startTime + r.duration)
           );
-
-          // Skip frames that are in cut regions
           if (isInCutRegion) {
             continue;
           }
 
-          // Prepare for rendering
-          await seekVideos(currentTime);
-          state.setCurrentTime(currentTime); // Update store for zoom calculations
+          // Chờ video seek đến đúng thời điểm
+          await new Promise<void>(resolve => {
+            const onSeeked = () => {
+              video.removeEventListener('seeked', onSeeked);
+              resolve();
+            };
+            video.addEventListener('seeked', onSeeked, { once: true });
+            video.currentTime = currentTime;
+            if (webcamVideo) webcamVideo.currentTime = currentTime;
+          });
 
+          // Cập nhật state để tính toán transform chính xác
+          state.setCurrentTime(currentTime);
 
-          // 1. Draw Background
+          // --- Logic vẽ canvas (giữ nguyên như cũ) ---
           await drawBackground(ctx, outputWidth, outputHeight, frameStyles.background);
-
-          // 2. Apply Transformations (Crucial: Do this *before* drawing the frame so shadow/border are transformed)
           ctx.save();
-
-          // Move context origin to the center of the frame area
           ctx.translate(frameX + frameWidth / 2, frameY + frameHeight / 2);
-
           const { scale, translateX, translateY } = calculateZoomTransform(currentTime);
-
-          // Apply scale
           ctx.scale(scale, scale);
-
-          // Apply pan translation (translateX/Y are percentages of the frame width/height)
-          const panX = (translateX / 100) * frameWidth;
-          const panY = (translateY / 100) * frameHeight;
-          ctx.translate(panX, panY);
-
-          // Move origin back so (0,0) is the top-left of the frame area
+          ctx.translate((translateX / 100) * frameWidth, (translateY / 100) * frameHeight);
           ctx.translate(-frameWidth / 2, -frameHeight / 2);
-
-          // --- Now everything drawn is inside the zoomed/panned frame container ---
-
-          // 3. Draw the Frame Shadow
           const { shadow, borderRadius } = frameStyles;
-          const shadowOpacity = Math.min(shadow * 0.015, 0.4);
-
-          ctx.shadowColor = `rgba(0, 0, 0, ${shadowOpacity})`;
+          ctx.shadowColor = `rgba(0, 0, 0, ${Math.min(shadow * 0.015, 0.4)})`;
           ctx.shadowBlur = shadow * 1.5;
-          ctx.shadowOffsetX = 0;
           ctx.shadowOffsetY = shadow;
-
           const frameOuterPath = new Path2D();
-          // Draw at (0,0) because context is translated to frameX, frameY
           frameOuterPath.roundRect(0, 0, frameWidth, frameHeight, borderRadius);
-
-          // Fill with near-transparent to cast the shadow without showing the fill
-          ctx.fillStyle = 'rgba(0,0,0,0.001)';
+          ctx.fillStyle = 'rgba(0,0,0,0.001)'; // Needed for shadow to apply
           ctx.fill(frameOuterPath);
-
-          // Reset shadow for subsequent draws
-          ctx.shadowColor = 'transparent';
-          ctx.shadowBlur = 0;
-          ctx.shadowOffsetY = 0;
-
-          // 4. Draw the "Glass" Effect (Border and Gradient Overlay)
+          ctx.shadowColor = 'transparent'; ctx.shadowBlur = 0; ctx.shadowOffsetY = 0;
           ctx.save();
           ctx.clip(frameOuterPath);
-
-          // --- Gradient Overlay (Simulating glassyFrameStyle from Preview.tsx) ---
           const gradient = ctx.createLinearGradient(0, 0, frameWidth, frameHeight);
           gradient.addColorStop(0, 'rgba(255, 255, 255, 0.25)');
           gradient.addColorStop(0.5, 'rgba(255, 255, 255, 0.15)');
           gradient.addColorStop(1, 'rgba(255, 255, 255, 0.05)');
           ctx.fillStyle = gradient;
           ctx.fillRect(0, 0, frameWidth, frameHeight);
-
-          // --- Glass Border ---
           ctx.strokeStyle = 'rgba(255, 255, 255, 0.3)';
-          ctx.lineWidth = 2; // Stroke is centered, so 2px width gives ~1px visual border
+          ctx.lineWidth = 2;
           ctx.stroke(frameOuterPath);
-
-          ctx.restore(); // End glass clip
-
-          // 5. Draw the Video Content
+          ctx.restore();
           const videoClipPath = new Path2D();
           videoClipPath.roundRect(innerX, innerY, innerWidth, innerHeight, innerRadius);
-
           ctx.save();
           ctx.clip(videoClipPath);
-
-          // Draw video into the inner rectangle.
-          // The context is already scaled/panned, so we just draw at the calculated inner coordinates.
           ctx.drawImage(video, innerX, innerY, innerWidth, innerHeight);
-
-          ctx.restore(); // End video clip
-
-          ctx.restore(); // Restore context state (removes zoom/pan transform)
-
-          // Update webcam drawing logic
-          if (isWebcamVisible && projectState.webcamVideoPath && webcamVideo) {
+          ctx.restore();
+          ctx.restore();
+          if (isWebcamVisible && webcamVideo) {
             ctx.save();
-            // Create rounded clipping path for webcam
             const webcamPath = new Path2D();
             webcamPath.roundRect(webcamX, webcamY, webcamWidth, webcamHeight, webcamRadius);
             ctx.clip(webcamPath);
-
-            // Draw current webcam frame
             ctx.drawImage(webcamVideo, webcamX, webcamY, webcamWidth, webcamHeight);
             ctx.restore();
           }
+          // --- Kết thúc logic vẽ canvas ---
 
-          // Extract and Send Frame Data
           const imageData = ctx.getImageData(0, 0, outputWidth, outputHeight);
           const frameBuffer = Buffer.from(imageData.data.buffer);
-          const progress = Math.round(((frameIndex + 1) / totalFrames) * 100);
-
+          const progress = Math.round((i / totalFrames) * 100);
           window.electronAPI.sendFrameToMain({ frame: frameBuffer, progress });
-          framesActuallyRendered++;
+          framesSent++;
         }
 
-        log.info(`[RendererPage] All frames processed. Sent ${framesActuallyRendered} frames. Sending "finishRender" signal.`);
+        log.info(`[RendererPage] Render finished. Sent ${framesSent} frames. Sending "finishRender" signal.`);
         window.electronAPI.finishRender();
 
       } catch (error) {
-        log.error('[RendererPage] CRITICAL ERROR during render loop:', error);
-        window.electronAPI.finishRender(); // Signal finish even on error
+        log.error('[RendererPage] CRITICAL ERROR during render process:', error);
+        window.electronAPI.finishRender(); // Báo cho main process biết là đã có lỗi
       }
     });
 
-    // Signal to main process that the renderer is ready to receive the project data
     log.info('[RendererPage] Sending "render:ready" signal to main process.');
     window.electronAPI.rendererReady();
 
@@ -480,6 +296,7 @@ export function RendererPage() {
   return (
     <div>
       <h1>Renderer Worker</h1>
+      <p>This page is hidden and used for video exporting.</p>
       <canvas ref={canvasRef}></canvas>
       <video ref={videoRef}></video>
       <video ref={webcamVideoRef}></video>

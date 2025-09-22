@@ -25,6 +25,13 @@ export interface Preset {
   name: string;
   styles: FrameStyles;
   aspectRatio: AspectRatio;
+  isDefault?: boolean;
+}
+
+export interface AnchorPoint {
+  time: number;
+  x: number; // Tọa độ chuẩn hóa [-0.5, 0.5]
+  y: number; // Tọa độ chuẩn hóa [-0.5, 0.5]
 }
 
 export interface ZoomRegion {
@@ -38,6 +45,7 @@ export interface ZoomRegion {
   targetY: number;
   mode: 'auto' | 'fixed';
   zIndex: number;
+  anchors?: AnchorPoint[];
 }
 
 export interface CutRegion {
@@ -90,7 +98,6 @@ export interface EditorState {
   isCurrentlyCut: boolean;
   theme: 'light' | 'dark';
   timelineZoom: number;
-  nextZIndex: number,
   presets: Record<string, Preset>;
   activePresetId: string | null;
   presetSaveStatus: 'idle' | 'saving' | 'saved';

@@ -45,19 +45,19 @@ const LinuxToolsWarningPanel = ({ missingTools }: { missingTools: string[] }) =>
       <div className="space-y-2 mt-2">
         <div>
           <p className="text-xs font-medium text-amber-300">Debian/Ubuntu:</p>
-          <code className="block mt-1 bg-black/40 px-3 py-2 rounded-md text-xs font-mono text-amber-100 border border-amber-500/20">
+          <code className="block mt-1 bg-black/40 px-3 py-2 rounded-2xl text-xs font-mono text-amber-100 border border-amber-500/20">
             sudo apt install wmctrl x11-utils imagemagick
           </code>
         </div>
         <div>
           <p className="text-xs font-medium text-amber-300">Fedora/CentOS/RHEL:</p>
-          <code className="block mt-1 bg-black/40 px-3 py-2 rounded-md text-xs font-mono text-amber-100 border border-amber-500/20">
+          <code className="block mt-1 bg-black/40 px-3 py-2 rounded-2xl text-xs font-mono text-amber-100 border border-amber-500/20">
             sudo dnf install wmctrl xorg-x11-utils ImageMagick
           </code>
         </div>
         <div>
           <p className="text-xs font-medium text-amber-300">Arch Linux:</p>
-          <code className="block mt-1 bg-black/40 px-3 py-2 rounded-md text-xs font-mono text-amber-100 border border-amber-500/20">
+          <code className="block mt-1 bg-black/40 px-3 py-2 rounded-2xl text-xs font-mono text-amber-100 border border-amber-500/20">
             sudo pacman -S wmctrl xorg-xwininfo imagemagick
           </code>
         </div>
@@ -67,7 +67,7 @@ const LinuxToolsWarningPanel = ({ missingTools }: { missingTools: string[] }) =>
 
   return (
     <div
-      className="w-full max-w-[480px] p-6 mt-4 bg-card/95 border border-amber-500/30 rounded-lg shadow-2xl backdrop-blur-xl"
+      className="w-full max-w-[480px] p-6 mt-4 bg-card/95 border border-amber-500/30 rounded-2xl shadow-2xl backdrop-blur-xl"
       style={{ WebkitAppRegion: 'no-drag' }}
     >
       <div className="flex items-start gap-4">
@@ -97,7 +97,7 @@ function WindowPickerPanel({ onSelect, onRefresh, sources, isLoading }: {
 }) {
   return (
     <div
-      className="w-full max-w-[720px] mt-4 h-72 p-4 bg-card/95 border border-border/50 rounded-lg shadow-2xl backdrop-blur-xl flex flex-col"
+      className="w-full max-w-[720px] mt-4 h-72 p-4 bg-card/95 border border-border/50 rounded-2xl shadow-2xl backdrop-blur-xl flex flex-col"
       style={{ WebkitAppRegion: 'no-drag' }}
     >
       <div className="flex items-center justify-between mb-3 flex-shrink-0 px-2">
@@ -132,7 +132,7 @@ function WindowPickerPanel({ onSelect, onRefresh, sources, isLoading }: {
             {sources.map(source => (
               <button
                 key={source.id}
-                className="group relative aspect-video rounded-md overflow-hidden border-2 border-border/30 hover:border-primary/60 focus:border-primary focus:ring-2 focus:ring-primary/20 outline-none transition-all duration-200 bg-muted/50"
+                className="group relative aspect-video rounded-2xl overflow-hidden border-2 border-border/30 hover:border-primary/60 focus:border-primary focus:ring-2 focus:ring-primary/20 outline-none transition-all duration-200 bg-muted/50"
                 onClick={() => onSelect(source)}
               >
                 <img
@@ -368,7 +368,7 @@ export function RecorderPage() {
         {/* --- 1. Main Control Bar --- */}
         <div
           className={cn(
-            "relative flex items-stretch gap-4 p-2 rounded-xl",
+            "relative flex items-stretch gap-4 p-2 rounded-2xl",
             "bg-transparent text-card-foreground",
           )}
           style={{ WebkitAppRegion: 'drag' }}
@@ -388,7 +388,7 @@ export function RecorderPage() {
 
           <div
             className={cn(
-              "flex items-stretch gap-4 p-2 rounded-xl",
+              "flex items-stretch gap-4 p-2 rounded-2xl",
               "bg-card border border-border text-card-foreground",
               "shadow-lg backdrop-blur-xl"
             )}
@@ -400,7 +400,7 @@ export function RecorderPage() {
             </div>
 
             {/* Source Selection */}
-            <div className="flex items-center p-1 bg-muted rounded-lg border border-border" style={{ WebkitAppRegion: 'no-drag' }}>
+            <div className="flex items-center p-1 bg-muted rounded-2xl border border-border" style={{ WebkitAppRegion: 'no-drag' }}>
               <SourceButton
                 label="Full Screen"
                 icon={<Monitor size={16} />}
@@ -453,7 +453,7 @@ export function RecorderPage() {
             <div className="flex items-center gap-3" style={{ WebkitAppRegion: 'no-drag' }}>
               <div className="flex items-center" style={{ WebkitAppRegion: 'no-drag' }}>
                 <Select value={selectedWebcamId} onValueChange={handleWebcamChange}>
-                  <SelectTrigger className="w-12 h-10 ...">
+                  <SelectTrigger className="w-12 h-10 rounded-2xl">
                     <SelectValue asChild>
                       {selectedWebcamId !== 'none'
                         ? <Webcam size={18} className="text-primary" />
@@ -469,7 +469,14 @@ export function RecorderPage() {
                   </SelectContent>
                 </Select>
               </div>
-              <Button variant="secondary" size="icon" disabled className="h-10 w-10 opacity-50"><Mic size={18} /></Button>
+              <Button
+                variant="secondary"
+                size="icon"
+                disabled
+                className="h-10 w-10 opacity-50 rounded-2xl"
+              >
+                <Mic size={18} />
+              </Button>
 
               <div className="pl-2" style={{ WebkitAppRegion: 'no-drag' }}>
                 <Button
@@ -479,6 +486,7 @@ export function RecorderPage() {
                   size="icon"
                   className={cn(
                     "h-12 w-12",
+                    "rounded-2xl",
                     isButtonDisabled && showLinuxWarning && "bg-amber-500/20 hover:bg-amber-500/30 text-amber-300 border border-amber-500/30",
                     isButtonDisabled && !showLinuxWarning && "opacity-50"
                   )}
@@ -522,7 +530,7 @@ const SourceButton = ({ label, icon, isActive, ...props }: React.ButtonHTMLAttri
 }) => (
   <button
     className={cn(
-      "flex items-center gap-2 px-4 py-2 rounded-md text-sm font-medium transition-all duration-200 outline-none focus-visible:ring-2 focus-visible:ring-ring",
+      "flex items-center gap-2 px-4 py-2 rounded-2xl text-sm font-medium transition-all duration-200 outline-none focus-visible:ring-2 focus-visible:ring-ring",
       isActive
         ? "bg-card shadow-sm text-foreground"
         : "text-muted-foreground hover:text-foreground"
