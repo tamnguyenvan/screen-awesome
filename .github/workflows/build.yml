@@ -32,6 +32,7 @@ jobs:
         run: |
           source ${{ env.PYTHON_VENV }}/bin/activate
           npm install --force --silent
+          npm i -g electron-builder
           tsc && npm run build && electron-builder -l --publish always
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
