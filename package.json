@@ -8,7 +8,7 @@
   "scripts": {
     "dev": "vite",
     "build": "npm run build:python && tsc && vite build && electron-builder",
-    "build:python": "python3.10 -m pyinstaller --noconfirm --onedir --clean --distpath python/dist python/tracker.py",
+    "build:python": "python3 -m pyinstaller --noconfirm --onedir --clean --distpath python/dist python/tracker.py",
     "lint": "eslint . --ext ts,tsx --report-unused-disable-directives --max-warnings 0",
     "preview": "vite preview",
     "publish-linux-app": "tsc && npm run build && electron-builder -l --publish always"
