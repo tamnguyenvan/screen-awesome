@@ -84,7 +84,7 @@ export function PresetModal({ isOpen, onClose }: PresetModalProps) {
                   onClick={() => setPreviewId(p.id)}
                   className={cn(
                     "w-full text-left p-3 rounded-lg flex items-center justify-between transition-colors",
-                    previewId === p.id ? 'bg-primary/10 text-primary' : 'hover:bg-accent/50'
+                    previewId === p.id ? 'bg-primary/10 text-primary' : 'text-foreground hover:bg-accent/50'
                   )}
                 >
                   <span className="font-medium">{p.name}</span>
@@ -112,7 +112,7 @@ export function PresetModal({ isOpen, onClose }: PresetModalProps) {
             {previewPreset ? (
               <div className="w-full">
                 <div className="flex items-center justify-between mb-4">
-                  <h3 className="text-lg font-semibold">{previewPreset.name}</h3>
+                  <h3 className="text-lg text-foreground font-semibold">{previewPreset.name}</h3>
                   <Button variant="destructive" size="sm" onClick={() => handleDelete(previewPreset.id)}>
                     <Trash2 className="w-4 h-4 mr-2"/> Delete
                   </Button>
@@ -130,7 +130,7 @@ export function PresetModal({ isOpen, onClose }: PresetModalProps) {
         
         {/* Footer */}
         <div className="p-4 border-t border-border flex justify-end gap-3 flex-shrink-0">
-          <Button variant="outline" onClick={onClose}>Cancel</Button>
+          <Button variant="secondary" onClick={onClose}>Cancel</Button>
           <Button onClick={handleSelect} disabled={!previewId}>Select Preset</Button>
         </div>
       </div>
