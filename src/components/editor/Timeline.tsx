@@ -95,8 +95,6 @@ export function Timeline({ videoRef }: { videoRef: React.RefObject<HTMLVideoElem
   const regionRefs = useRef<Map<string, HTMLDivElement | null>>(new Map());
   const animationFrameRef = useRef<number>();
   const { setPlaying } = useEditorStore();
-  // ADDED: A ref to signal the 'seeked' event listener to resume playback.
-  const resumePlaybackAfterSeekRef = useRef(false);
   const isDraggingRegionHiddenRef = useRef(false);
 
   const [draggingRegion, setDraggingRegion] = useState<{
@@ -132,33 +130,8 @@ export function Timeline({ videoRef }: { videoRef: React.RefObject<HTMLVideoElem
     if (videoRef.current) videoRef.current.currentTime = clampedTime;
   }, [duration, setCurrentTime, videoRef]);
 
-  // A single, persistent event listener for the 'seeked' event.
-  useEffect(() => {
-    const video = videoRef.current;
-    if (!video) return;
-
-    const handleSeeked = () => {
-      // If the flag is true, resume playback and reset the flag.
-      if (resumePlaybackAfterSeekRef.current) {
-        setPlaying(true);
-        resumePlaybackAfterSeekRef.current = false;
-      }
-    };
-
-    video.addEventListener('seeked', handleSeeked);
-    return () => {
-      video.removeEventListener('seeked', handleSeeked);
-    };
-  }, [videoRef, setPlaying]);
-
   const handleRegionMouseDown = useCallback((e: ReactMouseEvent<HTMLDivElement>, region: TimelineRegion, type: 'move' | 'resize-left' | 'resize-right') => {
     e.stopPropagation();
-
-    // Simplified logic. If playing, pause and set the flag to resume later.
-    if (useEditorStore.getState().isPlaying) {
-      setPlaying(false);
-      resumePlaybackAfterSeekRef.current = true;
-    }
 
     isDraggingRegionHiddenRef.current = false;
 
@@ -178,7 +151,7 @@ export function Timeline({ videoRef }: { videoRef: React.RefObject<HTMLVideoElem
 
     document.body.style.cursor = type === 'move' ? 'grabbing' : 'ew-resize';
     setDraggingRegion({ id: region.id, type, initialX: e.clientX, initialStartTime: region.startTime, initialDuration: region.duration });
-  }, [setSelectedRegionId, updateVideoTime, setPlaying]);
+  }, [setSelectedRegionId, updateVideoTime]);
 
   const formatTime = useCallback((seconds: number): string => {
     const hrs = Math.floor(seconds / 3600);
@@ -402,10 +375,6 @@ export function Timeline({ videoRef }: { videoRef: React.RefObject<HTMLVideoElem
         {/* Left trim handle */}
         <div className="w-8 shrink-0 h-full bg-card flex items-center justify-center transition-colors cursor-ew-resize select-none border-r border-border/80 hover:bg-accent/50"
           onMouseDown={() => {
-            if (useEditorStore.getState().isPlaying) {
-              setPlaying(false);
-              resumePlaybackAfterSeekRef.current = true;
-            }
             const state = useEditorStore.getState();
             const existingLeftTrim = Object.values(state.cutRegions).find(r => r.trimType === 'start');
             if (existingLeftTrim) {
@@ -426,11 +395,6 @@ export function Timeline({ videoRef }: { videoRef: React.RefObject<HTMLVideoElem
             const target = e.target as HTMLElement;
             if (target.closest('[data-region-id]')) {
               return;
-            }
-
-            if (useEditorStore.getState().isPlaying) {
-              setPlaying(false);
-              resumePlaybackAfterSeekRef.current = true;
             }
 
             const scrollableContainer = e.currentTarget as HTMLDivElement;
@@ -509,10 +473,6 @@ export function Timeline({ videoRef }: { videoRef: React.RefObject<HTMLVideoElem
         {/* Right trim handle */}
         <div className="w-8 shrink-0 h-full bg-card flex items-center justify-center transition-colors cursor-ew-resize select-none border-l border-border/80 hover:bg-accent/50"
           onMouseDown={() => {
-            if (useEditorStore.getState().isPlaying) {
-              setPlaying(false);
-              resumePlaybackAfterSeekRef.current = true;
-            }
             const state = useEditorStore.getState();
             const existingRightTrim = Object.values(state.cutRegions).find(r => r.trimType === 'end');
             if (existingRightTrim) {
