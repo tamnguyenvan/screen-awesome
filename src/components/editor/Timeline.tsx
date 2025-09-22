@@ -463,7 +463,7 @@ export function Timeline({ videoRef }: { videoRef: React.RefObject<HTMLVideoElem
 
             {/* Layer 4: Playhead (Always on top) */}
             {duration > 0 &&
-              <div ref={playheadRef} className="absolute top-0 bottom-0 z-40" style={{ transform: `translateX(${timeToPx(currentTime)}px)`, pointerEvents: "none" }}>
+              <div ref={playheadRef} className="absolute top-0 bottom-0 z-[200]" style={{ transform: `translateX(${timeToPx(currentTime)}px)`, pointerEvents: "none" }}>
                 <Playhead height={Math.floor((timelineRef.current?.clientHeight ?? 200) * 0.9)} isDragging={isDraggingPlayhead} onMouseDown={(e) => { e.stopPropagation(); setIsDraggingPlayhead(true); document.body.style.cursor = 'grabbing'; }} />
               </div>
             }
