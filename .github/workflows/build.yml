@@ -28,6 +28,16 @@ jobs:
         with:
           node-version: 20
 
+      - name: Install X11 and Xvfb
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y xorg-server xvfb libx11-dev mesa-utils
+
+      - name: Start Xvfb
+        run: |
+          Xvfb :99 -screen 0 1024x768x24 > /dev/null 2>&1 &
+          echo "DISPLAY=:99" >> $GITHUB_ENV
+
       - name: Download and setup FFmpeg
         run: |
           # 1. Tạo thư mục đích cho file nhị phân ffmpeg

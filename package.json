@@ -3,7 +3,7 @@
   "description": "Screen recording and editing app",
   "author": "Tam Nguyen",
   "private": true,
-  "version": "1.0.51",
+  "version": "1.0.52",
   "type": "module",
   "scripts": {
     "dev": "vite",
@@ -86,5 +86,14 @@
     "directories": {
       "buildResources": "public"
     }
+  },
+  "publish": [
+  {
+    "provider": "github",
+    "owner": "tamnguyenvan",
+    "repo": "screen-awesome",
+    "draft": false,
+    "releaseType": "release"
   }
+]
 }
