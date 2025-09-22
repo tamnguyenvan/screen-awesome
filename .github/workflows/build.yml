@@ -34,7 +34,7 @@ jobs:
           python3 -m pip install pynput pyinstaller
 
       - name: Install project dependencies
-        run: npm ci --legacy-peer-deps
+        run: npm ci --force
 
       - name: Build the application
         run: |
