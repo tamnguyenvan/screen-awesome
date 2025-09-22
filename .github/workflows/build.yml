@@ -20,6 +20,7 @@ jobs:
           python3 -m venv venv
           source venv/bin/activate
           python3 -m pip install pynput pyinstaller
+          echo "PYTHON_VENV=$PWD/venv" >> $GITHUB_ENV
 
       - uses: actions/setup-node@v3.5.0
         with:
@@ -27,8 +28,9 @@ jobs:
 
       - name: Install Modules and Publish build
         run: |
+          source ${{ env.PYTHON_VENV }}/bin/activate
           npm install --force --silent
-          GH_TOKEN=${{ secrets.GITHUB_TOKEN }} npm run publish-linux-app
+          GH_TOKEN=${{ secrets.GITHUB_TOKEN }} tsc && npm run build && electron-builder -l --publish always
 
   # windows:
   #   runs-on: windows-latest
