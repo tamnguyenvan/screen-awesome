@@ -1,61 +1,36 @@
-name: Build & Release
-
+name: Deploy Release
 on:
   push:
     tags:
       - 'v*.*.*'
-
+  workflow_dispatch:
 jobs:
-  release:
-    runs-on: ${{ matrix.os }}
-
-    strategy:
-      matrix:
-        os: [ubuntu-22.04, windows-latest]
-
+  linux:
+    runs-on: ubuntu-22.04
     steps:
-      - name: Check out Git repository
-        uses: actions/checkout@v3
+      - uses: actions/checkout@v3
 
-      - name: Set up Node.js
-        uses: actions/setup-node@v3
+      - uses: actions/setup-node@v3.5.0
         with:
           node-version: 20
 
-      - name: Set up Python
-        uses: actions/setup-python@v4
-        with:
-          python-version: '3.10'
-
-      - name: Install Python dependencies & PyInstaller
+      - name: Install Modules and Publish build
         run: |
-          python3 -m venv venv
-          source venv/bin/activate
-          python3 -m pip install pynput pyinstaller
+          npm install --force --silent
+          GH_TOKEN=${{ secrets.GITHUB_TOKEN }} npm run publish-linux-app
 
-      - name: Install Linux dependencies
-        if: runner.os == 'Linux'
-        run: |
-          sudo apt-get update
-          sudo apt-get install -y libx11-dev libxext-dev libxfixes-dev libxdamage-dev libxcomposite-dev libxtst-dev libxkbcommon-dev
+  # windows:
+  #   runs-on: windows-latest
+  #   steps:
+  #     - uses: actions/checkout@v3
 
-      - name: Install project dependencies
-        run: npm ci --legacy-peer-deps
+  #     - uses: actions/setup-node@v3.5.0
+  #       with:
+  #         node-version: 20
 
-      - name: Build the application
-        run: |
-          if [ "${{ runner.os }}" == "Linux" ]; then
-            xvfb-run npm run build
-          else
-            npm run build
-          fi
-        env:
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-
-      - name: Upload Artifacts
-        uses: actions/upload-artifact@v4
-        with:
-          name: ScreenAwesome-${{ matrix.os }}
-          path: |
-            dist/*.AppImage
-            dist/*.exe
+  #     - name: Install Modules and Publish build
+  #       env:
+  #         GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+  #       run: |
+  #         npm install
+  #         npm run publish-win-app
