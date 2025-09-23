@@ -12,18 +12,6 @@ jobs:
     steps:
       - uses: actions/checkout@v3
 
-      - name: Set up Python
-        uses: actions/setup-python@v4
-        with:
-          python-version: '3.10'
-
-      - name: Install Python dependencies & PyInstaller
-        run: |
-          python3 -m venv venv
-          source venv/bin/activate
-          python3 -m pip install pynput pyinstaller
-          echo "PYTHON_VENV=$PWD/venv" >> $GITHUB_ENV
-
       - uses: actions/setup-node@v3.5.0
         with:
           node-version: 20
