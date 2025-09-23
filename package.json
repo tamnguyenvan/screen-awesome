@@ -67,7 +67,10 @@
       "target": [
         "nsis"
       ],
-      "icon": "public/screenawesome-appicon.ico"
+      "icon": "public/screenawesome-appicon.ico",
+      "nsis": {
+        "artifactName": "${productName} Setup ${version}.${ext}"
+      }
     },
     "mac": {
       "target": [
@@ -81,7 +84,10 @@
         "AppImage"
       ],
       "icon": "public/screenawesome-appicon.png",
-      "category": "Utility"
+      "category": "Utility",
+      "appImage": {
+        "artifactName": "ScreenAwesome-${version}-linux-x64.${ext}"
+      }
     },
     "nsis": {
       "oneClick": false,
