@@ -40,6 +40,11 @@ jobs:
           curl -L https://github.com/tamnguyenvan/screen-awesome-assets/releases/download/release/ffmpeg -o ffmpeg
           mv ffmpeg binaries/linux/
           ls -l binaries/linux/ffmpeg
+      
+      - name: Make binaries executable
+        if: runner.os == 'Linux' || runner.os == 'macOS'
+        run: |
+          chmod +x binaries/linux/ffmpeg
 
       - name: Install Modules and Publish build
         run: |
