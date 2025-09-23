@@ -551,8 +551,11 @@ function cleanupAndSave(): Promise<void> {
       });
 
       // Send 'q' to ffmpeg to end it safely
-      ffmpeg.stdin.write('q');
-      ffmpeg.stdin.end();
+      // ffmpeg.stdin.write('q');
+      // ffmpeg.stdin.end();
+
+      log.info('Sending SIGINT to FFmpeg to gracefully terminate recording...');
+      ffmpeg.kill('SIGINT');
 
     } else {
       // If there's no ffmpeg process, resolve immediately
