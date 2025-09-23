@@ -28,10 +28,8 @@ jobs:
         with:
           node-version: 20
 
-      - name: Install X11 and Xvfb
-        run: |
-          sudo apt-get update
-          sudo apt-get install -y xorg-server xvfb libx11-dev mesa-utils
+      - name: Install Xvfb (for headless display)
+        run: sudo apt-get update && sudo apt-get install -y xvfb
 
       - name: Start Xvfb
         run: |
@@ -62,15 +60,8 @@ jobs:
           echo "Verifying ffmpeg location..."
           ls -l binaries/linux/ffmpeg
 
-      - name: Install Python dependencies
-        run: |
-          # Cài đặt các thư viện cần thiết để build tracker
-          python3 -m pip install pyinstaller pynput
-          npm run build:python
-
       - name: Install Modules and Publish build
         run: |
-          source ${{ env.PYTHON_VENV }}/bin/activate
           npm install --force --silent
           npm i -g electron-builder
           tsc && npm run build && electron-builder -l --publish always

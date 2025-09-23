@@ -30,6 +30,241 @@ import { spawn, ChildProcessWithoutNullStreams, exec } from 'node:child_process'
 import fs from 'node:fs/promises'
 import fsSync from 'node:fs'
 import Store from 'electron-store';
+import { EventEmitter } from 'node:events';
+import { createRequire } from 'node:module';
+const require = createRequire(import.meta.url);
+
+const MOUSE_RECORDING_FPS = 100;
+
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+let X11Module: any;
+if (process.platform === 'linux') {
+  try {
+    X11Module = require('x11');
+    log.info('[Main] Successfully loaded x11 module for Linux.');
+  } catch (e) {
+    log.error('[Main] Failed to load x11 module. Mouse tracking on Linux will be disabled.', e);
+  }
+}
+
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+let GlobalMouseEvents: any;
+if (process.platform === 'win32') {
+  try {
+    GlobalMouseEvents = require('global-mouse-events');
+    log.info('[Main] Successfully loaded global-mouse-events for Windows.');
+  } catch (e) {
+    log.error('[Main] Failed to load global-mouse-events. Mouse tracking on Windows will be disabled.', e);
+  }
+}
+
+
+// Interface chung để dễ quản lý
+interface IMouseTracker extends EventEmitter {
+  start(): void;
+  stop(): void;
+}
+
+// Lớp tracker cho Linux sử dụng node-x11
+class LinuxMouseTracker extends EventEmitter implements IMouseTracker {
+  private intervalId: NodeJS.Timeout | null = null; // THÊM DÒNG NÀY
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  private X: any | null = null;
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  private display: any | null = null;
+
+  async start() {
+    // Kiểm tra module trước khi bắt đầu
+    if (!X11Module) {
+      log.error("[MouseTracker-Linux] Cannot start because the x11 module was not loaded.");
+      return;
+    }
+    try {
+      const display = await this.createClient();
+      this.display = display;
+      this.X = display.client;
+      const root = display.screen[0].root;
+
+      // Yêu cầu X server gửi các sự kiện chuột
+      const queryPointer = () => {
+        // KIỂM TRA THÊM ĐỂ AN TOÀN HƠN
+        if (!this.X) {
+          return;
+        }
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        this.X.QueryPointer(root, (err: any, pointer: any) => {
+          if (err) {
+            log.error('[MouseTracker-Linux] Error querying pointer:', err);
+            return;
+          }
+
+          // eslint-disable-next-line @typescript-eslint/no-explicit-any
+          const timestamp = Date.now();
+          switch (pointer.keyMask) {
+            case 0:
+              this.emit('data', {
+                timestamp,
+                x: pointer.rootX,
+                y: pointer.rootY,
+                type: 'move',
+              });
+              break;
+            // left click, middle click, right click
+            case 256:
+            case 512:
+            case 1024:
+              this.emit('data', {
+                timestamp,
+                x: pointer.rootX,
+                y: pointer.rootY,
+                type: 'click',
+                button: this.mapButton(pointer.keyMask),
+                pressed: true,
+              });
+              break;
+          }
+
+        });
+      }
+
+      // Lưu lại ID của interval
+      this.intervalId = setInterval(queryPointer, 1000 / MOUSE_RECORDING_FPS);
+
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      this.X.on('error', (err: any) => {
+        log.error('[MouseTracker-Linux] X11 client error:', err);
+      });
+
+    } catch (err) {
+      log.error('[MouseTracker-Linux] Failed to start:', err);
+      // Có thể thông báo cho người dùng ở đây
+    }
+  }
+
+  stop() {
+    // Hủy interval trước khi đóng kết nối
+    if (this.intervalId) { // THÊM KHỐI LỆNH NÀY
+      clearInterval(this.intervalId);
+      this.intervalId = null;
+    }
+
+    this.X?.close(); // Dùng optional chaining
+    this.X = null;
+    this.display = null;
+    log.info('[MouseTracker-Linux] Stopped listening for mouse events.');
+  }
+
+  // Helper để tạo client bất đồng bộ
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  private createClient(): Promise<any> {
+    return new Promise((resolve, reject) => {
+      if (!X11Module) {
+        return reject(new Error("x11 module is not available."));
+      }
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      X11Module.createClient((err: Error, display: any) => {
+        if (err) {
+          return reject(err);
+        }
+        resolve(display);
+      });
+    });
+  }
+
+  // Map mã nút của X11 sang tên dễ hiểu
+  private mapButton(buttonCode: number): string {
+    switch (buttonCode) {
+      case 256: return 'left';
+      case 512: return 'middle';
+      case 1024: return 'right';
+      default: return 'unknown';
+    }
+  }
+}
+
+// Lớp tracker cho Windows sử dụng global-mouse-events
+class WindowsMouseTracker extends EventEmitter implements IMouseTracker {
+  private mouseEvents = new GlobalMouseEvents();
+
+  start() {
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    this.mouseEvents.on('mousemove', (event: any) => {
+      this.emit('data', {
+        timestamp: Date.now(),
+        x: event.x,
+        y: event.y,
+        type: 'move',
+      });
+    });
+
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    this.mouseEvents.on('mousedown', (event: any) => {
+      this.emit('data', {
+        timestamp: Date.now(),
+        x: event.x,
+        y: event.y,
+        type: 'click',
+        button: this.mapButton(event.button),
+        pressed: true,
+      });
+    });
+
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    this.mouseEvents.on('mouseup', (event: any) => {
+      this.emit('data', {
+        timestamp: Date.now(),
+        x: event.x,
+        y: event.y,
+        type: 'click',
+        button: this.mapButton(event.button),
+        pressed: false,
+      });
+    });
+
+    log.info('[MouseTracker-Windows] Started listening for mouse events.');
+  }
+
+  stop() {
+    // Thư viện này không có phương thức stop,
+    // nhưng việc gỡ bỏ listeners sẽ ngăn chặn việc phát sự kiện thêm.
+    this.mouseEvents.removeAllListeners();
+    log.info('[MouseTracker-Windows] Stopped listening for mouse events.');
+  }
+
+  // Map mã nút của thư viện sang tên dễ hiểu
+  private mapButton(buttonCode: number): string {
+    switch (buttonCode) {
+      case 1: return 'left';
+      case 2: return 'right'; // Lưu ý: thư viện này map nút phải là 2
+      case 3: return 'middle';
+      default: return 'unknown';
+    }
+  }
+}
+
+// Factory function để tạo tracker phù hợp
+function createMouseTracker(): IMouseTracker | null {
+  switch (process.platform) {
+    case 'linux':
+      if (!X11Module) {
+        log.error('[Main] x11 module is not available. Cannot track mouse on Linux.');
+        dialog.showErrorBox('Dependency Missing', 'Could not load the required module for mouse tracking on Linux. Recording will continue without mouse data.');
+        return null;
+      }
+      return new LinuxMouseTracker();
+    case 'win32':
+      if (!GlobalMouseEvents) {
+        log.error('[Main] global-mouse-events module is not available. Cannot track mouse on Windows.');
+        dialog.showErrorBox('Dependency Missing', 'Could not load the required module for mouse tracking on Windows. Recording will continue without mouse data.');
+        return null;
+      }
+      return new WindowsMouseTracker();
+    default:
+      log.warn(`Mouse tracking not supported on platform: ${process.platform}`);
+      // Không cần hiển thị dialog ở đây nữa vì startRecording sẽ không có tracker
+      return null;
+  }
+}
 
 const schema = {
   windowBounds: {
@@ -88,12 +323,12 @@ let savingWin: BrowserWindow | null = null;
 let selectionWin: BrowserWindow | null = null;
 let tray: Tray | null = null
 
-let pythonTracker: ChildProcessWithoutNullStreams | null = null
+let mouseTracker: IMouseTracker | null = null;
 let ffmpegProcess: ChildProcessWithoutNullStreams | null = null
 let metadataStream: fsSync.WriteStream | null = null
 
-let pythonDataBuffer = ''
 let firstChunkWritten = true
+let recordingStartTime: number = 0;
 
 let framesSentCount = 0; // Counter for frames actually sent during export
 
@@ -145,13 +380,13 @@ async function handleGetVideoFrame(_event: IpcMainInvokeEvent, { videoPath, time
     log.info(`[Main] Extracting frame from "${videoPath}" at ${time}s`);
 
     const command = `"${FFMPEG_PATH}" -ss ${time} -i "${videoPath}" -vframes 1 -f image2pipe -c:v png -`;
-    
+
     exec(command, { encoding: 'binary', maxBuffer: 10 * 1024 * 1024 }, (error, stdout, stderr) => {
       if (error) {
         log.error(`[Main] FFmpeg frame extraction error: ${stderr}`);
         return reject(error);
       }
-      
+
       const buffer = Buffer.from(stdout, 'binary');
       const base64Image = `data:image/png;base64,${buffer.toString('base64')}`;
       log.info(`[Main] Frame extracted successfully.`);
@@ -294,18 +529,10 @@ function createEditorWindow(videoPath: string, metadataPath: string, webcamVideo
 
 function cleanupAndSave(): Promise<void> {
   return new Promise((resolve) => {
-    // 1. Stop Python tracker and close metadata stream
-    if (pythonTracker) {
-      if (pythonDataBuffer.trim() && metadataStream) {
-        if (!firstChunkWritten) {
-          metadataStream.write(',\n')
-        }
-        metadataStream.write(pythonDataBuffer.trim())
-        firstChunkWritten = false
-        pythonDataBuffer = '' // Clear buffer
-      }
-      pythonTracker.kill()
-      pythonTracker = null
+    // 1. Stop Mouse tracker and close metadata stream (LOGIC MỚI)
+    if (mouseTracker) {
+      mouseTracker.stop(); // Dừng tracker
+      mouseTracker = null;
     }
 
     if (metadataStream) {
@@ -410,59 +637,38 @@ async function startActualRecording(inputArgs: string[], hasWebcam: boolean) {
 
   createCountdownWindow()
 
-  // Python setup (no changes needed here)
-  let pythonExecutable: string;
-  let scriptArgs: string[] = [];
-  if (app.isPackaged) {
-    const executableName = process.platform === 'win32' ? 'tracker.exe' : 'tracker';
-    pythonExecutable = path.join(process.resourcesPath, 'app.asar.unpacked', 'python', 'dist', 'tracker', executableName);
-  } else {
-    pythonExecutable = path.join(process.env.APP_ROOT, 'venv/bin/python');
-    const scriptPath = path.join(process.env.APP_ROOT, 'python/tracker.py');
-    scriptArgs = [scriptPath];
-  }
-
   setTimeout(() => {
     countdownWin?.close()
 
     // 1. Reset state
-    pythonDataBuffer = ''
     firstChunkWritten = true
+    recordingStartTime = Date.now(); // LƯU THỜI ĐIỂM BẮT ĐẦU
 
-    // 2. Start Python tracker
-    try {
-      pythonTracker = spawn(pythonExecutable, scriptArgs);
-    } catch (error) {
-      log.error('Failed to spawn Python process:', error);
-      return;
-    }
+    // 2. Start Mouse Tracker (LOGIC MỚI)
+    mouseTracker = createMouseTracker();
 
     // 3. Create metadata stream
     metadataStream = fsSync.createWriteStream(metadataPath)
     metadataStream.write('[\n')
 
-    pythonTracker.stdout.on('data', (data) => {
-      pythonDataBuffer += data.toString('utf-8')
-      const lines = pythonDataBuffer.split('\n')
-      const completeLines = lines.slice(0, -1)
-      pythonDataBuffer = lines[lines.length - 1]
-      if (completeLines.length > 0 && metadataStream) {
-        completeLines.forEach((line) => {
-          const trimmedLine = line.trim()
-          if (trimmedLine) {
-            if (!firstChunkWritten) {
-              metadataStream?.write(',\n')
-            }
-            metadataStream?.write(trimmedLine)
-            firstChunkWritten = false
+    // 4. Listen for data from the tracker
+    if (mouseTracker) {
+      mouseTracker.on('data', (data) => {
+        const relativeTimestampData = {
+          ...data,
+          timestamp: data.timestamp - recordingStartTime,
+        };
+        const jsonLine = JSON.stringify(relativeTimestampData);
+        if (metadataStream?.writable) {
+          if (!firstChunkWritten) {
+            metadataStream.write(',\n');
           }
-        })
-      }
-    })
-
-    pythonTracker.stderr.on('data', (data) => {
-      console.error(`Python Tracker Error: ${data}`)
-    })
+          metadataStream.write(jsonLine);
+          firstChunkWritten = false;
+        }
+      });
+      mouseTracker.start();
+    }
 
     // 4. Start FFmpeg with the provided arguments
     const finalArgs = [...inputArgs];
@@ -838,11 +1044,6 @@ async function handleStopRecording(screenVideoPath: string, webcamVideoPath: str
 async function handleCancelRecording(screenVideoPath: string, webcamVideoPath: string | undefined, metadataPath: string) {
   log.info('Cancelling recording and deleting files...');
 
-  // Stop processes without waiting for saving
-  if (pythonTracker) {
-    pythonTracker.kill();
-    pythonTracker = null;
-  }
   if (ffmpegProcess) {
     // Kill process without waiting for saving
     ffmpegProcess.kill('SIGKILL');
@@ -935,7 +1136,7 @@ async function handleReadFile(_event: IpcMainInvokeEvent, filePath: string): Pro
 
 app.on('window-all-closed', () => {
   renderWorker?.close();
-  if (pythonTracker || ffmpegProcess) {
+  if (ffmpegProcess) {
     cleanupAndSave();
   }
   if (process.platform !== 'darwin') {
@@ -1096,7 +1297,7 @@ async function handleExportStart(
       log.error(`[Main] Export failed: Output file is empty (FFmpeg exited with code 0 but no frames were rendered).`);
       // Delete empty output file here to avoid leaving it behind.
       if (fsSync.existsSync(outputPath)) {
-          fs.unlink(outputPath).then(() => log.info(`[Main] Deleted empty output file: ${outputPath}`));
+        fs.unlink(outputPath).then(() => log.info(`[Main] Deleted empty output file: ${outputPath}`));
       }
       window.webContents.send('export:complete', { success: false, error: 'No video frames were rendered. Ensure no "cut" regions cover the entire video.' });
     } else {
