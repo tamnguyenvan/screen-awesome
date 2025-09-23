@@ -3,7 +3,7 @@
   "description": "Screen recording and editing app",
   "author": "Tam Nguyen",
   "private": true,
-  "version": "1.0.59",
+  "version": "1.0.60",
   "type": "module",
   "scripts": {
     "dev": "vite",
@@ -68,9 +68,7 @@
         "nsis"
       ],
       "icon": "public/screenawesome-appicon.ico",
-      "nsis": {
-        "artifactName": "${productName} Setup ${version}.${ext}"
-      }
+      "artifactName": "${productName} Setup ${version}.${ext}"
     },
     "mac": {
       "target": [
