@@ -3,7 +3,7 @@
   "description": "Screen recording and editing app",
   "author": "Tam Nguyen",
   "private": true,
-  "version": "1.0.58",
+  "version": "1.0.59",
   "type": "module",
   "scripts": {
     "dev": "vite",
@@ -85,9 +85,7 @@
       ],
       "icon": "public/screenawesome-appicon.png",
       "category": "Utility",
-      "appImage": {
         "artifactName": "ScreenAwesome-${version}-linux-x64.${ext}"
-      }
     },
     "nsis": {
       "oneClick": false,
