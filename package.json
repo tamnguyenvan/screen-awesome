@@ -3,11 +3,12 @@
   "description": "Screen recording and editing app",
   "author": "Tam Nguyen",
   "private": true,
-  "version": "1.0.54",
+  "version": "1.0.55",
   "type": "module",
   "scripts": {
     "dev": "vite",
-    "build": "tsc && vite build && electron-builder",
+    "clean": "rimraf dist dist-electron build",
+    "build": "npm run clean && tsc && vite build && electron-builder -l --publish always",
     "lint": "eslint . --ext ts,tsx --report-unused-disable-directives --max-warnings 0",
     "preview": "vite preview"
   },
@@ -53,9 +54,11 @@
     "appId": "com.screenawesome.app",
     "productName": "ScreenAwesome",
     "files": [
-      "dist/",
-      "dist-electron/",
-      "binaries/"
+      "dist/**/*",
+      "dist-electron/**/*",
+      "binaries/**/*",
+      "!dist/*.{AppImage,yml,yaml,exe,dmg,zip}",
+      "!dist/*-unpacked/"
     ],
     "asarUnpack": [
       "binaries/**"
