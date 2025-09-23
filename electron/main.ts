@@ -70,8 +70,6 @@ class LinuxMouseTracker extends EventEmitter implements IMouseTracker {
   private intervalId: NodeJS.Timeout | null = null; // THÊM DÒNG NÀY
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   private X: any | null = null;
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  private display: any | null = null;
 
   async start() {
     // Kiểm tra module trước khi bắt đầu
@@ -81,7 +79,6 @@ class LinuxMouseTracker extends EventEmitter implements IMouseTracker {
     }
     try {
       const display = await this.createClient();
-      this.display = display;
       this.X = display.client;
       const root = display.screen[0].root;
 
@@ -143,14 +140,13 @@ class LinuxMouseTracker extends EventEmitter implements IMouseTracker {
 
   stop() {
     // Hủy interval trước khi đóng kết nối
-    if (this.intervalId) { // THÊM KHỐI LỆNH NÀY
+    if (this.intervalId) {
       clearInterval(this.intervalId);
       this.intervalId = null;
     }
 
     this.X?.close(); // Dùng optional chaining
     this.X = null;
-    this.display = null;
     log.info('[MouseTracker-Linux] Stopped listening for mouse events.');
   }
 
