@@ -76,11 +76,19 @@ export const Preview = memo(({ videoRef }: { videoRef: React.RefObject<HTMLVideo
     const updateTransform = () => {
       if (!frameContainerRef.current || !videoRef.current) return;
       const liveCurrentTime = videoRef.current.currentTime;
-      const { scale, translateX, translateY } = calculateZoomTransform(liveCurrentTime);
+      
+      // Use the new transform logic
+      const { scale, translateX, translateY, transformOrigin } = calculateZoomTransform(liveCurrentTime);
+
       const shadowOpacity = Math.min(frameStyles.shadow * 0.015, 0.4);
       const shadowBlur = frameStyles.shadow * 1.5;
-      frameContainerRef.current.style.filter = `drop-shadow(0px ${frameStyles.shadow}px ${shadowBlur}px rgba(0, 0, 0, ${shadowOpacity}))`;
-      frameContainerRef.current.style.transform = `scale(${scale}) translate(${translateX}%, ${translateY}%)`;
+      
+      const style = frameContainerRef.current.style;
+      style.filter = `drop-shadow(0px ${frameStyles.shadow}px ${shadowBlur}px rgba(0, 0, 0, ${shadowOpacity}))`;
+      
+      // Apply the new transform properties
+      style.transformOrigin = transformOrigin;
+      style.transform = `scale(${scale}) translate(${translateX}%, ${translateY}%)`;
     };
     updateTransform();
     const animate = () => {
@@ -223,13 +231,14 @@ export const Preview = memo(({ videoRef }: { videoRef: React.RefObject<HTMLVideo
             {/* Container receives transform (zoom/pan) and shadow. */}
             <div
               ref={frameContainerRef}
-              className="relative transition-transform duration-75"
+              className="relative"
               style={{
                 width: videoDisplayWidth,
                 height: videoDisplayHeight,
                 aspectRatio: videoDimensions.width / videoDimensions.height,
                 maxWidth: '100%',
                 maxHeight: '100%',
+                transition: 'transform 50ms linear',
               }}
             >
               {/* Enhanced Glassy Frame with premium glass effect */}
