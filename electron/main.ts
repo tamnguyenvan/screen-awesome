@@ -34,7 +34,11 @@ import { EventEmitter } from 'node:events';
 import { createRequire } from 'node:module';
 const require = createRequire(import.meta.url);
 
+// --- Constants for Main Process ---
 const MOUSE_RECORDING_FPS = 100;
+const GRAY_PLACEHOLDER_URL = 'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mN88A8AAsUB4/Yo4OQAAAAASUVORK5CYII=';
+const EXCLUDED_WINDOW_NAMES = ['Screen Awesome'];
+
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 let X11Module: any;
@@ -742,9 +746,6 @@ async function checkLinuxTools(): Promise<{ [key: string]: boolean }> {
   log.info('Linux tools check results:', results);
   return results;
 }
-
-const GRAY_PLACEHOLDER_URL = 'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mN88A8AAsUB4/Yo4OQAAAAASUVORK5CYII=';
-const EXCLUDED_WINDOW_NAMES = ['Screen Awesome'];
 
 async function handleGetDesktopSources() {
   if (process.platform === 'linux') {

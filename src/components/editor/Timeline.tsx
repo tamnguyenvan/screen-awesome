@@ -10,9 +10,7 @@ import { CutRegionBlock } from './timeline/CutRegionBlock';
 import { Playhead } from './timeline/Playhead';
 import { cn } from '../../lib/utils';
 import { Scissors } from 'lucide-react';
-
-const MINIMUM_REGION_DURATION = 0.1; // 100ms
-const REGION_DELETE_THRESHOLD = 0.05; // 50ms - Regions smaller than this on mouse up are deleted.
+import { TIMELINE } from '../../lib/constants';
 
 const calculateRulerInterval = (duration: number): { major: number; minor: number } => {
   if (duration <= 0) return { major: 1, minor: 0.5 };
@@ -197,7 +195,7 @@ export function Timeline({ videoRef }: { videoRef: React.RefObject<HTMLVideoElem
           const maxDuration = duration - draggingRegion.initialStartTime;
           const intendedDuration = draggingRegion.initialDuration + deltaTime;
 
-          if (intendedDuration < REGION_DELETE_THRESHOLD) {
+          if (intendedDuration < TIMELINE.REGION_DELETE_THRESHOLD) {
             element.style.display = 'none';
             isDraggingRegionHiddenRef.current = true;
             updateVideoTime(draggingRegion.initialStartTime);
@@ -213,7 +211,7 @@ export function Timeline({ videoRef }: { videoRef: React.RefObject<HTMLVideoElem
           const tentativeStartTime = Math.max(0, Math.min(draggingRegion.initialStartTime + deltaTime, initialEndTime));
           const newDuration = initialEndTime - tentativeStartTime;
 
-          if (newDuration < REGION_DELETE_THRESHOLD) {
+          if (newDuration < TIMELINE.REGION_DELETE_THRESHOLD) {
             element.style.display = 'none';
             isDraggingRegionHiddenRef.current = true;
             updateVideoTime(initialEndTime);
@@ -249,7 +247,7 @@ export function Timeline({ videoRef }: { videoRef: React.RefObject<HTMLVideoElem
             trimType: 'end', zIndex: 0
           };
         }
-        setPreviewCutRegion(newPreview.duration >= MINIMUM_REGION_DURATION ? newPreview : null);
+        setPreviewCutRegion(newPreview.duration >= TIMELINE.MINIMUM_REGION_DURATION ? newPreview : null);
       }
     };
 
@@ -280,18 +278,18 @@ export function Timeline({ videoRef }: { videoRef: React.RefObject<HTMLVideoElem
             finalUpdates.startTime = draggingRegion.initialStartTime;
             const intendedDuration = draggingRegion.initialDuration + deltaTime;
             const maxDuration = duration - draggingRegion.initialStartTime;
-            finalUpdates.duration = Math.max(MINIMUM_REGION_DURATION, Math.min(intendedDuration, maxDuration));
+            finalUpdates.duration = Math.max(TIMELINE.MINIMUM_REGION_DURATION, Math.min(intendedDuration, maxDuration));
           } else {
             const initialEndTime = draggingRegion.initialStartTime + draggingRegion.initialDuration;
             const newStartTime = Math.min(
-              initialEndTime - MINIMUM_REGION_DURATION,
+              initialEndTime - TIMELINE.MINIMUM_REGION_DURATION,
               Math.max(0, draggingRegion.initialStartTime + deltaTime)
             );
             finalUpdates.duration = initialEndTime - newStartTime;
             finalUpdates.startTime = newStartTime;
           }
 
-          if (finalUpdates.duration! < REGION_DELETE_THRESHOLD) {
+          if (finalUpdates.duration! < TIMELINE.REGION_DELETE_THRESHOLD) {
             deleteRegion(draggingRegion.id);
           } else {
             updateRegion(draggingRegion.id, finalUpdates);

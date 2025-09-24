@@ -1,10 +1,6 @@
 import { useEditorStore } from '../store/editorStore';
-
-const ZOOM_TRANSITION_DURATION = 0.8;
-
-function easeInOutCubic(t: number): number {
-  return t < 0.5 ? 4 * t * t * t : 1 - Math.pow(-2 * t + 2, 3) / 2;
-}
+import { ZOOM } from './constants';
+import { EASING_MAP } from './easing';
 
 function lerp(start: number, end: number, t: number): number {
   return start * (1 - t) + end * t;
@@ -15,7 +11,7 @@ function lerp(start: number, end: number, t: number): number {
  * Implements edge snapping. The output is a value from 0 to 1.
  */
 function getTransformOrigin(anchorX: number, anchorY: number): { x: number; y: number } {
-  const DEAD_ZONE = 0.4;
+  const DEAD_ZONE = ZOOM.TRANSFORM_ORIGIN_DEAD_ZONE;
   let originX: number;
   let originY: number;
 
@@ -46,8 +42,8 @@ export const calculateZoomTransform = (currentTime: number) => {
   }
 
   const { startTime, duration, zoomLevel, anchors } = activeRegion;
-  const zoomOutStartTime = startTime + duration - ZOOM_TRANSITION_DURATION;
-  const zoomInEndTime = startTime + ZOOM_TRANSITION_DURATION;
+  const zoomOutStartTime = startTime + duration - ZOOM.TRANSITION_DURATION;
+  const zoomInEndTime = startTime + ZOOM.TRANSITION_DURATION;
 
   // --- Phase 1: ZOOM-IN ---
   if (currentTime >= startTime && currentTime < zoomInEndTime) {
@@ -55,7 +51,7 @@ export const calculateZoomTransform = (currentTime: number) => {
     const targetOrigin = getTransformOrigin(firstAnchor.x, firstAnchor.y);
     
     // Animate scale from 1 to zoomLevel.
-    const t = easeInOutCubic((currentTime - startTime) / ZOOM_TRANSITION_DURATION);
+    const t = EASING_MAP[ZOOM.ZOOM_EASING as keyof typeof EASING_MAP]((currentTime - startTime) / ZOOM.TRANSITION_DURATION);
     const scale = lerp(1, zoomLevel, t);
 
     // During zoom-in, we don't translate. The zoom effect is created by
@@ -98,7 +94,7 @@ export const calculateZoomTransform = (currentTime: number) => {
     // Interpolation factor within the current segment
     const segmentDuration = endAnchor.time - startAnchor.time;
     const progressInSegment = segmentDuration > 0 ? (currentTime - startAnchor.time) / segmentDuration : 1;
-    const t = easeInOutCubic(Math.min(1, progressInSegment));
+    const t = EASING_MAP[ZOOM.PAN_EASING as keyof typeof EASING_MAP](Math.min(1, progressInSegment));
 
     // Calculate translation. We need to move the view from the fixedOrigin point
     // to the interpolated anchor point.
@@ -129,7 +125,7 @@ export const calculateZoomTransform = (currentTime: number) => {
     const fixedOrigin = getTransformOrigin(firstAnchor.x, firstAnchor.y);
     
     // Animate scale from zoomLevel back to 1.
-    const t = easeInOutCubic((currentTime - zoomOutStartTime) / ZOOM_TRANSITION_DURATION);
+    const t = EASING_MAP[ZOOM.ZOOM_EASING as keyof typeof EASING_MAP]((currentTime - zoomOutStartTime) / ZOOM.TRANSITION_DURATION);
     const scale = lerp(zoomLevel, 1, t);
     
     // We also need to reverse the pan to get back to the origin point
