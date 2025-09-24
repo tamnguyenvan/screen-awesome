@@ -440,6 +440,31 @@ export function RecorderPage() {
               />
             </div>
 
+            {/* Divider */}
+            <div className="w-px bg-border/50"></div>
+
+
+            <div style={{ WebkitAppRegion: 'no-drag' }}>
+              <Button
+                onClick={() => handleStart()}
+                disabled={isButtonDisabled}
+                variant="default"
+                size="icon"
+                className={cn(
+                  "h-12 w-12",
+                  "rounded-2xl",
+                  isButtonDisabled && showLinuxWarning && "bg-amber-500/20 hover:bg-amber-500/30 text-amber-300 border border-amber-500/30",
+                  isButtonDisabled && !showLinuxWarning && "opacity-50"
+                )}
+              >
+                {buttonIcon}
+              </Button>
+            </div>
+
+            {/* Divider */}
+            <div className="w-px bg-border/50"></div>
+
+
             {/* Monitor Selection */}
             <div className="flex items-center" style={{ WebkitAppRegion: 'no-drag' }}>
               <Select
@@ -464,9 +489,6 @@ export function RecorderPage() {
                 </SelectContent>
               </Select>
             </div>
-
-            {/* Divider */}
-            <div className="w-px bg-border/50"></div>
 
             {/* Controls */}
             <div className="flex items-center gap-3" style={{ WebkitAppRegion: 'no-drag' }}>
@@ -518,22 +540,6 @@ export function RecorderPage() {
                 </>
               )}
 
-              <div className="pl-2" style={{ WebkitAppRegion: 'no-drag' }}>
-                <Button
-                  onClick={() => handleStart()}
-                  disabled={isButtonDisabled}
-                  variant="default"
-                  size="icon"
-                  className={cn(
-                    "h-12 w-12",
-                    "rounded-2xl",
-                    isButtonDisabled && showLinuxWarning && "bg-amber-500/20 hover:bg-amber-500/30 text-amber-300 border border-amber-500/30",
-                    isButtonDisabled && !showLinuxWarning && "opacity-50"
-                  )}
-                >
-                  {buttonIcon}
-                </Button>
-              </div>
             </div>
           </div>
         </div>
