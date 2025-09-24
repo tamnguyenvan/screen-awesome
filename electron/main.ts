@@ -21,7 +21,7 @@ process.on('unhandledRejection', (reason, promise) => {
 });
 
 import {
-  app, BrowserWindow, ipcMain, Tray, Menu,
+  app, BrowserWindow, ipcMain, Tray, Menu, IpcMainEvent,
   nativeImage, protocol, IpcMainInvokeEvent, dialog, desktopCapturer, screen, shell
 } from 'electron'
 import { fileURLToPath, format as formatUrl } from 'node:url'
@@ -331,6 +331,7 @@ let firstChunkWritten = true
 let recordingStartTime: number = 0;
 
 let framesSentCount = 0; // Counter for frames actually sent during export
+let originalCursorSize: number | null = null;
 
 
 async function handleLoadPresets() {
@@ -338,6 +339,116 @@ async function handleLoadPresets() {
   const presets = store.get('presets');
   log.info('[Main] Presets loaded successfully.');
   return presets;
+}
+
+// Helper function to detect Desktop Environment on Linux
+function getLinuxDE(): 'GNOME' | 'KDE' | 'XFCE' | 'Unknown' {
+  log.info(`[Main] XDG_CURRENT_DESKTOP: ${process.env.XDG_CURRENT_DESKTOP}`);
+  const de = process.env.XDG_CURRENT_DESKTOP?.toUpperCase();
+  if (de?.includes('GNOME') || de?.includes('UNITY')) return 'GNOME';
+  if (de?.includes('KDE') || de?.includes('PLASMA')) return 'KDE';
+  if (de?.includes('XFCE')) return 'XFCE';
+  log.warn(`[Main] Unknown or unsupported desktop environment for cursor size: ${de}`);
+  return 'Unknown';
+}
+
+// IPC Handler to get current cursor size
+async function handleGetCursorSize(): Promise<number> {
+  if (process.platform !== 'linux') {
+    return 24; // Default size for non-Linux
+  }
+
+  const de = getLinuxDE();
+  let command: string;
+
+  switch (de) {
+    case 'GNOME':
+      command = 'gsettings get org.gnome.desktop.interface cursor-size';
+      break;
+    case 'KDE':
+      command = 'kreadconfig5 --file kcminputrc --group Mouse --key cursorSize';
+      break;
+
+    case 'XFCE':
+      command = 'xfconf-query -c xsettings -p /Gtk/CursorThemeSize';
+      break;
+    default:
+      return 24; // Default size for unknown DE
+  }
+
+  return new Promise((resolve) => {
+    exec(command, (error, stdout) => {
+      if (error) {
+        log.error(`[Main] Failed to get cursor size for ${de}:`, error);
+        resolve(24); // Resolve with default on error
+        return;
+      }
+      const size = parseInt(stdout.trim(), 10);
+      if (!isNaN(size)) {
+        log.info(`[Main] Current cursor size for ${de} is ${size}`);
+        resolve(size);
+      } else {
+        log.warn(`[Main] Could not parse cursor size from output: "${stdout.trim()}"`);
+        resolve(24); // Resolve with default if parsing fails
+      }
+    });
+  });
+}
+
+// IPC Handler to set cursor size
+function handleSetCursorSize(_event: IpcMainEvent, size: number) {
+  if (process.platform !== 'linux') {
+    return;
+  }
+  if (![24, 32, 48].includes(size)) {
+    log.error(`[Main] Invalid cursor size value received: ${size}`);
+    return;
+  }
+
+  const de = getLinuxDE();
+  let command: string;
+  log.info(`[Main] Setting cursor size to ${size} for ${de}`);
+
+  switch (de) {
+    case 'GNOME':
+      command = `gsettings set org.gnome.desktop.interface cursor-size ${size}`;
+      break;
+    case 'KDE':
+      command = `kwriteconfig5 --file kcminputrc --group Mouse --key cursorSize ${size}`;
+      break;
+    case 'XFCE':
+      command = `xfconf-query -c xsettings -p /Gtk/CursorThemeSize -s ${size}`;
+      break;
+    default:
+      log.warn(`[Main] Cannot set cursor size for unknown DE.`);
+      return;
+  }
+  log.info(`[Main] Setting cursor size for ${de} with command: ${command}`);
+  exec(command, (error, _stdout, stderr) => {
+    if (error) {
+      log.error(`[Main] Error setting cursor size for ${de}:`, error);
+      log.error(`[Main] Stderr: ${stderr}`);
+      dialog.showErrorBox('Cursor Size Error', `Failed to set cursor size. Please ensure command-line tools for your desktop environment are installed and accessible.\n\nError: ${stderr}`);
+    } else {
+      log.info(`[Main] Successfully set cursor size to ${size}`);
+    }
+  });
+}
+
+function restoreOriginalCursorSize() {
+  if (process.platform === 'linux' && originalCursorSize !== null) {
+    log.info(`[Main] Restoring original cursor size to: ${originalCursorSize}`);
+    handleSetCursorSize({} as IpcMainEvent, originalCursorSize);
+    originalCursorSize = null; // Reset for the next recording
+  }
+}
+
+function resetCursorSize() {
+  if (process.platform === 'linux') {
+    log.info('[Main] Resetting cursor size to 24')
+    handleSetCursorSize({} as IpcMainEvent, 24);
+    originalCursorSize = null; // Reset for the next recording
+  }
 }
 
 async function handleSavePresets(_event: IpcMainInvokeEvent, presets: unknown) {
@@ -877,6 +988,10 @@ async function handleStartRecording(_event: IpcMainInvokeEvent, options: {
         return { canceled: true, filePath: undefined };
       }
 
+      // Store original cursor size before recording
+      originalCursorSize = await handleGetCursorSize();
+      log.info(`[Main] Stored original cursor size: ${originalCursorSize}`);
+
       const primaryDisplay = screen.getPrimaryDisplay();
       const { width: screenWidth, height: screenHeight } = primaryDisplay.size;
 
@@ -1009,6 +1124,7 @@ async function handleStartRecording(_event: IpcMainInvokeEvent, options: {
 }
 
 async function handleStopRecording(screenVideoPath: string, webcamVideoPath: string | undefined, metadataPath: string) {
+  restoreOriginalCursorSize();
   log.info('Stopping recording, preparing to save...');
 
   // 1. Destroy tray icon so user cannot click it
@@ -1027,6 +1143,7 @@ async function handleStopRecording(screenVideoPath: string, webcamVideoPath: str
   savingWin?.close();
 
   // 5. Open editor window
+  resetCursorSize();
   if (!editorWin) {
     createEditorWindow(screenVideoPath, metadataPath, webcamVideoPath);
   } else {
@@ -1042,6 +1159,7 @@ async function handleStopRecording(screenVideoPath: string, webcamVideoPath: str
 }
 
 async function handleCancelRecording(screenVideoPath: string, webcamVideoPath: string | undefined, metadataPath: string) {
+  restoreOriginalCursorSize();
   log.info('Cancelling recording and deleting files...');
 
   if (ffmpegProcess) {
@@ -1077,7 +1195,7 @@ function createRecorderWindow() {
   const primaryDisplay = screen.getPrimaryDisplay();
   const { width: screenWidth, height: screenHeight } = primaryDisplay.workAreaSize;
 
-  const windowWidth = 800;
+  const windowWidth = 900;
   const windowHeight = 800;
 
   // Calculate position: Center horizontally, 1/4 from top
@@ -1135,6 +1253,8 @@ async function handleReadFile(_event: IpcMainInvokeEvent, filePath: string): Pro
 }
 
 app.on('window-all-closed', () => {
+  log.info('[Main] Received "window-all-closed" event. Closing app...');
+  resetCursorSize();
   renderWorker?.close();
   if (ffmpegProcess) {
     cleanupAndSave();
@@ -1404,6 +1524,10 @@ app.whenReady().then(() => {
   });
 
   ipcMain.handle('desktop:get-displays', handleGetDisplays);
+  // New cursor size handlers
+  ipcMain.handle('desktop:get-cursor-size', handleGetCursorSize);
+  ipcMain.on('desktop:set-cursor-size', handleSetCursorSize);
+
   ipcMain.handle('linux:check-tools', checkLinuxTools);
   ipcMain.handle('desktop:get-sources', handleGetDesktopSources);
   ipcMain.handle('recording:start', handleStartRecording)
