@@ -1065,14 +1065,13 @@ async function handleStartRecording(_event: IpcMainInvokeEvent, options: {
           log.error('Selected area is too small to record after adjustment.');
           recorderWin?.show(); // Show recorder again
           dialog.showErrorBox('Recording Error', 'The selected area is too small to record. Please select a larger area.');
-          // resolve({ canceled: true, filePath: undefined });
           resolve(undefined);
           return;
         }
 
         log.info(`Received selection geometry: ${JSON.stringify(geometry)}. Adjusted to: ${safeWidth}x${safeHeight}`);
 
-        resolve(geometry);
+        resolve({ ...geometry, width: safeWidth, height: safeHeight });
       });
 
       ipcMain.once('selection:cancel', () => {
@@ -1090,10 +1089,7 @@ async function handleStartRecording(_event: IpcMainInvokeEvent, options: {
     baseFfmpegArgs.push(
       '-f', 'x11grab',
       '-video_size', `${selectedGeometry.width}x${selectedGeometry.height}`,
-      '-i', `${display}+${selectedGeometry.x},${selectedGeometry.y}`,
-      '-c:v', 'libx264',
-      '-preset', 'ultrafast',
-      '-pix_fmt', 'yuv420p',
+      '-i', `${display}+${selectedGeometry.x},${selectedGeometry.y}`
     );
 
     return startActualRecording(baseFfmpegArgs, webcamInputAdded);
