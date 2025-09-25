@@ -21,7 +21,7 @@ process.on('unhandledRejection', (reason, promise) => {
 });
 
 import {
-  app, BrowserWindow, ipcMain, Tray, Menu,
+  app, BrowserWindow, ipcMain, Tray, Menu, IpcMainEvent,
   nativeImage, protocol, IpcMainInvokeEvent, dialog, desktopCapturer, screen, shell
 } from 'electron'
 import { fileURLToPath, format as formatUrl } from 'node:url'
@@ -34,7 +34,11 @@ import { EventEmitter } from 'node:events';
 import { createRequire } from 'node:module';
 const require = createRequire(import.meta.url);
 
+// --- Constants for Main Process ---
 const MOUSE_RECORDING_FPS = 100;
+const GRAY_PLACEHOLDER_URL = 'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mN88A8AAsUB4/Yo4OQAAAAASUVORK5CYII=';
+const EXCLUDED_WINDOW_NAMES = ['Screen Awesome'];
+
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 let X11Module: any;
@@ -327,6 +331,7 @@ let firstChunkWritten = true
 let recordingStartTime: number = 0;
 
 let framesSentCount = 0; // Counter for frames actually sent during export
+let originalCursorSize: number | null = null;
 
 
 async function handleLoadPresets() {
@@ -334,6 +339,116 @@ async function handleLoadPresets() {
   const presets = store.get('presets');
   log.info('[Main] Presets loaded successfully.');
   return presets;
+}
+
+// Helper function to detect Desktop Environment on Linux
+function getLinuxDE(): 'GNOME' | 'KDE' | 'XFCE' | 'Unknown' {
+  log.info(`[Main] XDG_CURRENT_DESKTOP: ${process.env.XDG_CURRENT_DESKTOP}`);
+  const de = process.env.XDG_CURRENT_DESKTOP?.toUpperCase();
+  if (de?.includes('GNOME') || de?.includes('UNITY')) return 'GNOME';
+  if (de?.includes('KDE') || de?.includes('PLASMA')) return 'KDE';
+  if (de?.includes('XFCE')) return 'XFCE';
+  log.warn(`[Main] Unknown or unsupported desktop environment for cursor size: ${de}`);
+  return 'Unknown';
+}
+
+// IPC Handler to get current cursor size
+async function handleGetCursorSize(): Promise<number> {
+  if (process.platform !== 'linux') {
+    return 24; // Default size for non-Linux
+  }
+
+  const de = getLinuxDE();
+  let command: string;
+
+  switch (de) {
+    case 'GNOME':
+      command = 'gsettings get org.gnome.desktop.interface cursor-size';
+      break;
+    case 'KDE':
+      command = 'kreadconfig5 --file kcminputrc --group Mouse --key cursorSize';
+      break;
+
+    case 'XFCE':
+      command = 'xfconf-query -c xsettings -p /Gtk/CursorThemeSize';
+      break;
+    default:
+      return 24; // Default size for unknown DE
+  }
+
+  return new Promise((resolve) => {
+    exec(command, (error, stdout) => {
+      if (error) {
+        log.error(`[Main] Failed to get cursor size for ${de}:`, error);
+        resolve(24); // Resolve with default on error
+        return;
+      }
+      const size = parseInt(stdout.trim(), 10);
+      if (!isNaN(size)) {
+        log.info(`[Main] Current cursor size for ${de} is ${size}`);
+        resolve(size);
+      } else {
+        log.warn(`[Main] Could not parse cursor size from output: "${stdout.trim()}"`);
+        resolve(24); // Resolve with default if parsing fails
+      }
+    });
+  });
+}
+
+// IPC Handler to set cursor size
+function handleSetCursorSize(_event: IpcMainEvent, size: number) {
+  if (process.platform !== 'linux') {
+    return;
+  }
+  if (![24, 32, 48].includes(size)) {
+    log.error(`[Main] Invalid cursor size value received: ${size}`);
+    return;
+  }
+
+  const de = getLinuxDE();
+  let command: string;
+  log.info(`[Main] Setting cursor size to ${size} for ${de}`);
+
+  switch (de) {
+    case 'GNOME':
+      command = `gsettings set org.gnome.desktop.interface cursor-size ${size}`;
+      break;
+    case 'KDE':
+      command = `kwriteconfig5 --file kcminputrc --group Mouse --key cursorSize ${size}`;
+      break;
+    case 'XFCE':
+      command = `xfconf-query -c xsettings -p /Gtk/CursorThemeSize -s ${size}`;
+      break;
+    default:
+      log.warn(`[Main] Cannot set cursor size for unknown DE.`);
+      return;
+  }
+  log.info(`[Main] Setting cursor size for ${de} with command: ${command}`);
+  exec(command, (error, _stdout, stderr) => {
+    if (error) {
+      log.error(`[Main] Error setting cursor size for ${de}:`, error);
+      log.error(`[Main] Stderr: ${stderr}`);
+      dialog.showErrorBox('Cursor Size Error', `Failed to set cursor size. Please ensure command-line tools for your desktop environment are installed and accessible.\n\nError: ${stderr}`);
+    } else {
+      log.info(`[Main] Successfully set cursor size to ${size}`);
+    }
+  });
+}
+
+function restoreOriginalCursorSize() {
+  if (process.platform === 'linux' && originalCursorSize !== null) {
+    log.info(`[Main] Restoring original cursor size to: ${originalCursorSize}`);
+    handleSetCursorSize({} as IpcMainEvent, originalCursorSize);
+    originalCursorSize = null; // Reset for the next recording
+  }
+}
+
+function resetCursorSize() {
+  if (process.platform === 'linux') {
+    log.info('[Main] Resetting cursor size to 24')
+    handleSetCursorSize({} as IpcMainEvent, 24);
+    originalCursorSize = null; // Reset for the next recording
+  }
 }
 
 async function handleSavePresets(_event: IpcMainInvokeEvent, presets: unknown) {
@@ -622,18 +737,16 @@ async function ensureDirectoryExists(dirPath: string) {
   }
 }
 
-async function startActualRecording(inputArgs: string[], hasWebcam: boolean) {
+async function startActualRecording(inputArgs: string[], hasWebcam: boolean, hasMic: boolean) {
   const recordingDir = path.join(process.env.HOME || process.env.USERPROFILE || '.', '.screenawesome');
   await ensureDirectoryExists(recordingDir);
   const baseName = `ScreenAwesome-recording-${Date.now()}`;
 
-  // Create separate paths for screen and webcam
   const screenVideoPath = path.join(recordingDir, `${baseName}-screen.mp4`);
   const webcamVideoPath = hasWebcam ? path.join(recordingDir, `${baseName}-webcam.mp4`) : undefined;
   const metadataPath = path.join(recordingDir, `${baseName}.json`);
 
   recorderWin?.hide()
-
   createCountdownWindow()
 
   setTimeout(() => {
@@ -669,21 +782,32 @@ async function startActualRecording(inputArgs: string[], hasWebcam: boolean) {
       mouseTracker.start();
     }
 
-    // 4. Start FFmpeg with the provided arguments
+    // 5. Start FFmpeg with the provided arguments
     const finalArgs = [...inputArgs];
+
+    // Xác định chỉ số của các luồng đầu vào. Mic luôn là 0 nếu có.
+    const micIndex = hasMic ? 0 : -1;
+    const webcamIndex = hasMic ? (hasWebcam ? 1 : -1) : (hasWebcam ? 0 : -1);
+    const screenIndex = (hasMic ? 1 : 0) + (hasWebcam ? 1 : 0);
+
+    // Ánh xạ luồng video từ màn hình
+    finalArgs.push('-map', `${screenIndex}:v`);
+    
+    // Ánh xạ luồng audio nếu có mic, và chỉ định codec audio
+    if (hasMic) {
+      finalArgs.push('-map', `${micIndex}:a`, '-c:a', 'aac', '-b:a', '192k');
+    }
+    
+    // Thêm các tham số đầu ra cho video màn hình
+    finalArgs.push('-c:v', 'libx264', '-preset', 'ultrafast', '-pix_fmt', 'yuv420p', screenVideoPath);
+
+    // Nếu có ghi webcam, thêm một đầu ra thứ hai cho nó
     if (hasWebcam) {
-      // Input 0 is webcam, Input 1 is screen.
-      // We want the main (first) file to be the screen recording.
       finalArgs.push(
-        '-map', '1:v', '-c:v', 'libx264', '-preset', 'ultrafast', '-pix_fmt', 'yuv420p', screenVideoPath,
-        '-map', '0:v', '-c:v', 'libx264', '-preset', 'ultrafast', '-pix_fmt', 'yuv420p', webcamVideoPath!
-      );
-    } else {
-      // Only one input (screen)
-      finalArgs.push(
-        '-map', '0:v', '-c:v', 'libx264', '-preset', 'ultrafast', '-pix_fmt', 'yuv420p', screenVideoPath
+        '-map', `${webcamIndex}:v`, '-c:v', 'libx264', '-preset', 'ultrafast', '-pix_fmt', 'yuv420p', webcamVideoPath!
       );
     }
+
     log.info(`FFmpeg path: ${FFMPEG_PATH}`)
     log.info(`Starting FFmpeg with args: ${finalArgs.join(' ')}`)
     ffmpegProcess = spawn(FFMPEG_PATH, finalArgs);
@@ -691,7 +815,7 @@ async function startActualRecording(inputArgs: string[], hasWebcam: boolean) {
       log.info(`FFmpeg: ${data}`)
     })
 
-    // 5. Create Tray Icon
+    // 6. Create Tray Icon
     const icon = nativeImage.createFromPath(path.join(process.env.VITE_PUBLIC, 'screenawesome-appicon-tray.png'))
     tray = new Tray(icon)
     const contextMenu = Menu.buildFromTemplate([
@@ -742,9 +866,6 @@ async function checkLinuxTools(): Promise<{ [key: string]: boolean }> {
   log.info('Linux tools check results:', results);
   return results;
 }
-
-const GRAY_PLACEHOLDER_URL = 'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mN88A8AAsUB4/Yo4OQAAAAASUVORK5CYII=';
-const EXCLUDED_WINDOW_NAMES = ['Screen Awesome'];
 
 async function handleGetDesktopSources() {
   if (process.platform === 'linux') {
@@ -839,35 +960,53 @@ async function handleStartRecording(_event: IpcMainInvokeEvent, options: {
   geometry?: { x: number, y: number, width: number, height: number };
   windowTitle?: string;
   displayId?: number;
+  mic?: { deviceId: string; deviceLabel: string; index: number };
   webcam?: { deviceId: string; deviceLabel: string; index: number };
 }) {
-  const { source, geometry, windowTitle, displayId, webcam } = options;
+  const { source, geometry, windowTitle, displayId, mic, webcam } = options;
   const display = process.env.DISPLAY || ':0.0';
   const baseFfmpegArgs: string[] = [];
+  let micInputAdded = false;
   let webcamInputAdded = false;
 
+  // --- Mic Input ---
+  if (mic) {
+    log.info('[Main] Adding microphone input:', mic.deviceLabel);
+    switch (process.platform) {
+      case 'linux':
+        // 'default' là lựa chọn an toàn cho nhiều hệ thống
+        baseFfmpegArgs.push('-f', 'alsa', '-i', 'default');
+        break;
+      case 'win32':
+        baseFfmpegArgs.push('-f', 'dshow', '-i', `audio=${mic.deviceLabel}`);
+        break;
+      case 'darwin':
+        // Định dạng là video:audio, ở đây chỉ có audio
+        baseFfmpegArgs.push('-f', 'avfoundation', '-i', `:${mic.index}`);
+        break;
+    }
+    micInputAdded = true;
+  }
+
   // --- Webcam Input ---
-  // This is the core fix. Use the correct identifier for each platform.
   if (webcam) {
     log.info('[Main] Adding webcam input:', webcam.deviceLabel);
     switch (process.platform) {
       case 'linux':
-        // On Linux, we need the device path, which we construct from the index.
-        // The first camera found is almost always /dev/video0, the second /dev/video1, etc.
         baseFfmpegArgs.push('-f', 'v4l2', '-i', `/dev/video${webcam.index}`);
         break;
       case 'win32':
-        // On Windows, dshow uses the human-readable device name (the label).
         baseFfmpegArgs.push('-f', 'dshow', '-i', `video=${webcam.deviceLabel}`);
         break;
       case 'darwin':
-        // On macOS, avfoundation uses the device index.
         baseFfmpegArgs.push('-f', 'avfoundation', '-i', `${webcam.index}:none`);
         break;
     }
     webcamInputAdded = true;
   }
 
+  // --- Source Logic ---
+  // Mỗi nhánh (if/else if/else) sẽ tự xây dựng args và return, không bị "fall-through"
   if (source === 'window') {
     if (process.platform === 'linux') {
       if (!geometry) {
@@ -876,16 +1015,17 @@ async function handleStartRecording(_event: IpcMainInvokeEvent, options: {
         return { canceled: true, filePath: undefined };
       }
 
+      originalCursorSize = await handleGetCursorSize();
+      log.info(`[Main] Stored original cursor size: ${originalCursorSize}`);
+
       const primaryDisplay = screen.getPrimaryDisplay();
       const { width: screenWidth, height: screenHeight } = primaryDisplay.size;
 
-      // Ensure all geometry values are integers
       const intX = Math.round(geometry.x);
       const intY = Math.round(geometry.y);
       let finalWidth = Math.round(geometry.width);
       let finalHeight = Math.round(geometry.height);
 
-      // Clamp dimensions to ensure the capture area is within screen bounds
       if (intX + finalWidth > screenWidth) {
         finalWidth = screenWidth - intX;
       }
@@ -893,7 +1033,6 @@ async function handleStartRecording(_event: IpcMainInvokeEvent, options: {
         finalHeight = screenHeight - intY;
       }
 
-      // Ensure width/height are even numbers for libx264 compatibility
       const safeWidth = Math.floor(finalWidth / 2) * 2;
       const safeHeight = Math.floor(finalHeight / 2) * 2;
 
@@ -903,66 +1042,51 @@ async function handleStartRecording(_event: IpcMainInvokeEvent, options: {
         return { canceled: true, filePath: undefined };
       }
 
-      if (process.platform === 'linux') {
-        log.info(`Starting WINDOW recording for geometry: ${safeWidth}x${safeHeight}+${intX},${intY}`);
-        const { x, y, width, height } = geometry;
-        baseFfmpegArgs.push('-f', 'x11grab', '-video_size', `${width}x${height}`, '-i', `${display}+${x},${y}`);
-      } else if (process.platform === 'win32') {
-        if (!windowTitle) {
-          log.error('Window recording started without a window title.');
-          dialog.showErrorBox('Recording Error', 'No window was selected for recording.');
-          return { canceled: true, filePath: undefined };
-        }
-        log.info(`Starting WINDOW recording for title: "${windowTitle}"`);
-        baseFfmpegArgs.push('-f', 'gdigrab', '-i', `title=${windowTitle}`);
-      } else if (process.platform === 'darwin') {
-        // const ffmpegArgs = [
-        //   '-f', 'avfoundation',
-        //   '-i', '1',
-        //   '-c:v', 'libx264',
-        //   '-preset', 'ultrafast',
-        //   '-pix_fmt', 'yuv420p',
-        // ];
-        // log.info('Starting SCREEN recording on macOS');
-      } else {
-        log.error('Window recording is not yet supported on this platform.');
-        dialog.showErrorBox('Feature Not Supported', 'Window recording is not yet implemented for this OS.');
+      log.info(`Starting WINDOW recording for geometry: ${safeWidth}x${safeHeight}+${intX},${intY}`);
+      baseFfmpegArgs.push('-f', 'x11grab', '-video_size', `${safeWidth}x${safeHeight}`, '-i', `${display}+${intX},${intY}`);
+
+    } else if (process.platform === 'win32') {
+      if (!windowTitle) {
+        log.error('Window recording started without a window title.');
+        dialog.showErrorBox('Recording Error', 'No window was selected for recording.');
         return { canceled: true, filePath: undefined };
       }
+      log.info(`Starting WINDOW recording for title: "${windowTitle}"`);
+      baseFfmpegArgs.push('-f', 'gdigrab', '-i', `title=${windowTitle}`);
+
+    } else { // macOS và các OS khác
+      log.error('Window recording is not yet supported on this platform.');
+      dialog.showErrorBox('Feature Not Supported', 'Window recording is not yet implemented for this OS.');
+      return { canceled: true, filePath: undefined };
     }
+
+    return startActualRecording(baseFfmpegArgs, webcamInputAdded, micInputAdded);
+
   } else if (source === 'area') {
-    // Hide the recorder and open selection window
     recorderWin?.hide();
     createSelectionWindow();
 
-    // Await for selection to be made
     const selectedGeometry = await new Promise<{ x: number; y: number; width: number; height: number } | undefined>((resolve) => {
       ipcMain.once('selection:complete', (_event, geometry: { x: number; y: number; width: number; height: number }) => {
         selectionWin?.close();
-
-        // Ensure width and height are even numbers for libx264 compatibility
         const safeWidth = Math.floor(geometry.width / 2) * 2;
         const safeHeight = Math.floor(geometry.height / 2) * 2;
 
-        // Check if the resulting size is too small to record
         if (safeWidth < 10 || safeHeight < 10) {
           log.error('Selected area is too small to record after adjustment.');
-          recorderWin?.show(); // Show recorder again
+          recorderWin?.show();
           dialog.showErrorBox('Recording Error', 'The selected area is too small to record. Please select a larger area.');
-          // resolve({ canceled: true, filePath: undefined });
           resolve(undefined);
           return;
         }
-
         log.info(`Received selection geometry: ${JSON.stringify(geometry)}. Adjusted to: ${safeWidth}x${safeHeight}`);
-
-        resolve(geometry);
+        resolve({ ...geometry, width: safeWidth, height: safeHeight });
       });
 
       ipcMain.once('selection:cancel', () => {
         log.info('Selection was cancelled.');
         selectionWin?.close();
-        recorderWin?.show(); // Show recorder again
+        recorderWin?.show();
         resolve(undefined);
       });
     });
@@ -974,21 +1098,18 @@ async function handleStartRecording(_event: IpcMainInvokeEvent, options: {
     baseFfmpegArgs.push(
       '-f', 'x11grab',
       '-video_size', `${selectedGeometry.width}x${selectedGeometry.height}`,
-      '-i', `${display}+${selectedGeometry.x},${selectedGeometry.y}`,
-      '-c:v', 'libx264',
-      '-preset', 'ultrafast',
-      '-pix_fmt', 'yuv420p',
+      '-i', `${display}+${selectedGeometry.x},${selectedGeometry.y}`
     );
 
-    return startActualRecording(baseFfmpegArgs, webcamInputAdded);
-  } else {
+    return startActualRecording(baseFfmpegArgs, webcamInputAdded, micInputAdded);
+
+  } else { // Source is 'fullscreen'
     const allDisplays = screen.getAllDisplays();
     const targetDisplay = allDisplays.find(d => d.id === displayId) || screen.getPrimaryDisplay();
     const { x, y, width, height } = targetDisplay.bounds;
     const safeWidth = Math.floor(width / 2) * 2;
     const safeHeight = Math.floor(height / 2) * 2;
 
-    // Add arguments to `baseFfmpegArgs`
     switch (process.platform) {
       case 'linux':
         baseFfmpegArgs.push('-f', 'x11grab', '-video_size', `${safeWidth}x${safeHeight}`, '-i', `${display}+${x},${y}`);
@@ -1002,12 +1123,13 @@ async function handleStartRecording(_event: IpcMainInvokeEvent, options: {
         break;
       }
     }
-  }
 
-  return startActualRecording(baseFfmpegArgs, webcamInputAdded);
+    return startActualRecording(baseFfmpegArgs, webcamInputAdded, micInputAdded);
+  }
 }
 
 async function handleStopRecording(screenVideoPath: string, webcamVideoPath: string | undefined, metadataPath: string) {
+  restoreOriginalCursorSize();
   log.info('Stopping recording, preparing to save...');
 
   // 1. Destroy tray icon so user cannot click it
@@ -1026,6 +1148,7 @@ async function handleStopRecording(screenVideoPath: string, webcamVideoPath: str
   savingWin?.close();
 
   // 5. Open editor window
+  resetCursorSize();
   if (!editorWin) {
     createEditorWindow(screenVideoPath, metadataPath, webcamVideoPath);
   } else {
@@ -1041,6 +1164,7 @@ async function handleStopRecording(screenVideoPath: string, webcamVideoPath: str
 }
 
 async function handleCancelRecording(screenVideoPath: string, webcamVideoPath: string | undefined, metadataPath: string) {
+  restoreOriginalCursorSize();
   log.info('Cancelling recording and deleting files...');
 
   if (ffmpegProcess) {
@@ -1076,7 +1200,7 @@ function createRecorderWindow() {
   const primaryDisplay = screen.getPrimaryDisplay();
   const { width: screenWidth, height: screenHeight } = primaryDisplay.workAreaSize;
 
-  const windowWidth = 800;
+  const windowWidth = 900;
   const windowHeight = 800;
 
   // Calculate position: Center horizontally, 1/4 from top
@@ -1134,6 +1258,8 @@ async function handleReadFile(_event: IpcMainInvokeEvent, filePath: string): Pro
 }
 
 app.on('window-all-closed', () => {
+  log.info('[Main] Received "window-all-closed" event. Closing app...');
+  resetCursorSize();
   renderWorker?.close();
   if (ffmpegProcess) {
     cleanupAndSave();
@@ -1403,6 +1529,10 @@ app.whenReady().then(() => {
   });
 
   ipcMain.handle('desktop:get-displays', handleGetDisplays);
+  // New cursor size handlers
+  ipcMain.handle('desktop:get-cursor-size', handleGetCursorSize);
+  ipcMain.on('desktop:set-cursor-size', handleSetCursorSize);
+
   ipcMain.handle('linux:check-tools', checkLinuxTools);
   ipcMain.handle('desktop:get-sources', handleGetDesktopSources);
   ipcMain.handle('recording:start', handleStartRecording)

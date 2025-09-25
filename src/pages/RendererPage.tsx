@@ -129,52 +129,64 @@ export function RendererPage() {
         log.info('[RendererPage] Received "render:start" event.', { exportSettings });
         if (!canvas || !video) throw new Error('Canvas or Video ref is not available.');
 
-        // --- Setup (kích thước, load video) ---
+        // --- Setup canvas and video elements ---
         const { resolution, fps } = exportSettings;
         const [ratioW, ratioH] = projectState.aspectRatio.split(':').map(Number);
         const baseHeight = RESOLUTIONS[resolution as keyof typeof RESOLUTIONS].height;
         let outputWidth = Math.round(baseHeight * (ratioW / ratioH));
         outputWidth = outputWidth % 2 === 0 ? outputWidth : outputWidth + 1;
         const outputHeight = baseHeight;
+
         canvas.width = outputWidth;
         canvas.height = outputHeight;
+
         const ctx = canvas.getContext('2d', { alpha: false });
         if (!ctx) throw new Error('Failed to get 2D context from canvas.');
+
+        // --- Load state and calculate dimensions ---
         useEditorStore.setState(projectState);
         const state = useEditorStore.getState();
         const { frameStyles, videoDimensions } = state;
+
         const paddingPercent = frameStyles.padding / 100;
         const availableWidth = outputWidth * (1 - 2 * paddingPercent);
         const availableHeight = outputHeight * (1 - 2 * paddingPercent);
+
         const videoAspectRatio = videoDimensions.width / videoDimensions.height;
         let frameWidth, frameHeight;
         if (availableWidth / availableHeight > videoAspectRatio) {
-          frameHeight = availableHeight;
-          frameWidth = frameHeight * videoAspectRatio;
+            frameHeight = availableHeight;
+            frameWidth = frameHeight * videoAspectRatio;
         } else {
-          frameWidth = availableWidth;
-          frameHeight = frameWidth / videoAspectRatio;
+            frameWidth = availableWidth;
+            frameHeight = frameWidth / videoAspectRatio;
         }
+
         const frameX = (outputWidth - frameWidth) / 2;
         const frameY = (outputHeight - frameHeight) / 2;
+
         const borderWidth = frameStyles.borderWidth;
         const innerWidth = frameWidth - (borderWidth * 2);
         const innerHeight = frameHeight - (borderWidth * 2);
         const innerX = borderWidth;
         const innerY = borderWidth;
         const innerRadius = Math.max(0, frameStyles.borderRadius - borderWidth);
+        
+        // --- Webcam setup ---
         const { webcamPosition, webcamStyles, isWebcamVisible } = projectState;
         const webcamHeight = outputHeight * (webcamStyles.size / 100);
-        const webcamWidth = webcamHeight;
-        const webcamRadius = webcamHeight * 0.35;
-        const padding = outputHeight * 0.02;
+        const webcamWidth = webcamHeight; // Assuming square webcam aspect ratio for circle
+        const webcamRadius = webcamHeight * 0.35; // Matches rounded-[35%]
+        const webcamPadding = outputHeight * 0.02;
         let webcamX, webcamY;
         switch (webcamPosition.pos) {
-          case 'top-left': webcamX = padding; webcamY = padding; break;
-          case 'top-right': webcamX = outputWidth - webcamWidth - padding; webcamY = padding; break;
-          case 'bottom-left': webcamX = padding; webcamY = outputHeight - webcamHeight - padding; break;
-          default: webcamX = outputWidth - webcamWidth - padding; webcamY = outputHeight - webcamHeight - padding; break;
+          case 'top-left': webcamX = webcamPadding; webcamY = webcamPadding; break;
+          case 'top-right': webcamX = outputWidth - webcamWidth - webcamPadding; webcamY = webcamPadding; break;
+          case 'bottom-left': webcamX = webcamPadding; webcamY = outputHeight - webcamHeight - webcamPadding; break;
+          default: /* bottom-right */ webcamX = outputWidth - webcamWidth - webcamPadding; webcamY = outputHeight - webcamHeight - webcamPadding; break;
         }
+
+
         const loadVideo = (videoElement: HTMLVideoElement, source: string, path: string): Promise<void> =>
           new Promise((resolve, reject) => {
             const onCanPlay = () => { videoElement.removeEventListener('canplaythrough', onCanPlay); videoElement.removeEventListener('error', onError); log.info(`[RendererPage] ${source} video is ready.`); resolve(); };
@@ -189,8 +201,6 @@ export function RendererPage() {
         if (projectState.webcamVideoPath && webcamVideo) { loadPromises.push(loadVideo(webcamVideo, 'Webcam video', projectState.webcamVideoPath)); }
         await Promise.all(loadPromises);
 
-        // --- BẮT ĐẦU LOGIC RENDER MỚI ---
-
         log.info('[RendererPage] Starting frame-by-frame rendering...');
         const cutRegionsArray = Object.values(projectState.cutRegions);
         const totalDuration = projectState.duration;
@@ -200,7 +210,6 @@ export function RendererPage() {
         for (let i = 0; i < totalFrames; i++) {
           const currentTime = i / fps;
 
-          // Bỏ qua các frame nằm trong vùng "cut"
           const isInCutRegion = cutRegionsArray.some(
             (r) => currentTime >= r.startTime && currentTime < (r.startTime + r.duration)
           );
@@ -208,7 +217,6 @@ export function RendererPage() {
             continue;
           }
 
-          // Chờ video seek đến đúng thời điểm
           await new Promise<void>(resolve => {
             const onSeeked = () => {
               video.removeEventListener('seeked', onSeeked);
@@ -219,54 +227,115 @@ export function RendererPage() {
             if (webcamVideo) webcamVideo.currentTime = currentTime;
           });
 
-          // Cập nhật state để tính toán transform chính xác
           state.setCurrentTime(currentTime);
 
-          // --- Logic vẽ canvas (giữ nguyên như cũ) ---
+          // RENDER LOGIC STARTS
+          // 1. Draw background
           await drawBackground(ctx, outputWidth, outputHeight, frameStyles.background);
+
+          // 2. Main video frame transform and drawing
           ctx.save();
-          ctx.translate(frameX + frameWidth / 2, frameY + frameHeight / 2);
-          const { scale, translateX, translateY } = calculateZoomTransform(currentTime);
+          
+          // Get ALL transform properties, including the crucial transformOrigin
+          const { scale, translateX, translateY, transformOrigin } = calculateZoomTransform(currentTime);
+
+          // Parse transformOrigin string (e.g., "50% 100%") into multipliers
+          const [originXStr, originYStr] = transformOrigin.split(' ');
+          const originXMul = parseFloat(originXStr) / 100;
+          const originYMul = parseFloat(originYStr) / 100;
+
+          // Calculate the origin point in pixels relative to the frame's top-left corner
+          const originPxX = originXMul * frameWidth;
+          const originPxY = originYMul * frameHeight;
+
+          // Apply all transforms relative to the frame's position
+          ctx.translate(frameX, frameY); // Move canvas to the top-left corner of the video frame's bounding box
+          ctx.translate(originPxX, originPxY); // Move to the transform origin
           ctx.scale(scale, scale);
-          ctx.translate((translateX / 100) * frameWidth, (translateY / 100) * frameHeight);
-          ctx.translate(-frameWidth / 2, -frameHeight / 2);
-          const { shadow, borderRadius } = frameStyles;
-          ctx.shadowColor = `rgba(0, 0, 0, ${Math.min(shadow * 0.015, 0.4)})`;
+          ctx.translate((translateX / 100) * frameWidth, (translateY / 100) * frameHeight); // Apply pan
+          ctx.translate(-originPxX, -originPxY); // Move back from the transform origin
+
+          // The canvas is now transformed. All subsequent drawing happens from (0,0) relative to the transformed frame.
+
+          // 3. Draw dynamic drop-shadow inside the transformed context
+          const { shadow, borderRadius, shadowColor } = frameStyles;
+          ctx.shadowColor = shadowColor;
           ctx.shadowBlur = shadow * 1.5;
           ctx.shadowOffsetY = shadow;
+
+          // Draw a shape to cast the shadow
           const frameOuterPath = new Path2D();
           frameOuterPath.roundRect(0, 0, frameWidth, frameHeight, borderRadius);
-          ctx.fillStyle = 'rgba(0,0,0,0.001)'; // Needed for shadow to apply
+          ctx.fillStyle = 'rgba(0,0,0,0.001)'; // Must fill to cast shadow
           ctx.fill(frameOuterPath);
-          ctx.shadowColor = 'transparent'; ctx.shadowBlur = 0; ctx.shadowOffsetY = 0;
+
+          // Reset shadow for subsequent drawings
+          ctx.shadowColor = 'transparent';
+          ctx.shadowBlur = 0;
+          ctx.shadowOffsetY = 0;
+          
+          // 4. Draw the "glassy" frame effects by clipping to the frame's path
           ctx.save();
           ctx.clip(frameOuterPath);
-          const gradient = ctx.createLinearGradient(0, 0, frameWidth, frameHeight);
-          gradient.addColorStop(0, 'rgba(255, 255, 255, 0.25)');
-          gradient.addColorStop(0.5, 'rgba(255, 255, 255, 0.15)');
-          gradient.addColorStop(1, 'rgba(255, 255, 255, 0.05)');
-          ctx.fillStyle = gradient;
+
+          // 4a. Main linear gradient
+          const linearGrad = ctx.createLinearGradient(0, 0, frameWidth, frameHeight); // 135deg is top-left to bottom-right
+          linearGrad.addColorStop(0, 'rgba(255, 255, 255, 0.25)');
+          linearGrad.addColorStop(0.5, 'rgba(255, 255, 255, 0.15)');
+          linearGrad.addColorStop(1, 'rgba(255, 255, 255, 0.05)');
+          ctx.fillStyle = linearGrad;
           ctx.fillRect(0, 0, frameWidth, frameHeight);
-          ctx.strokeStyle = 'rgba(255, 255, 255, 0.3)';
-          ctx.lineWidth = 2;
-          ctx.stroke(frameOuterPath);
-          ctx.restore();
+          
+          // 4b. Radial sheen gradient on top
+          const radialGrad = ctx.createRadialGradient(0, 0, 0, 0, 0, frameWidth * 0.7);
+          radialGrad.addColorStop(0, 'rgba(255, 255, 255, 0.2)');
+          radialGrad.addColorStop(0.5, 'transparent');
+          ctx.fillStyle = radialGrad;
+          ctx.fillRect(0, 0, frameWidth, frameHeight);
+
+          // 5. Draw the video itself, clipped to the inner area
           const videoClipPath = new Path2D();
           videoClipPath.roundRect(innerX, innerY, innerWidth, innerHeight, innerRadius);
           ctx.save();
           ctx.clip(videoClipPath);
           ctx.drawImage(video, innerX, innerY, innerWidth, innerHeight);
-          ctx.restore();
-          ctx.restore();
+          ctx.restore(); // Restore from video clip
+
+          // 6. Draw the outer 1px border on top
+          ctx.strokeStyle = 'rgba(255, 255, 255, 0.3)';
+          ctx.lineWidth = 1; 
+          ctx.stroke(frameOuterPath);
+
+          ctx.restore(); // Restore from outer frame clip
+          ctx.restore(); // Restore from main transform
+
+          // 7. Draw webcam (outside of main transform)
           if (isWebcamVisible && webcamVideo) {
             ctx.save();
             const webcamPath = new Path2D();
             webcamPath.roundRect(webcamX, webcamY, webcamWidth, webcamHeight, webcamRadius);
+            
+            // Apply webcam shadow
+            ctx.shadowColor = webcamStyles.shadowColor;
+            ctx.shadowBlur = webcamStyles.shadow * 1.5;
+            ctx.shadowOffsetY = webcamStyles.shadow;
+            
+            // Need to fill something to cast shadow, then draw image over it
+            ctx.fillStyle = 'rgba(0,0,0,0.001)';
+            ctx.fill(webcamPath);
+            
+            // Reset shadow before drawing video
+            ctx.shadowColor = 'transparent';
+            ctx.shadowBlur = 0;
+            ctx.shadowOffsetY = 0;
+
+            // Clip and draw webcam video
             ctx.clip(webcamPath);
             ctx.drawImage(webcamVideo, webcamX, webcamY, webcamWidth, webcamHeight);
             ctx.restore();
           }
-          // --- Kết thúc logic vẽ canvas ---
+
+          // RENDER LOGIC ENDS
 
           const imageData = ctx.getImageData(0, 0, outputWidth, outputHeight);
           const frameBuffer = Buffer.from(imageData.data.buffer);
@@ -280,7 +349,7 @@ export function RendererPage() {
 
       } catch (error) {
         log.error('[RendererPage] CRITICAL ERROR during render process:', error);
-        window.electronAPI.finishRender(); // Báo cho main process biết là đã có lỗi
+        window.electronAPI.finishRender(); // Tell main process we're done, even if it's an error
       }
     });
 

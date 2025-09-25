@@ -76,11 +76,20 @@ export const Preview = memo(({ videoRef }: { videoRef: React.RefObject<HTMLVideo
     const updateTransform = () => {
       if (!frameContainerRef.current || !videoRef.current) return;
       const liveCurrentTime = videoRef.current.currentTime;
-      const { scale, translateX, translateY } = calculateZoomTransform(liveCurrentTime);
-      const shadowOpacity = Math.min(frameStyles.shadow * 0.015, 0.4);
-      const shadowBlur = frameStyles.shadow * 1.5;
-      frameContainerRef.current.style.filter = `drop-shadow(0px ${frameStyles.shadow}px ${shadowBlur}px rgba(0, 0, 0, ${shadowOpacity}))`;
-      frameContainerRef.current.style.transform = `scale(${scale}) translate(${translateX}%, ${translateY}%)`;
+      
+      // Use the new transform logic
+      const { scale, translateX, translateY, transformOrigin } = calculateZoomTransform(liveCurrentTime);
+
+      // Apply shadow using the new shadowColor and shadow (for blur/offset) properties
+      const shadowBlur = frameStyles.shadow * 1.5; // Example: shadow value maps to blur
+      const shadowOffsetY = frameStyles.shadow; // Example: shadow value maps to offset Y
+      
+      const style = frameContainerRef.current.style;
+      style.filter = `drop-shadow(0px ${shadowOffsetY}px ${shadowBlur}px ${frameStyles.shadowColor})`; // Use shadowColor here
+      
+      // Apply the new transform properties
+      style.transformOrigin = transformOrigin;
+      style.transform = `scale(${scale}) translate(${translateX}%, ${translateY}%)`;
     };
     updateTransform();
     const animate = () => {
@@ -93,7 +102,7 @@ export const Preview = memo(({ videoRef }: { videoRef: React.RefObject<HTMLVideo
       updateTransform();
     }
     return () => cancelAnimationFrame(animationFrameId);
-  }, [isPlaying, videoRef, frameStyles.shadow]);
+  }, [isPlaying, videoRef, frameStyles.shadow, frameStyles.shadowColor]); // Added frameStyles.shadowColor to dependencies
 
   useEffect(() => {
     const video = videoRef.current;
@@ -189,13 +198,11 @@ export const Preview = memo(({ videoRef }: { videoRef: React.RefObject<HTMLVideo
   }), [frameStyles.borderRadius, frameStyles.borderWidth]);
 
   const webcamDynamicStyle = useMemo(() => {
-    const shadow = webcamStyles.shadow;
-    const shadowOpacity = Math.min(shadow * 0.015, 0.4);
-    const shadowBlur = shadow * 1.5;
-    const shadowY = shadow;
+    const shadowBlur = webcamStyles.shadow * 1.5; // Use webcamStyles.shadow for blur
+    const shadowOffsetY = webcamStyles.shadow; // Use webcamStyles.shadow for offset Y
     return {
       height: `${webcamStyles.size}%`,
-      filter: `drop-shadow(0px ${shadowY}px ${shadowBlur}px rgba(0, 0, 0, ${shadowOpacity}))`,
+      filter: `drop-shadow(0px ${shadowOffsetY}px ${shadowBlur}px ${webcamStyles.shadowColor})`, // Use webcamStyles.shadowColor here
     };
   }, [webcamStyles]);
 
@@ -223,13 +230,14 @@ export const Preview = memo(({ videoRef }: { videoRef: React.RefObject<HTMLVideo
             {/* Container receives transform (zoom/pan) and shadow. */}
             <div
               ref={frameContainerRef}
-              className="relative transition-transform duration-75"
+              className="relative"
               style={{
                 width: videoDisplayWidth,
                 height: videoDisplayHeight,
                 aspectRatio: videoDimensions.width / videoDimensions.height,
                 maxWidth: '100%',
                 maxHeight: '100%',
+                transition: 'transform 50ms linear',
               }}
             >
               {/* Enhanced Glassy Frame with premium glass effect */}

@@ -41,15 +41,25 @@ export const ZoomRegionBlock = memo(({
         <div className={cn("w-0.5 h-1/2 rounded-full", isSelected ? "bg-primary" : "bg-border")} />
       </div>
 
-      <div className="absolute inset-0 flex items-center justify-center pointer-events-none z-10">
-        <div className="flex items-center gap-2 px-2">
-          <Search className={cn("w-4 h-4", isSelected ? "text-primary" : "text-foreground/80")} />
-          <span className={cn(
-            "text-xs font-medium select-none", isSelected ? "text-primary" : "text-foreground/80")}>
+      <div className="absolute inset-0 flex items-center justify-center pointer-events-none z-10 px-2">
+        <div className="flex items-center gap-2 overflow-hidden">
+          <Search
+            className={cn(
+              "w-4 h-4 shrink-0",
+              isSelected ? "text-primary" : "text-foreground/80"
+            )}
+          />
+          <span
+            className={cn(
+              "text-xs font-medium select-none whitespace-nowrap overflow-hidden text-ellipsis",
+              isSelected ? "text-primary" : "text-foreground/80"
+            )}
+          >
             Zoom
           </span>
         </div>
       </div>
+
 
       <div
         className="absolute right-0 top-0 w-4 h-full cursor-ew-resize rounded-r-md flex items-center justify-center z-30"

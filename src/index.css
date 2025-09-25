@@ -13,6 +13,42 @@
   .btn-clean {
      @apply focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 ring-offset-background;
   }
+
+  /* macOS Style Color Picker */
+  .color-picker-container {
+    @apply flex items-center gap-2 w-full;
+  }
+
+  .color-picker-swatch {
+    @apply relative rounded-lg border-2 transition-all duration-200 flex-shrink-0;
+    width: 2rem;
+    height: 1.75rem;
+    border-color: var(--color-picker-border);
+    box-shadow: var(--color-picker-shadow);
+  }
+
+  .color-picker-swatch:hover {
+    border-color: var(--color-picker-border-hover);
+  }
+
+  .color-picker-swatch:focus-within {
+    @apply outline-none ring-2 ring-offset-1;
+    border-color: var(--ring);
+    box-shadow: 0 0 0 2px var(--color-picker-focus-ring);
+  }
+
+  .color-picker-input {
+    @apply h-8 px-2.5 text-sm rounded-md border transition-colors focus:outline-none focus:ring-1 focus:ring-ring;
+    background-color: var(--color-picker-input-bg);
+    border-color: var(--color-picker-input-border);
+    color: var(--foreground);
+    min-width: 6rem;
+  }
+
+  .color-picker-input:focus {
+    border-color: var(--ring);
+    box-shadow: 0 0 0 1px var(--ring);
+  }
   
   @keyframes fadeIn {
     from { opacity: 0; }
@@ -48,6 +84,12 @@
   --sidebar: hsl(0 0% 92%);
   --sidebar-foreground: hsl(0 0% 9%);
   --sidebar-border: hsl(0 0% 85%);
+  --color-picker-border: hsl(0 0% 80%);
+  --color-picker-border-hover: hsl(0 0% 70%);
+  --color-picker-focus-ring: hsla(217, 91%, 60%, 0.4);
+  --color-picker-shadow: 0 1px 3px rgba(0, 0, 0, 0.1);
+  --color-picker-input-bg: #f8f8f8;
+  --color-picker-input-border: #d2d2d2;
   --radius: 0.5rem; /* 8px */
   
   --font-sans: "Inter", -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif, "Apple Color Emoji", "Segoe UI Emoji", "Segoe UI Symbol";
@@ -55,7 +97,13 @@
 }
 
 .dark {
-  --background: hsl(0 0% 15%);
+  --color-picker-border: hsl(0 0% 30%);
+  --color-picker-border-hover: hsl(0 0% 40%);
+  --color-picker-focus-ring: hsla(217, 91%, 60%, 0.6);
+  --color-picker-shadow: 0 1px 3px rgba(0, 0, 0, 0.3);
+  --color-picker-input-bg: #2a2a2a;
+  --color-picker-input-border: #404040;
+  --background: hsl(0 0% 7%);
   --foreground: hsl(0 0% 98%);
   --card: hsl(0 0% 19%);
   --card-foreground: hsl(0 0% 98%);

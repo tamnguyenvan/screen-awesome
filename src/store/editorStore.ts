@@ -2,7 +2,7 @@ import { create } from 'zustand';
 import { immer } from 'zustand/middleware/immer';
 import { useShallow } from 'zustand/react/shallow';
 import { temporal } from 'zundo';
-import { WALLPAPERS } from '../lib/constants';
+import { WALLPAPERS, APP, TIMELINE, ZOOM } from '../lib/constants';
 import { shallow } from 'zustand/shallow';
 import {
   AspectRatio, Background, FrameStyles, Preset, ZoomRegion, CutRegion, TimelineRegion,
@@ -11,8 +11,6 @@ import {
   AnchorPoint
 } from '../types/store';
 
-
-const ZOOM_TRANSITION_DURATION = 0.8;
 
 // --- Types ---
 let debounceTimer: NodeJS.Timeout;
@@ -74,7 +72,7 @@ const initialProjectState = {
   webcamVideoUrl: null,
   isWebcamVisible: false,
   webcamPosition: { pos: 'bottom-right' } as WebcamPosition,
-  webcamStyles: { size: 30, shadow: 15 },
+  webcamStyles: { size: 30, shadow: 15, shadowColor: 'rgba(0, 0, 0, 0.4)' }, // Added shadowColor
 };
 
 const initialAppState = {
@@ -92,13 +90,10 @@ const initialFrameStyles: FrameStyles = {
     imageUrl: WALLPAPERS[0].imageUrl,
   },
   borderRadius: 16,
-  shadow: 5,
+  shadow: 5, // Controls blur and offset strength
+  shadowColor: 'rgba(0, 0, 0, 0.4)', // Default shadow color with 40% opacity
   borderWidth: 8,
 }
-
-const MINIMUM_REGION_DURATION = 0.1;
-
-const LAST_PRESET_ID_KEY = 'screenawesome_lastActivePresetId';
 
 const _calculateAnchors = (
   region: ZoomRegion,
@@ -110,10 +105,9 @@ const _calculateAnchors = (
   }
 
   const { width: videoWidth, height: videoHeight } = videoDimensions;
-  const ANCHOR_THRESHOLD = 0.4; // Ngưỡng khoảng cách (chuẩn hóa) để tạo anchor mới
-
-  const panStartTime = region.startTime + ZOOM_TRANSITION_DURATION;
-  const panEndTime = region.startTime + region.duration - ZOOM_TRANSITION_DURATION;
+  
+  const panStartTime = region.startTime + ZOOM.TRANSITION_DURATION;
+  const panEndTime = region.startTime + region.duration - ZOOM.TRANSITION_DURATION;
 
   // Lọc metadata chỉ trong khoảng thời gian lia camera
   const relevantMetadata = metadata.filter(m => m.timestamp >= panStartTime && m.timestamp <= panEndTime);
@@ -145,7 +139,7 @@ const _calculateAnchors = (
     const dist_x = Math.abs(currentPos.x - lastAnchor.x);
     const dist_y = Math.abs(currentPos.y - lastAnchor.y);
 
-    if (dist_x > ANCHOR_THRESHOLD || dist_y > ANCHOR_THRESHOLD) {
+    if (dist_x > ZOOM.ANCHOR_GENERATION_THRESHOLD || dist_y > ZOOM.ANCHOR_GENERATION_THRESHOLD) {
       const newAnchor = { time: dataPoint.timestamp, ...currentPos };
       anchors.push(newAnchor);
       lastAnchor = newAnchor;
@@ -247,22 +241,18 @@ export const useEditorStore = create(
             }
             mergedClickGroups.push(currentGroup);
           }
-
-          const PRE_CLICK_OFFSET = 0.9; // Bắt đầu zoom 0.9s trước khi click
-          const POST_CLICK_PADDING = 0.8; // Giữ zoom 0.8s sau click cuối
-          const MIN_ZOOM_DURATION = 3.0; // Thời lượng zoom tối thiểu
-
+          
           const newZoomRegions: Record<string, ZoomRegion> = mergedClickGroups.reduce((acc, group, index) => {
             const firstClick = group[0];
             const lastClick = group[group.length - 1];
 
-            const startTime = Math.max(0, firstClick.timestamp - PRE_CLICK_OFFSET);
-            const endTime = lastClick.timestamp + POST_CLICK_PADDING;
+            const startTime = Math.max(0, firstClick.timestamp - ZOOM.AUTO_ZOOM_PRE_CLICK_OFFSET);
+            const endTime = lastClick.timestamp + ZOOM.AUTO_ZOOM_POST_CLICK_PADDING;
 
             let duration = endTime - startTime;
             // Đảm bảo thời lượng tối thiểu, đặc biệt cho các cú click đơn
-            if (duration < MIN_ZOOM_DURATION) {
-              duration = MIN_ZOOM_DURATION;
+            if (duration < ZOOM.AUTO_ZOOM_MIN_DURATION) {
+              duration = ZOOM.AUTO_ZOOM_MIN_DURATION;
             }
 
             const id = `auto-zoom-${Date.now()}-${index}`;
@@ -272,7 +262,7 @@ export const useEditorStore = create(
               type: 'zoom',
               startTime,
               duration,
-              zoomLevel: 2.0,
+              zoomLevel: ZOOM.DEFAULT_LEVEL,
               easing: 'ease-in-out',
               targetX: (firstClick.x / videoWidth) - 0.5,
               targetY: (firstClick.y / videoHeight) - 0.5,
@@ -308,14 +298,14 @@ export const useEditorStore = create(
             const regionEndTime = region.startTime + region.duration;
             if (regionEndTime > duration) {
               const newDuration = duration - region.startTime;
-              region.duration = Math.max(MINIMUM_REGION_DURATION, newDuration);
+              region.duration = Math.max(TIMELINE.MINIMUM_REGION_DURATION, newDuration);
             }
           });
           Object.values(state.cutRegions).forEach(region => {
             const regionEndTime = region.startTime + region.duration;
             if (regionEndTime > duration) {
               const newDuration = duration - region.startTime;
-              region.duration = Math.max(MINIMUM_REGION_DURATION, newDuration);
+              region.duration = Math.max(TIMELINE.MINIMUM_REGION_DURATION, newDuration);
             }
           });
         }
@@ -395,8 +385,8 @@ export const useEditorStore = create(
           id,
           type: 'zoom',
           startTime: currentTime,
-          duration: 3,
-          zoomLevel: 2,
+          duration: ZOOM.DEFAULT_DURATION,
+          zoomLevel: ZOOM.DEFAULT_LEVEL,
           easing: 'ease-in-out',
           targetX: lastMousePos ? (lastMousePos.x / videoWidth) - 0.5 : 0,
           targetY: lastMousePos ? (lastMousePos.y / videoHeight) - 0.5 : 0,
@@ -407,7 +397,7 @@ export const useEditorStore = create(
         newRegion.anchors = _calculateAnchors(newRegion, metadata, videoDimensions);
 
         if (newRegion.startTime + newRegion.duration > duration) {
-          newRegion.duration = Math.max(MINIMUM_REGION_DURATION, duration - newRegion.startTime);
+          newRegion.duration = Math.max(TIMELINE.MINIMUM_REGION_DURATION, duration - newRegion.startTime);
         }
 
         set(state => {
@@ -433,7 +423,7 @@ export const useEditorStore = create(
         };
 
         if (newRegion.startTime + newRegion.duration > duration) {
-          newRegion.duration = Math.max(MINIMUM_REGION_DURATION, duration - newRegion.startTime);
+          newRegion.duration = Math.max(TIMELINE.MINIMUM_REGION_DURATION, duration - newRegion.startTime);
         }
 
         set(state => {
@@ -456,9 +446,9 @@ export const useEditorStore = create(
             Object.assign(region, updates);
             const videoDuration = state.duration;
             if (videoDuration > 0) {
-              region.startTime = Math.max(0, Math.min(region.startTime, videoDuration - MINIMUM_REGION_DURATION));
+              region.startTime = Math.max(0, Math.min(region.startTime, videoDuration - TIMELINE.MINIMUM_REGION_DURATION));
               const maxPossibleDuration = videoDuration - region.startTime;
-              region.duration = Math.max(MINIMUM_REGION_DURATION, Math.min(region.duration, maxPossibleDuration));
+              region.duration = Math.max(TIMELINE.MINIMUM_REGION_DURATION, Math.min(region.duration, maxPossibleDuration));
             }
 
             if (updates.startTime !== undefined || updates.duration !== undefined) {
@@ -568,11 +558,24 @@ export const useEditorStore = create(
             }
           }
           
+          // Ensure `shadowColor` property exists in old presets for backward compatibility
+          Object.values(loadedPresets).forEach(preset => {
+            if (preset.styles && preset.styles.shadowColor === undefined) {
+              preset.styles.shadowColor = initialFrameStyles.shadowColor;
+              presetsModified = true;
+            }
+            if (preset.webcamStyles && preset.webcamStyles.shadowColor === undefined) {
+              preset.webcamStyles.shadowColor = initialProjectState.webcamStyles.shadowColor;
+              presetsModified = true;
+            }
+          });
+
+
           if (presetsModified) {
             await window.electronAPI.setSetting('presets', loadedPresets);
           }
 
-          const lastUsedId = localStorage.getItem(LAST_PRESET_ID_KEY);
+          const lastUsedId = localStorage.getItem(APP.LAST_PRESET_ID_KEY);
           const activeId = (lastUsedId && loadedPresets[lastUsedId]) ? lastUsedId : defaultPreset!.id;
           
           set(state => {
@@ -594,8 +597,19 @@ export const useEditorStore = create(
             state.frameStyles = JSON.parse(JSON.stringify(preset.styles));
             state.aspectRatio = preset.aspectRatio;
             state.activePresetId = id;
+
+            // Apply webcam settings from preset if available
+            if (preset.webcamStyles) {
+              state.webcamStyles = JSON.parse(JSON.stringify(preset.webcamStyles));
+            }
+            if (preset.webcamPosition) {
+              state.webcamPosition = JSON.parse(JSON.stringify(preset.webcamPosition));
+            }
+            if (preset.isWebcamVisible !== undefined) {
+              state.isWebcamVisible = preset.isWebcamVisible;
+            }
           });
-          localStorage.setItem(LAST_PRESET_ID_KEY, id);
+          localStorage.setItem(APP.LAST_PRESET_ID_KEY, id);
         }
       },
 
@@ -609,21 +623,29 @@ export const useEditorStore = create(
           styles: JSON.parse(JSON.stringify(get().frameStyles)),
           aspectRatio: get().aspectRatio,
           isDefault: false, // New presets are never the default one
+
+          // Save current webcam settings with the preset
+          webcamPosition: JSON.parse(JSON.stringify(get().webcamPosition)),
+          webcamStyles: JSON.parse(JSON.stringify(get().webcamStyles)),
+          isWebcamVisible: get().isWebcamVisible,
         };
         set(state => {
           state.presets[id] = newPreset;
           state.activePresetId = id;
         });
-        localStorage.setItem(LAST_PRESET_ID_KEY, id);
+        localStorage.setItem(APP.LAST_PRESET_ID_KEY, id);
         window.electronAPI.setSetting('presets', get().presets);
       },
 
       updateActivePreset: () => {
-        const { activePresetId, presets, frameStyles, aspectRatio } = get();
+        const { activePresetId, presets, frameStyles, aspectRatio, webcamPosition, webcamStyles, isWebcamVisible } = get();
         if (activePresetId && presets[activePresetId]) {
           set(state => {
             state.presets[activePresetId].styles = JSON.parse(JSON.stringify(frameStyles));
             state.presets[activePresetId].aspectRatio = aspectRatio;
+            state.presets[activePresetId].webcamPosition = JSON.parse(JSON.stringify(webcamPosition));
+            state.presets[activePresetId].webcamStyles = JSON.parse(JSON.stringify(webcamStyles));
+            state.presets[activePresetId].isWebcamVisible = isWebcamVisible;
           });
           _persistPresets(get().presets);
         }
@@ -646,7 +668,7 @@ export const useEditorStore = create(
             } else {
               // This should theoretically never happen due to initializePresets
               state.activePresetId = null;
-              localStorage.removeItem(LAST_PRESET_ID_KEY);
+              localStorage.removeItem(APP.LAST_PRESET_ID_KEY);
             }
           }
         });

@@ -79,7 +79,7 @@ function ZoomSettings({ region }: { region: ZoomRegion }) {
           </div>
           <Slider
             min={1}
-            max={5}
+            max={3}
             step={0.1}
             value={region.zoomLevel}
             onChange={(value) => handleValueChange('zoomLevel', value)}

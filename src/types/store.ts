@@ -16,7 +16,8 @@ export interface FrameStyles {
   padding: number;
   background: Background;
   borderRadius: number;
-  shadow: number;
+  shadow: number; // Controls blur and offset strength (0-50)
+  shadowColor: string; // New: Hex or RGBA string for shadow color
   borderWidth: number;
 }
 
@@ -26,6 +27,9 @@ export interface Preset {
   styles: FrameStyles;
   aspectRatio: AspectRatio;
   isDefault?: boolean;
+  webcamStyles?: WebcamStyles;
+  webcamPosition?: WebcamPosition;
+  isWebcamVisible?: boolean;
 }
 
 export interface AnchorPoint {
@@ -74,7 +78,8 @@ export interface WebcamPosition {
 
 export interface WebcamStyles {
   size: number; // percentage of container height
-  shadow: number; // 0-50 for shadow strength
+  shadow: number; // 0-50 for shadow strength (blur/offset)
+  shadowColor: string; // New: Hex or RGBA string for webcam shadow color
 }
 
 

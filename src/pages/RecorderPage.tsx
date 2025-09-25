@@ -1,8 +1,8 @@
 import { useState, useEffect, useRef } from 'react';
 import {
   Mic, Webcam, Monitor, SquareDashed, Loader2,
-  RefreshCw, AlertTriangle, MousePointerClick, Video, AppWindowMac, X, GripVertical,
-  VideoOff
+  RefreshCw, AlertTriangle, MousePointerClick, Video, AppWindowMac, X, GripVertical, MousePointer,
+  VideoOff, MicOff
 } from 'lucide-react';
 import { Button } from '../components/ui/button';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '../components/ui/select';
@@ -34,6 +34,12 @@ type WebcamDevice = {
   deviceId: string;
   label: string;
   kind: 'videoinput';
+};
+
+type MicDevice = {
+  deviceId: string;
+  label: string;
+  kind: 'audioinput';
 };
 
 const LinuxToolsWarningPanel = ({ missingTools }: { missingTools: string[] }) => {
@@ -167,11 +173,25 @@ export function RecorderPage() {
   const [selectedDisplayId, setSelectedDisplayId] = useState<string>('');
   const [webcams, setWebcams] = useState<WebcamDevice[]>([]);
   const [selectedWebcamId, setSelectedWebcamId] = useState<string>('none');
+  const [mics, setMics] = useState<MicDevice[]>([]);
+  const [selectedMicId, setSelectedMicId] = useState<string>('none');
+  const [cursorSize, setCursorSize] = useState<number>(24);
   const webcamPreviewRef = useRef<HTMLVideoElement>(null);
   const webcamStreamRef = useRef<MediaStream | null>(null);
 
   useEffect(() => {
-    window.electronAPI.getPlatform().then(setPlatform);
+    // Get platform and cursor size
+    window.electronAPI.getPlatform().then(platform => {
+      setPlatform(platform);
+      if (platform === 'linux') {
+        // Load persisted size, default to 48 (2x)
+        const savedSize = localStorage.getItem('screenawesome_cursorSize');
+        const initialSize = savedSize ? parseInt(savedSize, 10) : 48;
+
+        setCursorSize(initialSize);
+        window.electronAPI.setCursorSize(initialSize); // Apply on startup
+      }
+    });
 
     // Get the list of displays
     window.electronAPI.getDisplays().then(fetchedDisplays => {
@@ -200,6 +220,7 @@ export function RecorderPage() {
 
   useEffect(() => {
     fetchWebcams();
+    fetchMics();
   }, []);
 
   const fetchWebcams = async () => {
@@ -217,6 +238,23 @@ export function RecorderPage() {
       setSelectedWebcamId('none');
     }
   };
+
+  const fetchMics = async () => {
+    try {
+      // Yêu cầu quyền truy cập audio
+      await navigator.mediaDevices.getUserMedia({ audio: true, video: false });
+    } catch (err) { console.warn("Could not get microphone permission:", err); }
+
+    const devices = (await navigator.mediaDevices.enumerateDevices()).filter(d => d.kind === 'audioinput') as MicDevice[];
+    setMics(devices);
+
+    const savedMicId = localStorage.getItem('screenawesome_selectedMicId');
+    if (savedMicId && devices.some(d => d.deviceId === savedMicId)) {
+      setSelectedMicId(savedMicId);
+    } else {
+      setSelectedMicId('none');
+    }
+  }
 
   useEffect(() => {
     const videoEl = webcamPreviewRef.current;
@@ -314,10 +352,25 @@ export function RecorderPage() {
         }
       }
 
+      let micPayload;
+      if (selectedMicId !== 'none' && mics.length > 0) {
+        const selectedDevice = mics.find(d => d.deviceId === selectedMicId);
+        const selectedDeviceIndex = mics.findIndex(d => d.deviceId === selectedMicId);
+
+        if (selectedDevice && selectedDeviceIndex > -1) {
+          micPayload = {
+            deviceId: selectedDevice.deviceId,
+            deviceLabel: selectedDevice.label,
+            index: selectedDeviceIndex
+          }
+        }
+      }
+
       const result = await window.electronAPI.startRecording({
         source,
         displayId: source === 'fullscreen' ? Number(selectedDisplayId) : undefined,
         webcam: webcamPayload,
+        mic: micPayload,
         ...options
       });
       if (result.canceled) {
@@ -338,7 +391,18 @@ export function RecorderPage() {
     setSelectedWebcamId(deviceId);
     localStorage.setItem('screenawesome_selectedWebcamId', deviceId);
   };
+  const handleMicChange = (deviceId: string) => {
+    setSelectedMicId(deviceId);
+    localStorage.setItem('screenawesome_selectedMicId', deviceId);
+  }
 
+  const handleCursorSizeChange = (newSize: number) => {
+    if (platform === 'linux') {
+      setCursorSize(newSize);
+      window.electronAPI.setCursorSize(newSize);
+      localStorage.setItem('screenawesome_cursorSize', newSize.toString());
+    }
+  };
 
   if (recordingState === 'recording') {
     return null;
@@ -413,13 +477,38 @@ export function RecorderPage() {
                 isActive={source === 'area'}
                 onClick={() => setSource('area')}
               />
-              <SourceButton
+              {/* <SourceButton
                 label="Window"
                 icon={<AppWindowMac size={16} />}
                 isActive={source === 'window'}
                 onClick={() => setSource('window')}
-              />
+              /> */}
             </div>
+
+            {/* Divider */}
+            <div className="w-px bg-border/50"></div>
+
+
+            <div style={{ WebkitAppRegion: 'no-drag' }}>
+              <Button
+                onClick={() => handleStart()}
+                disabled={isButtonDisabled}
+                variant="default"
+                size="icon"
+                className={cn(
+                  "h-12 w-12",
+                  "rounded-full",
+                  isButtonDisabled && showLinuxWarning && "bg-amber-500/20 hover:bg-amber-500/30 text-amber-300 border border-amber-500/30",
+                  isButtonDisabled && !showLinuxWarning && "opacity-50"
+                )}
+              >
+                {buttonIcon}
+              </Button>
+            </div>
+
+            {/* Divider */}
+            <div className="w-px bg-border/50"></div>
+
 
             {/* Monitor Selection */}
             <div className="flex items-center" style={{ WebkitAppRegion: 'no-drag' }}>
@@ -428,26 +517,21 @@ export function RecorderPage() {
                 onValueChange={setSelectedDisplayId}
                 disabled={source !== 'fullscreen'}
               >
-                <SelectTrigger
-                  className={cn(
-                    "w-28 h-11 border-border/50",
-                    source === 'fullscreen' ? "bg-background/60" : "bg-muted/50 cursor-not-allowed opacity-70"
-                  )}
-                >
-                  <SelectValue placeholder="Monitor" />
+                <SelectTrigger className="w-12 h-10 rounded-2xl">
+                  <SelectValue asChild>
+                    <Monitor size={18} className="text-primary" />
+                  </SelectValue>
                 </SelectTrigger>
+
                 <SelectContent>
                   {displays.map(display => (
                     <SelectItem key={display.id} value={String(display.id)}>
-                      {display.name.split(' (')[0].replace('Display', 'M')}{display.isPrimary ? ' ★' : ''}
+                      {display.name}
                     </SelectItem>
                   ))}
                 </SelectContent>
               </Select>
             </div>
-
-            {/* Divider */}
-            <div className="w-px bg-border/50"></div>
 
             {/* Controls */}
             <div className="flex items-center gap-3" style={{ WebkitAppRegion: 'no-drag' }}>
@@ -469,31 +553,47 @@ export function RecorderPage() {
                   </SelectContent>
                 </Select>
               </div>
-              <Button
-                variant="secondary"
-                size="icon"
-                disabled
-                className="h-10 w-10 opacity-50 rounded-2xl"
-              >
-                <Mic size={18} />
-              </Button>
 
-              <div className="pl-2" style={{ WebkitAppRegion: 'no-drag' }}>
-                <Button
-                  onClick={() => handleStart()}
-                  disabled={isButtonDisabled}
-                  variant="default"
-                  size="icon"
-                  className={cn(
-                    "h-12 w-12",
-                    "rounded-2xl",
-                    isButtonDisabled && showLinuxWarning && "bg-amber-500/20 hover:bg-amber-500/30 text-amber-300 border border-amber-500/30",
-                    isButtonDisabled && !showLinuxWarning && "opacity-50"
-                  )}
-                >
-                  {buttonIcon}
-                </Button>
+              <div className="flex items-center" style={{ WebkitAppRegion: 'no-drag' }}>
+                <Select value={selectedMicId} onValueChange={handleMicChange}>
+                  <SelectTrigger className="w-12 h-10 rounded-2xl">
+                    <SelectValue asChild>
+                      {selectedMicId !== 'none'
+                        ? <Mic size={18} className="text-primary" />
+                        : <MicOff size={18} className="text-muted-foreground" />
+                      }
+                    </SelectValue>
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="none">Don't record microphone</SelectItem>
+                    {mics.map(mic => (
+                      <SelectItem key={mic.deviceId} value={mic.deviceId}>{mic.label || `Microphone ${mics.indexOf(mic) + 1}`}</SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
               </div>
+
+              {platform === 'linux' && (
+                <>
+                  <div className="flex items-center gap-2" style={{ WebkitAppRegion: 'no-drag' }}>
+                    <MousePointer size={18} className="text-muted-foreground" />
+                    <Select
+                      value={String(cursorSize)}
+                      onValueChange={(value) => handleCursorSizeChange(Number(value))}
+                    >
+                      <SelectTrigger className="w-12 h-10 border-border/50 bg-background/60">
+                        <SelectValue />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="48">2x</SelectItem>
+                        <SelectItem value="32">1.5x</SelectItem>
+                        <SelectItem value="24">1x</SelectItem>
+                      </SelectContent>
+                    </Select>
+                  </div>
+                </>
+              )}
+
             </div>
           </div>
         </div>

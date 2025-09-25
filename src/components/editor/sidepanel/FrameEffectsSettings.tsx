@@ -1,6 +1,9 @@
+import { useMemo } from 'react';
 import { useEditorStore } from '../../../store/editorStore';
+import { ColorPicker } from '../../ui/color-picker';
 import Slider from '../../ui/slider';
 import { ControlGroup } from './ControlGroup';
+import { rgbaToHexAlpha, hexToRgb } from '../../../lib/utils';
 
 export function FrameEffectsSettings() {
   const { frameStyles, updateFrameStyle } = useEditorStore();
@@ -11,6 +14,31 @@ export function FrameEffectsSettings() {
     });
   };
 
+  // Memoize the conversion to prevent re-calculating on every render
+  const { hex: shadowHex, alpha: shadowAlpha } = useMemo(
+    () => rgbaToHexAlpha(frameStyles.shadowColor),
+    [frameStyles.shadowColor]
+  );
+
+  const handleShadowColorChange = (newHex: string) => {
+    const rgb = hexToRgb(newHex);
+    if (rgb) {
+      // Re-combine the new color with the existing alpha value
+      const newRgbaColor = `rgba(${rgb.r}, ${rgb.g}, ${rgb.b}, ${shadowAlpha})`;
+      updateFrameStyle({ shadowColor: newRgbaColor });
+    }
+  };
+
+  const handleShadowOpacityChange = (newAlpha: number) => {
+    const rgb = hexToRgb(shadowHex);
+    if (rgb) {
+      // Re-combine the existing color with the new alpha value
+      const newRgbaColor = `rgba(${rgb.r}, ${rgb.g}, ${rgb.b}, ${newAlpha})`;
+      updateFrameStyle({ shadowColor: newRgbaColor });
+    }
+  };
+
+
   return (
     <>
       <ControlGroup
@@ -18,10 +46,10 @@ export function FrameEffectsSettings() {
         description="Space around your video content"
       >
         <div>
-          <label className="flex items-center justify-between text-sm font-medium text-sidebar-foreground mb-4">
+          <label className="flex items-center justify-between text-sm font-medium text-sidebar-foreground mb-3">
             <div className="flex items-center gap-2">
-              <svg xmlns="http://www.w3.org/2000/svg" height="24px" viewBox="0 -960 960 960" width="24px" fill="currentColor">
-                <path d="M320-600q17 0 28.5-11.5T360-640q0-17-11.5-28.5T320-680q-17 0-28.5 11.5T280-640q0 17 11.5 28.5T320-600Zm160 0q17 0 28.5-11.5T520-640q0-17-11.5-28.5T480-680q-17 0-28.5 11.5T440-640q0 17 11.5 28.5T480-600Zm160 0q17 0 28.5-11.5T680-640q0-17-11.5-28.5T640-680q-17 0-28.5 11.5T600-640q0 17 11.5 28.5T640-600ZM200-120q-33 0-56.5-23.5T120-200v-560q0-33 23.5-56.5T200-840h560q33 0 56.5 23.5T840-760v560q0 33-23.5 56.5T760-120H200Zm0-80h560v-560H200v560Zm0-560v560-560Z"/>
+              <svg xmlns="http://www.w3.org/2000/svg" height="16px" viewBox="0 -960 960 960" width="24px" fill="currentColor" className="text-primary">
+                <path d="M320-600q17 0 28.5-11.5T360-640q0-17-11.5-28.5T320-680q-17 0-28.5 11.5T280-640q0 17 11.5 28.5T320-600Zm160 0q17 0 28.5-11.5T520-640q0-17-11.5-28.5T480-680q-17 0-28.5 11.5T440-640q0 17 11.5 28.5T480-600Zm160 0q17 0 28.5-11.5T680-640q0-17-11.5-28.5T640-680q-17 0-28.5 11.5T600-640q0 17 11.5 28.5T640-600ZM200-120q-33 0-56.5-23.5T120-200v-560q0-33 23.5-56.5T200-840h560q33 0 56.5 23.5T840-760v560q0 33-23.5 56.5T760-120H200Zm0-80h560v-560H200v560Zm0-560v560-560Z" />
               </svg>
               <span>Padding</span>
             </div>
@@ -40,12 +68,13 @@ export function FrameEffectsSettings() {
         label="Frame Effects"
         description="Visual enhancements for your video"
       >
-        <div className="space-y-8">
+        <div className="space-y-6">
+          {/* Corner Radius */}
           <div>
-            <label className="flex items-center justify-between text-sm font-medium text-sidebar-foreground mb-4">
+            <label className="flex items-center justify-between text-sm font-medium text-sidebar-foreground mb-3">
               <div className="flex items-center gap-2">
-                <svg xmlns="http://www.w3.org/2000/svg" height="24px" viewBox="0 -960 960 960" width="24px" fill="currentColor">
-                  <path d="M120-120v-80h80v80h-80Zm0-160v-80h80v80h-80Zm0-160v-80h80v80h-80Zm0-160v-80h80v80h-80Zm0-160v-80h80v80h-80Zm160 640v-80h80v80h-80Zm0-640v-80h80v80h-80Zm160 640v-80h80v80h-80Zm160 0v-80h80v80h-80Zm160 0v-80h80v80h-80Zm0-160v-80h80v80h-80Zm80-160h-80v-200q0-50-35-85t-85-35H440v-80h200q83 0 141.5 58.5T840-640v200Z"/>
+                <svg xmlns="http://www.w3.org/2000/svg" height="16px" viewBox="0 -960 960 960" width="16px" fill="currentColor" className="text-primary">
+                  <path d="M120-120v-80h80v80h-80Zm0-160v-80h80v80h-80Zm0-160v-80h80v80h-80Zm0-160v-80h80v80h-80Zm0-160v-80h80v80h-80Zm160 640v-80h80v80h-80Zm0-640v-80h80v80h-80Zm160 640v-80h80v80h-80Zm160 0v-80h80v80h-80Zm160 0v-80h80v80h-80Zm0-160v-80h80v80h-80Zm80-160h-80v-200q0-50-35-85t-85-35H440v-80h200q83 0 141.5 58.5T840-640v200Z" />
                 </svg>
                 <span>Corner Radius</span>
               </div>
@@ -59,29 +88,61 @@ export function FrameEffectsSettings() {
             />
           </div>
 
+          {/* Shadow */}
           <div>
-            <label className="flex items-center justify-between text-sm font-medium text-sidebar-foreground mb-4">
-              <div className="flex items-center gap-2">
-                <svg xmlns="http://www.w3.org/2000/svg" height="24px" viewBox="0 -960 960 960" width="24px" fill="currentColor">
-                  <path d="M160-80q-33 0-56.5-23.5T80-160v-480q0-33 23.5-56.5T160-720h80v-80q0-33 23.5-56.5T320-880h480q33 0 56.5 23.5T880-800v480q0 33-23.5 56.5T800-240h-80v80q0 33-23.5 56.5T640-80H160Zm160-240h480v-480H320v480Z"/>
-                </svg>
-                <span>Drop Shadow</span>
+            <div className="flex items-center gap-2 text-sm font-medium text-sidebar-foreground mb-4">
+              <svg xmlns="http://www.w3.org/2000/svg" height="16px" viewBox="0 -960 960 960" width="16px" fill="currentColor" className="text-primary">
+                <path d="M160-80q-33 0-56.5-23.5T80-160v-480q0-33 23.5-56.5T160-720h80v-80q0-33 23.5-56.5T320-880h480q33 0 56.5 23.5T880-800v480q0 33-23.5 56.5T800-240h-80v80q0 33-23.5 56.5T640-80H160Zm160-240h480v-480H320v480Z" />
+              </svg>
+              <span>Shadow</span>
+            </div>
+
+            <div className="grid grid-cols-1 gap-4">
+              <div>
+                <div className="flex items-center justify-between mb-2">
+                  <span className="text-sm text-muted-foreground">Size</span>
+                  <span className="text-xs text-muted-foreground font-medium">{frameStyles.shadow}px</span>
+                </div>
+                <Slider
+                  min={0}
+                  max={50}
+                  step={1}
+                  value={frameStyles.shadow}
+                  onChange={(value) => handleStyleChange("shadow", value)}
+                />
               </div>
-              <span className="text-xs text-muted-foreground">{frameStyles.shadow}px</span>
-            </label>
-            <Slider
-              min={0}
-              max={50}
-              value={frameStyles.shadow}
-              onChange={(value) => handleStyleChange("shadow", value)}
-            />
+
+              <div className="grid grid-cols-2 gap-4">
+                <div>
+                  <ColorPicker
+                    label="Color"
+                    value={shadowHex}
+                    onChange={handleShadowColorChange}
+                  />
+                </div>
+                <div>
+                  <div className="flex items-center justify-between mb-2">
+                    <span className="text-sm text-muted-foreground">Opacity</span>
+                    <span className="text-xs text-muted-foreground font-medium">{Math.round(shadowAlpha * 100)}%</span>
+                  </div>
+                  <Slider
+                    min={0}
+                    max={1}
+                    step={0.01}
+                    value={shadowAlpha}
+                    onChange={handleShadowOpacityChange}
+                  />
+                </div>
+              </div>
+            </div>
           </div>
 
+          {/* Border Thickness */}
           <div>
-            <label className="flex items-center justify-between text-sm font-medium text-sidebar-foreground mb-4">
+            <label className="flex items-center justify-between text-sm font-medium text-sidebar-foreground mb-3">
               <div className="flex items-center gap-2">
-                <svg xmlns="http://www.w3.org/2000/svg" height="24px" viewBox="0 -960 960 960" width="24px" fill="currentColor">
-                  <path d="M120-120v-720h720v720H120Zm640-80v-240H520v240h240Zm0-560H520v240h240v-240Zm-560 0v240h240v-240H200Zm0 560h240v-240H200v240Z"/>
+                <svg xmlns="http://www.w3.org/2000/svg" height="16px" viewBox="0 -960 960 960" width="16px" fill="currentColor" className="text-primary">
+                  <path d="M120-120v-720h720v720H120Zm640-80v-240H520v240h240Zm0-560H520v240h240v-240Zm-560 0v240h240v-240H200Zm0 560h240v-240H200v240Z" />
                 </svg>
                 <span>Border Thickness</span>
               </div>
