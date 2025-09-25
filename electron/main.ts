@@ -307,6 +307,13 @@ type DisplayInfo = {
   isPrimary: boolean;
 }
 
+// Interface for the current recording session
+interface RecordingSession {
+  screenVideoPath: string;
+  metadataPath: string;
+  webcamVideoPath?: string;
+}
+
 const RESOLUTIONS: Record<ResolutionKey, { width: number; height: number }> = {
   '720p': { width: 1280, height: 720 },
   '1080p': { width: 1920, height: 1080 },
@@ -322,6 +329,8 @@ let renderWorker: BrowserWindow | null = null;
 let savingWin: BrowserWindow | null = null;
 let selectionWin: BrowserWindow | null = null;
 let tray: Tray | null = null
+let isCleanupInProgress = false;
+let currentEditorSessionFiles: { screenVideoPath: string, metadataPath: string, webcamVideoPath?: string } | null = null;
 
 let mouseTracker: IMouseTracker | null = null;
 let ffmpegProcess: ChildProcessWithoutNullStreams | null = null
@@ -332,7 +341,7 @@ let recordingStartTime: number = 0;
 
 let framesSentCount = 0; // Counter for frames actually sent during export
 let originalCursorSize: number | null = null;
-
+let currentRecordingSession: RecordingSession | null = null; // ADDED: Global state for active recording files
 
 async function handleLoadPresets() {
   log.info('[Main] Loading presets from electron-store.');
@@ -565,6 +574,13 @@ function createSavingWindow() {
 function createEditorWindow(videoPath: string, metadataPath: string, webcamVideoPath: string | undefined) {
   const { x, y, width, height } = store.get('windowBounds') as { x?: number; y?: number; width: number; height: number; };
 
+  currentEditorSessionFiles = {
+    screenVideoPath: videoPath,
+    metadataPath,
+    webcamVideoPath
+  };
+  log.info('[Main] Stored editor session files for cleanup:', currentEditorSessionFiles);
+
   editorWin = new BrowserWindow({
     icon: path.join(process.env.VITE_PUBLIC, 'screenawesome-appicon.png'),
     autoHideMenuBar: true,
@@ -602,6 +618,13 @@ function createEditorWindow(videoPath: string, metadataPath: string, webcamVideo
   editorWin.on('resize', debouncedSaveBounds);
   editorWin.on('move', debouncedSaveBounds);
   editorWin.on('close', saveBounds); // Save immediately when closing
+  editorWin.on('closed', () => {
+    if (currentEditorSessionFiles) {
+      cleanupEditorFiles(currentEditorSessionFiles);
+      currentEditorSessionFiles = null;
+    }
+    editorWin = null;
+  });
 
   // Maximize the window and show it when it's ready
   editorWin.show()
@@ -742,6 +765,13 @@ async function startActualRecording(inputArgs: string[], hasWebcam: boolean, has
   const webcamVideoPath = hasWebcam ? path.join(recordingDir, `${baseName}-webcam.mp4`) : undefined;
   const metadataPath = path.join(recordingDir, `${baseName}.json`);
 
+  // Set the current recording session
+  currentRecordingSession = {
+    screenVideoPath,
+    webcamVideoPath,
+    metadataPath
+  };
+
   recorderWin?.hide()
   createCountdownWindow()
 
@@ -788,12 +818,12 @@ async function startActualRecording(inputArgs: string[], hasWebcam: boolean, has
 
     // Map video stream from screen
     finalArgs.push('-map', `${screenIndex}:v`);
-    
+
     // Map audio stream if mic is available, and specify audio codec
     if (hasMic) {
       finalArgs.push('-map', `${micIndex}:a`, '-c:a', 'aac', '-b:a', '192k');
     }
-    
+
     // Add output parameters for screen video
     finalArgs.push('-c:v', 'libx264', '-preset', 'ultrafast', '-pix_fmt', 'yuv420p', screenVideoPath);
 
@@ -818,14 +848,16 @@ async function startActualRecording(inputArgs: string[], hasWebcam: boolean, has
       {
         label: 'Stop Recording',
         click: async () => {
-          await handleStopRecording(screenVideoPath, webcamVideoPath, metadataPath)
-          recorderWin?.webContents.send('recording-finished', { canceled: false, screenVideoPath, webcamVideoPath });
+          // Pass current session to stop handler
+          await handleStopRecording()
+          recorderWin?.webContents.send('recording-finished', { canceled: false, ...currentRecordingSession });
         },
       },
       {
         label: 'Cancel Recording',
         click: async () => {
-          await handleCancelRecording(screenVideoPath, webcamVideoPath, metadataPath)
+          // handleCancelRecording now uses the global session
+          await handleCancelRecording()
           recorderWin?.webContents.send('recording-finished', { canceled: true });
         },
       },
@@ -835,7 +867,7 @@ async function startActualRecording(inputArgs: string[], hasWebcam: boolean, has
 
   }, 3800) // Countdown delay
 
-  return { canceled: false, screenVideoPath, webcamVideoPath };
+  return { canceled: false, ...currentRecordingSession };
 }
 
 async function checkLinuxTools(): Promise<{ [key: string]: boolean }> {
@@ -1124,7 +1156,8 @@ async function handleStartRecording(_event: IpcMainInvokeEvent, options: {
   }
 }
 
-async function handleStopRecording(screenVideoPath: string, webcamVideoPath: string | undefined, metadataPath: string) {
+// No longer needs arguments, uses global session
+async function handleStopRecording() {
   restoreOriginalCursorSize();
   log.info('Stopping recording, preparing to save...');
 
@@ -1145,50 +1178,110 @@ async function handleStopRecording(screenVideoPath: string, webcamVideoPath: str
 
   // 5. Open editor window
   resetCursorSize();
-  if (!editorWin) {
-    createEditorWindow(screenVideoPath, metadataPath, webcamVideoPath);
-  } else {
-    editorWin.webContents.send('project:open', {
-      videoPath: screenVideoPath,
-      webcamVideoPath,
-      metadataPath
-    });
-    editorWin.focus();
+  const session = currentRecordingSession; // Use a local copy
+  currentRecordingSession = null;
+
+  if (session) {
+    if (!editorWin) {
+      createEditorWindow(session.screenVideoPath, session.metadataPath, session.webcamVideoPath);
+    } else {
+      editorWin.webContents.send('project:open', {
+        videoPath: session.screenVideoPath,
+        webcamVideoPath: session.webcamVideoPath,
+        metadataPath: session.metadataPath
+      });
+      editorWin.focus();
+    }
   }
   // Close recorder window
   recorderWin?.close();
 }
 
-async function handleCancelRecording(screenVideoPath: string, webcamVideoPath: string | undefined, metadataPath: string) {
-  restoreOriginalCursorSize();
-  log.info('Cancelling recording and deleting files...');
+async function cleanupEditorFiles(files: { screenVideoPath: string, metadataPath: string, webcamVideoPath?: string }) {
+  log.info('[Main] Cleaning up editor session files:', files);
+  const unlinkPromises = [];
+  try {
+    if (files.screenVideoPath && fsSync.existsSync(files.screenVideoPath)) {
+      unlinkPromises.push(fs.unlink(files.screenVideoPath));
+    }
+    if (files.webcamVideoPath && fsSync.existsSync(files.webcamVideoPath)) {
+      unlinkPromises.push(fs.unlink(files.webcamVideoPath));
+    }
+    if (files.metadataPath && fsSync.existsSync(files.metadataPath)) {
+      unlinkPromises.push(fs.unlink(files.metadataPath));
+    }
+    await Promise.all(unlinkPromises);
+    log.info('[Main] Editor session files deleted successfully.');
+  } catch (error) {
+    log.error('[Main] Could not delete editor session files:', error);
+  }
+}
 
+// New unified cleanup function for cancellations and unexpected exits
+async function cleanupAndDiscard() {
+  if (!currentRecordingSession) {
+    log.info('[cleanupAndDiscard] No active recording session to clean up.');
+    return;
+  }
+  log.warn('[cleanupAndDiscard] Discarding current recording session.');
+
+  // Make a local copy of the session to avoid race conditions
+  const sessionToDiscard = { ...currentRecordingSession };
+  // Immediately clear the global state
+  currentRecordingSession = null;
+
+  // 1. Forcefully stop processes
   if (ffmpegProcess) {
-    // Kill process without waiting for saving
     ffmpegProcess.kill('SIGKILL');
     ffmpegProcess = null;
+    log.info('[cleanupAndDiscard] SIGKILL sent to ffmpeg.');
+  }
+  if (mouseTracker) {
+    mouseTracker.stop();
+    mouseTracker = null;
+    log.info('[cleanupAndDiscard] Mouse tracker stopped.');
   }
   if (metadataStream) {
-    metadataStream.end();
+    if (metadataStream.writable) {
+      metadataStream.end();
+    }
     metadataStream = null;
+    log.info('[cleanupAndDiscard] Metadata stream closed.');
   }
 
-  // Delete files
-  try {
-    // Wait a bit for the system to release file lock
-    setTimeout(async () => {
-      if (fsSync.existsSync(screenVideoPath)) await fs.unlink(screenVideoPath);
-      if (webcamVideoPath && fsSync.existsSync(webcamVideoPath)) await fs.unlink(webcamVideoPath);
-      if (fsSync.existsSync(metadataPath)) await fs.unlink(metadataPath);
-      log.info('Temporary files deleted.');
-    }, 100);
-  } catch (error) {
-    log.error('Could not delete temporary files:', error);
-  }
-
-  recorderWin?.show();
+  // 2. Restore system state
+  restoreOriginalCursorSize();
   tray?.destroy();
   tray = null;
+
+  // 3. Asynchronously delete files
+  try {
+    // Wait a bit for the system to release file locks after killing processes
+    setTimeout(async () => {
+      log.info(`[cleanupAndDiscard] Deleting files: ${Object.values(sessionToDiscard).join(', ')}`);
+      const unlinkPromises = [];
+      if (fsSync.existsSync(sessionToDiscard.screenVideoPath)) {
+        unlinkPromises.push(fs.unlink(sessionToDiscard.screenVideoPath));
+      }
+      if (sessionToDiscard.webcamVideoPath && fsSync.existsSync(sessionToDiscard.webcamVideoPath)) {
+        unlinkPromises.push(fs.unlink(sessionToDiscard.webcamVideoPath));
+      }
+      if (fsSync.existsSync(sessionToDiscard.metadataPath)) {
+        unlinkPromises.push(fs.unlink(sessionToDiscard.metadataPath));
+      }
+      await Promise.all(unlinkPromises);
+      log.info('[cleanupAndDiscard] Temporary files deleted successfully.');
+    }, 200);
+  } catch (error) {
+    log.error('[cleanupAndDiscard] Could not delete temporary files:', error);
+  }
+}
+
+// CHANGED: Refactored to use the new cleanup function
+async function handleCancelRecording() {
+  log.info('Cancelling recording and deleting files...');
+  await cleanupAndDiscard();
+  recorderWin?.show();
 }
 
 function createRecorderWindow() {
@@ -1238,6 +1331,21 @@ function createRecorderWindow() {
     recorderWin.loadFile(path.join(RENDERER_DIST, 'index.html'))
   }
 
+  // Handle cleanup if the recorder window is closed during recording
+  recorderWin.on('close', (event) => {
+    if (ffmpegProcess) {
+      log.warn('[Main] Recorder window closed during recording. Cleaning up...');
+      // Prevent the window from closing immediately to allow cleanup
+      event.preventDefault();
+      cleanupAndDiscard().then(() => {
+        // Now that cleanup is done, actually close the window
+        if (recorderWin && !recorderWin.isDestroyed()) {
+          recorderWin.close();
+        }
+      });
+    }
+  });
+
   recorderWin.on('closed', () => {
     recorderWin = null;
   });
@@ -1254,16 +1362,34 @@ async function handleReadFile(_event: IpcMainInvokeEvent, filePath: string): Pro
 }
 
 app.on('window-all-closed', () => {
-  log.info('[Main] Received "window-all-closed" event. Closing app...');
-  resetCursorSize();
-  renderWorker?.close();
-  if (ffmpegProcess) {
-    cleanupAndSave();
+  log.info('[Main] All windows closed. Initiating app quit sequence.');
+  app.quit();
+});
+
+app.on('before-quit', async (event) => {
+  // Only perform cleanup if there is an active recording session
+  // and no cleanup process is currently running
+  if (currentRecordingSession && !isCleanupInProgress) {
+    log.warn('[Main] App is quitting with an active session. Cleaning up before exit...');
+
+    // Prevent the app from quitting immediately
+    event.preventDefault();
+
+    // Set flag to prevent infinite loop
+    isCleanupInProgress = true;
+
+    try {
+      // Wait for the cleanup process to complete
+      await cleanupAndDiscard();
+      log.info('[Main] Pre-quit cleanup finished successfully.');
+    } catch (error) {
+      log.error('[Main] Error during pre-quit cleanup:', error);
+    } finally {
+      // Call app.quit() again to exit the app
+      app.quit();
+    }
   }
-  if (process.platform !== 'darwin') {
-    app.quit()
-  }
-})
+});
 
 app.on('activate', () => {
   if (BrowserWindow.getAllWindows().length === 0) {
