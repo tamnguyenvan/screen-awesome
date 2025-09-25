@@ -1,10 +1,12 @@
 import { useEditorStore } from '../../../store/editorStore';
 import { ControlGroup } from './ControlGroup';
-import { CornerUpLeft, CornerUpRight, CornerDownLeft, CornerDownRight, Video, Eye, EyeOff, Image, Palette } from 'lucide-react'; // Added Palette
+import {
+  CornerUpLeft, CornerUpRight, CornerDownLeft, CornerDownRight,
+  Video, Eye, EyeOff, Image
+} from 'lucide-react';
 import { Button } from '../../ui/button';
 import Slider from '../../ui/slider';
 import { useShallow } from 'zustand/react/shallow';
-import { OpacityIcon } from '../../ui/icons';
 
 export function CameraSettings() {
   const { isWebcamVisible, webcamPosition, webcamStyles, setWebcamVisibility, setWebcamPosition, updateWebcamStyle } = useEditorStore(
@@ -90,70 +92,72 @@ export function CameraSettings() {
           description="Adjust size and shadow"
         >
           <div>
-            <label className="flex items-center gap-2 text-sm font-medium text-sidebar-foreground mb-4">
+            <div className="flex items-center gap-2 text-sm font-medium text-sidebar-foreground mb-4">
+              <svg xmlns="http://www.w3.org/2000/svg" height="16px" viewBox="0 -960 960 960" width="16px" fill="currentColor" className="text-primary">
+                <path d="M160-80q-33 0-56.5-23.5T80-160v-480q0-33 23.5-56.5T160-720h80v-80q0-33 23.5-56.5T320-880h480q33 0 56.5 23.5T880-800v480q0 33-23.5 56.5T800-240h-80v80q0 33-23.5 56.5T640-80H160Zm160-240h480v-480H320v480Z" />
+              </svg>
               <span>Shadow</span>
-            </label>
-
-            {/* Shadow Size */}
-            <div className="mb-6">
-              <div className="flex items-center justify-between mb-2">
-                <span className="text-sm text-sidebar-foreground">Size</span>
-                <span className="text-xs text-muted-foreground">{webcamStyles.shadow}px</span>
-              </div>
-              <Slider
-                min={0} max={40} step={1}
-                value={webcamStyles.shadow}
-                onChange={(value) => updateWebcamStyle({ shadow: value })}
-              />
             </div>
 
-            {/* Shadow Color */}
-            <div className="mb-6">
-              <div className="flex items-center justify-between mb-2">
-                <span className="text-sm text-sidebar-foreground flex items-center gap-2">
-                  <Palette className="w-4 h-4" /> Color
-                </span>
-                <input
-                  type="color"
-                  value={webcamStyles.shadowColor.substring(0, 7)}
-                  onChange={(e) =>
-                    updateWebcamStyle({
-                      shadowColor: e.target.value + webcamStyles.shadowColor.substring(7),
-                    })
-                  }
-                  className="w-8 h-8 rounded-full border border-border cursor-pointer transition-all duration-200"
+            {/* Grid layout cho Shadow controls */}
+            <div className="grid grid-cols-1 gap-4">
+              {/* Shadow Size */}
+              <div>
+                <div className="flex items-center justify-between mb-2">
+                  <span className="text-sm text-muted-foreground">Size</span>
+                  <span className="text-xs text-muted-foreground font-medium">{webcamStyles.shadow}px</span>
+                </div>
+                <Slider
+                  min={0} max={40} step={1}
+                  value={webcamStyles.shadow}
+                  onChange={(value) => updateWebcamStyle({ shadow: value })}
                 />
               </div>
-            </div>
 
-            {/* Shadow Opacity */}
-            <div>
-              <div className="flex items-center justify-between mb-2">
-                <span className="text-sm font-medium text-sidebar-foreground flex items-center gap-2">
-                  <OpacityIcon /> Opacity
-                </span>
-                <span className="text-xs text-muted-foreground">
-                  {Math.round((parseFloat(webcamStyles.shadowColor.split(',')[3] || '0.4') * 100))}%
-                </span>
+              {/* Shadow Color & Opacity trong grid 2 cột */}
+              <div className="grid grid-cols-2 gap-4">
+                <div>
+                  <div className="flex items-center justify-between mb-2">
+                    <span className="text-sm text-muted-foreground">Color</span>
+                    <input
+                      type="color"
+                      value={webcamStyles.shadowColor.substring(0, 7)}
+                      onChange={(e) =>
+                        updateWebcamStyle({
+                          shadowColor: e.target.value + webcamStyles.shadowColor.substring(7),
+                        })
+                      }
+                      className="w-6 h-6 rounded border border-border cursor-pointer transition-all duration-200"
+                    />
+                  </div>
+                </div>
+
+                <div>
+                  <div className="flex items-center justify-between mb-2">
+                    <span className="text-sm text-muted-foreground">Opacity</span>
+                    <span className="text-xs text-muted-foreground font-medium">
+                      {Math.round((parseFloat(webcamStyles.shadowColor.split(',')[3] || '0.4') * 100))}%
+                    </span>
+                  </div>
+                  <Slider
+                    min={0}
+                    max={1}
+                    step={0.01}
+                    value={parseFloat(webcamStyles.shadowColor.split(',')[3] || '0.4')}
+                    onChange={(value) => {
+                      const parts = webcamStyles.shadowColor.match(
+                        /^rgba?\((\d+),\s*(\d+),\s*(\d+)(,\s*\d*\.?\d+)?\)$/
+                      );
+                      if (parts) {
+                        const newColor = `rgba(${parts[1]}, ${parts[2]}, ${parts[3]}, ${value})`;
+                        updateWebcamStyle({ shadowColor: newColor });
+                      } else {
+                        updateWebcamStyle({ shadowColor: `rgba(0, 0, 0, ${value})` });
+                      }
+                    }}
+                  />
+                </div>
               </div>
-              <Slider
-                min={0}
-                max={1}
-                step={0.01}
-                className="w-full"
-                value={parseFloat(webcamStyles.shadowColor.split(',')[3] || '0.4')}
-                onChange={(value) => {
-                  const parts = webcamStyles.shadowColor.match(
-                    /^rgba?\((\d+),\s*(\d+),\s*(\d+)(,\s*\d*\.?\d+)?\)$/
-                  );
-                  if (parts) {
-                    const newColor = `rgba(${parts[1]}, ${parts[2]}, ${parts[3]}, ${value})`;
-                    updateWebcamStyle({ shadowColor: newColor });
-                  } else {
-                    updateWebcamStyle({ shadowColor: `rgba(0, 0, 0, ${value})` });
-                  }
-                }}
-              />
             </div>
           </div>
         </ControlGroup>

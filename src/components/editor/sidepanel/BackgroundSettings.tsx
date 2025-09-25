@@ -34,8 +34,8 @@ const ColorPickerRoundedRect = ({
   };
 
   return (
-    <div className="flex flex-col items-center gap-2">
-      <label className={cn("relative cursor-pointer group", sizeClasses[size])}>
+    <div className="flex items-center gap-3">
+      <label className={cn("relative cursor-pointer group flex-shrink-0", sizeClasses[size])}>
         <input
           type="color"
           name={name}
@@ -51,7 +51,7 @@ const ColorPickerRoundedRect = ({
           style={{ backgroundColor: color }}
         />
       </label>
-      <span className="text-xs text-muted-foreground text-center font-medium">{label}</span>
+      <span className="text-sm text-foreground font-medium">{label}</span>
     </div>
   );
 };
@@ -271,33 +271,36 @@ export function BackgroundSettings() {
         )}
 
         {activeTab === 'gradient' && (
-          <div className="flex flex-col gap-6">
-            <div className="flex gap-6">
-              <div className="flex-shrink-0">
+          <div className="space-y-4">
+            <div className="grid grid-cols-12 gap-4">
+              <div className="col-span-4">
                 <h5 className="text-xs font-semibold text-muted-foreground mb-3 uppercase tracking-wider">Colors</h5>
-                <div className="flex flex-col items-center gap-4">
-                  <ColorPickerRoundedRect
-                    label="Start"
-                    color={localGradient.start}
-                    name="gradientStart"
-                    // CHÚ THÍCH: Cập nhật state cục bộ thay vì state toàn cục
-                    onChange={(e) => setLocalGradient(prev => ({ ...prev, start: e.target.value }))}
-                    size="md"
-                  />
-                  <ColorPickerRoundedRect
-                    label="End"
-                    color={localGradient.end}
-                    name="gradientEnd"
-                    // CHÚ THÍCH: Cập nhật state cục bộ thay vì state toàn cục
-                    onChange={(e) => setLocalGradient(prev => ({ ...prev, end: e.target.value }))}
-                    size="md"
-                  />
+                <div className="flex flex-col items-start gap-4">
+                  <div className="w-full">
+                    <ColorPickerRoundedRect
+                      label="Start"
+                      color={localGradient.start}
+                      name="gradientStart"
+                      onChange={(e) => setLocalGradient(prev => ({ ...prev, start: e.target.value }))}
+                      size="md"
+                    />
+                  </div>
+                  <div className="w-full">
+                    <ColorPickerRoundedRect
+                      label="End"
+                      color={localGradient.end}
+                      name="gradientEnd"
+                      onChange={(e) => setLocalGradient(prev => ({ ...prev, end: e.target.value }))}
+                      size="md"
+                    />
+                  </div>
                 </div>
               </div>
 
-              <div className="flex-1">
+              {/* Style section */}
+              <div className="col-span-8"> {/* Thay đổi từ flex-1 */}
                 <h5 className="text-xs font-semibold text-muted-foreground mb-3 uppercase tracking-wider">Style</h5>
-                <div className="grid grid-cols-4 gap-6">
+                <div className="grid grid-cols-4 gap-3"> {/* Giảm gap từ 6 xuống 3 */}
                   {GRADIENT_PRESETS.map((preset, index) => {
                     const startColor = '#808080';
                     const endColor = '#ffffff';
@@ -309,7 +312,7 @@ export function BackgroundSettings() {
                       <button
                         key={index}
                         className={cn(
-                          "relative h-14 aspect-square rounded-lg overflow-hidden border-2 transition-all duration-200",
+                          "relative aspect-square rounded-lg overflow-hidden border-2 transition-all duration-200", // Thay đổi từ h-14 aspect-square
                           "flex items-center justify-center group",
                           frameStyles.background.gradientDirection === preset.direction
                             ? "border-primary ring-2 ring-primary/20"
@@ -332,8 +335,9 @@ export function BackgroundSettings() {
                 </div>
               </div>
             </div>
-            {/* CHÚ THÍCH: Thêm nút "Apply Colors" */}
-            <Button onClick={handleApplyGradient} size="sm" className="w-full mt-2">
+
+            {/* Apply Colors button */}
+            <Button onClick={handleApplyGradient} size="sm" className="w-full">
               <Paintbrush className="w-4 h-4 mr-2" />
               Apply Colors
             </Button>
