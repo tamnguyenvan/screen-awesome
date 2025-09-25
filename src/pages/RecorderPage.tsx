@@ -517,18 +517,16 @@ export function RecorderPage() {
                 onValueChange={setSelectedDisplayId}
                 disabled={source !== 'fullscreen'}
               >
-                <SelectTrigger
-                  className={cn(
-                    "w-28 h-11 border-border/50",
-                    source === 'fullscreen' ? "bg-background/60" : "bg-muted/50 cursor-not-allowed opacity-70"
-                  )}
-                >
-                  <SelectValue placeholder="Monitor" />
+                <SelectTrigger className="w-12 h-10 rounded-2xl">
+                  <SelectValue asChild>
+                    <Monitor size={18} className="text-primary" />
+                  </SelectValue>
                 </SelectTrigger>
+
                 <SelectContent>
                   {displays.map(display => (
                     <SelectItem key={display.id} value={String(display.id)}>
-                      {display.name.split(' (')[0].replace('Display', 'M')}{display.isPrimary ? ' ★' : ''}
+                      {display.name}
                     </SelectItem>
                   ))}
                 </SelectContent>
@@ -578,12 +576,12 @@ export function RecorderPage() {
               {platform === 'linux' && (
                 <>
                   <div className="flex items-center gap-2" style={{ WebkitAppRegion: 'no-drag' }}>
-                    <MousePointer className="w-5 h-5 text-muted-foreground" />
+                    <MousePointer size={18} className="text-muted-foreground" />
                     <Select
                       value={String(cursorSize)}
                       onValueChange={(value) => handleCursorSizeChange(Number(value))}
                     >
-                      <SelectTrigger className="w-20 h-11 border-border/50 bg-background/60">
+                      <SelectTrigger className="w-12 h-10 border-border/50 bg-background/60">
                         <SelectValue />
                       </SelectTrigger>
                       <SelectContent>
