@@ -40,7 +40,7 @@ export const CutRegionBlock = memo(({
       )}
       style={{ willChange: 'transform, width' }}
     >
-      <div className="absolute top-0 left-0 w-full h-[72px] bg-destructive/20" />
+      <div className="absolute top-0 left-0 w-full h-[230px] bg-destructive/20 translate-y-[-200px]" />
       <div
         className={cn(
           'relative w-full h-14 mt-[72px] flex items-center justify-center rounded-lg border-2',
