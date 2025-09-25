@@ -9,6 +9,7 @@ interface CutRegionBlockProps {
   region: CutRegion;
   isSelected: boolean;
   isDraggable?: boolean;
+  isBeingDragged: boolean;
   onMouseDown: (e: React.MouseEvent<HTMLDivElement>, region: TimelineRegion, type: 'move' | 'resize-left' | 'resize-right') => void;
   setRef: (el: HTMLDivElement | null) => void;
 }
@@ -17,6 +18,7 @@ export const CutRegionBlock = memo(({
   region,
   isSelected,
   isDraggable = true,
+  isBeingDragged,
   onMouseDown,
   setRef
 }: CutRegionBlockProps) => {
@@ -44,7 +46,8 @@ export const CutRegionBlock = memo(({
       <div
         className={cn(
           'relative w-full h-14 mt-[72px] flex items-center justify-center rounded-lg border-2',
-          'pointer-events-auto transition-all duration-200',
+          'pointer-events-auto',
+          !isBeingDragged && 'transition-all duration-200',
           canMove ? 'cursor-grab' : 'cursor-default',
           isSelected
             ? 'bg-card border-destructive transform -translate-y-2 shadow-lg shadow-destructive/20'

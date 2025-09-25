@@ -406,9 +406,8 @@ export function Timeline({ videoRef }: { videoRef: React.RefObject<HTMLVideoElem
             {/* Layer 2: Cut Regions (Full height overlays) */}
             <div className="absolute top-0 left-0 right-0 bottom-0 pointer-events-none">
               {allCutRegionsToRender.map(region => {
-                // Logic to apply a temporary high z-index to the selected region
+                // ... logic tính toán z-index không đổi ...
                 let z;
-                // Prioritize checking selection first, applies to both trim and cut region
                 if (selectedRegionId === region.id) {
                   z = 100;
                 } else if (region.trimType) {
@@ -427,6 +426,7 @@ export function Timeline({ videoRef }: { videoRef: React.RefObject<HTMLVideoElem
                       region={region}
                       isSelected={selectedRegionId === region.id}
                       isDraggable={region.id !== previewCutRegion?.id}
+                      isBeingDragged={draggingRegion?.id === region.id}
                       onMouseDown={handleRegionMouseDown}
                       setRef={el => regionRefs.current.set(region.id, el)}
                     />
@@ -450,6 +450,7 @@ export function Timeline({ videoRef }: { videoRef: React.RefObject<HTMLVideoElem
                       <ZoomRegionBlock
                         region={region}
                         isSelected={selectedRegionId === region.id}
+                        isBeingDragged={draggingRegion?.id === region.id}
                         onMouseDown={handleRegionMouseDown}
                         setRef={el => regionRefs.current.set(region.id, el)}
                       />
