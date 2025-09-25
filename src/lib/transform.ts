@@ -10,24 +10,27 @@ function lerp(start: number, end: number, t: number): number {
  * Calculates the transform-origin based on a normalized anchor point [-0.5, 0.5].
  * Implements edge snapping. The output is a value from 0 to 1.
  */
-function getTransformOrigin(anchorX: number, anchorY: number): { x: number; y: number } {
+function getTransformOrigin(anchorX: number, anchorY: number, zoomLevel: number, framePadding: number): { x: number; y: number } {
   const DEAD_ZONE = ZOOM.TRANSFORM_ORIGIN_DEAD_ZONE;
   let originX: number;
   let originY: number;
 
-  if (anchorX > DEAD_ZONE) originX = 1;
-  else if (anchorX < -DEAD_ZONE) originX = 0;
+  const normalizedX = zoomLevel * anchorX * (1 - framePadding * 0.01);
+  const normalizedY = zoomLevel * anchorY * (1 - framePadding * 0.01);
+
+  if (normalizedX > DEAD_ZONE) originX = 1;
+  else if (normalizedX < -DEAD_ZONE) originX = 0;
   else originX = anchorX + 0.5;
 
-  if (anchorY > DEAD_ZONE) originY = 1;
-  else if (anchorY < -DEAD_ZONE) originY = 0;
+  if (normalizedY > DEAD_ZONE) originY = 1;
+  else if (normalizedY < -DEAD_ZONE) originY = 0;
   else originY = anchorY + 0.5;
   
   return { x: originX, y: originY };
 }
 
 export const calculateZoomTransform = (currentTime: number) => {
-  const { zoomRegions, activeZoomRegionId } = useEditorStore.getState();
+  const { zoomRegions, activeZoomRegionId, frameStyles } = useEditorStore.getState();
   const activeRegion = activeZoomRegionId ? zoomRegions[activeZoomRegionId] : undefined;
   
   const defaultTransform = {
@@ -48,7 +51,7 @@ export const calculateZoomTransform = (currentTime: number) => {
   // --- Phase 1: ZOOM-IN ---
   if (currentTime >= startTime && currentTime < zoomInEndTime) {
     const firstAnchor = anchors[0];
-    const targetOrigin = getTransformOrigin(firstAnchor.x, firstAnchor.y);
+    const targetOrigin = getTransformOrigin(firstAnchor.x, firstAnchor.y, zoomLevel, frameStyles.padding);
     
     // Animate scale from 1 to zoomLevel.
     const t = EASING_MAP[ZOOM.ZOOM_EASING as keyof typeof EASING_MAP]((currentTime - startTime) / ZOOM.TRANSITION_DURATION);
@@ -70,7 +73,7 @@ export const calculateZoomTransform = (currentTime: number) => {
 
     // The transform-origin is now fixed to where we zoomed in.
     const firstAnchor = anchors[0];
-    const fixedOrigin = getTransformOrigin(firstAnchor.x, firstAnchor.y);
+    const fixedOrigin = getTransformOrigin(firstAnchor.x, firstAnchor.y, zoomLevel, frameStyles.padding);
 
     // Find current anchor segment for panning
     let startAnchor = firstAnchor;
@@ -122,7 +125,7 @@ export const calculateZoomTransform = (currentTime: number) => {
   if (currentTime >= zoomOutStartTime && currentTime <= startTime + duration) {
     const lastAnchor = anchors[anchors.length - 1];
     const firstAnchor = anchors[0];
-    const fixedOrigin = getTransformOrigin(firstAnchor.x, firstAnchor.y);
+    const fixedOrigin = getTransformOrigin(firstAnchor.x, firstAnchor.y, zoomLevel, frameStyles.padding);
     
     // Animate scale from zoomLevel back to 1.
     const t = EASING_MAP[ZOOM.ZOOM_EASING as keyof typeof EASING_MAP]((currentTime - zoomOutStartTime) / ZOOM.TRANSITION_DURATION);
