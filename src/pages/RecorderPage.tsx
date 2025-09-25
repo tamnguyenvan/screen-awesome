@@ -432,12 +432,12 @@ export function RecorderPage() {
                 isActive={source === 'area'}
                 onClick={() => setSource('area')}
               />
-              <SourceButton
+              {/* <SourceButton
                 label="Window"
                 icon={<AppWindowMac size={16} />}
                 isActive={source === 'window'}
                 onClick={() => setSource('window')}
-              />
+              /> */}
             </div>
 
             {/* Divider */}

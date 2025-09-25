@@ -959,27 +959,24 @@ async function handleStartRecording(_event: IpcMainInvokeEvent, options: {
   let webcamInputAdded = false;
 
   // --- Webcam Input ---
-  // This is the core fix. Use the correct identifier for each platform.
   if (webcam) {
     log.info('[Main] Adding webcam input:', webcam.deviceLabel);
     switch (process.platform) {
       case 'linux':
-        // On Linux, we need the device path, which we construct from the index.
-        // The first camera found is almost always /dev/video0, the second /dev/video1, etc.
         baseFfmpegArgs.push('-f', 'v4l2', '-i', `/dev/video${webcam.index}`);
         break;
       case 'win32':
-        // On Windows, dshow uses the human-readable device name (the label).
         baseFfmpegArgs.push('-f', 'dshow', '-i', `video=${webcam.deviceLabel}`);
         break;
       case 'darwin':
-        // On macOS, avfoundation uses the device index.
         baseFfmpegArgs.push('-f', 'avfoundation', '-i', `${webcam.index}:none`);
         break;
     }
     webcamInputAdded = true;
   }
 
+  // --- Source Logic ---
+  // Mỗi nhánh (if/else if/else) sẽ tự xây dựng args và return, không bị "fall-through"
   if (source === 'window') {
     if (process.platform === 'linux') {
       if (!geometry) {
@@ -988,20 +985,17 @@ async function handleStartRecording(_event: IpcMainInvokeEvent, options: {
         return { canceled: true, filePath: undefined };
       }
 
-      // Store original cursor size before recording
       originalCursorSize = await handleGetCursorSize();
       log.info(`[Main] Stored original cursor size: ${originalCursorSize}`);
 
       const primaryDisplay = screen.getPrimaryDisplay();
       const { width: screenWidth, height: screenHeight } = primaryDisplay.size;
 
-      // Ensure all geometry values are integers
       const intX = Math.round(geometry.x);
       const intY = Math.round(geometry.y);
       let finalWidth = Math.round(geometry.width);
       let finalHeight = Math.round(geometry.height);
 
-      // Clamp dimensions to ensure the capture area is within screen bounds
       if (intX + finalWidth > screenWidth) {
         finalWidth = screenWidth - intX;
       }
@@ -1009,7 +1003,6 @@ async function handleStartRecording(_event: IpcMainInvokeEvent, options: {
         finalHeight = screenHeight - intY;
       }
 
-      // Ensure width/height are even numbers for libx264 compatibility
       const safeWidth = Math.floor(finalWidth / 2) * 2;
       const safeHeight = Math.floor(finalHeight / 2) * 2;
 
@@ -1019,11 +1012,10 @@ async function handleStartRecording(_event: IpcMainInvokeEvent, options: {
         return { canceled: true, filePath: undefined };
       }
 
-      if (process.platform === 'linux') {
-        log.info(`Starting WINDOW recording for geometry: ${safeWidth}x${safeHeight}+${intX},${intY}`);
-        const { x, y, width, height } = geometry;
-        baseFfmpegArgs.push('-f', 'x11grab', '-video_size', `${width}x${height}`, '-i', `${display}+${x},${y}`);
-      } else if (process.platform === 'win32') {
+      log.info(`Starting WINDOW recording for geometry: ${safeWidth}x${safeHeight}+${intX},${intY}`);
+      baseFfmpegArgs.push('-f', 'x11grab', '-video_size', `${safeWidth}x${safeHeight}`, '-i', `${display}+${intX},${intY}`);
+    
+    } else if (process.platform === 'win32') {
         if (!windowTitle) {
           log.error('Window recording started without a window title.');
           dialog.showErrorBox('Recording Error', 'No window was selected for recording.');
@@ -1031,53 +1023,40 @@ async function handleStartRecording(_event: IpcMainInvokeEvent, options: {
         }
         log.info(`Starting WINDOW recording for title: "${windowTitle}"`);
         baseFfmpegArgs.push('-f', 'gdigrab', '-i', `title=${windowTitle}`);
-      } else if (process.platform === 'darwin') {
-        // const ffmpegArgs = [
-        //   '-f', 'avfoundation',
-        //   '-i', '1',
-        //   '-c:v', 'libx264',
-        //   '-preset', 'ultrafast',
-        //   '-pix_fmt', 'yuv420p',
-        // ];
-        // log.info('Starting SCREEN recording on macOS');
-      } else {
-        log.error('Window recording is not yet supported on this platform.');
-        dialog.showErrorBox('Feature Not Supported', 'Window recording is not yet implemented for this OS.');
-        return { canceled: true, filePath: undefined };
-      }
+    
+    } else { // macOS và các OS khác
+      log.error('Window recording is not yet supported on this platform.');
+      dialog.showErrorBox('Feature Not Supported', 'Window recording is not yet implemented for this OS.');
+      return { canceled: true, filePath: undefined };
     }
+    
+    return startActualRecording(baseFfmpegArgs, webcamInputAdded);
+
   } else if (source === 'area') {
-    // Hide the recorder and open selection window
     recorderWin?.hide();
     createSelectionWindow();
 
-    // Await for selection to be made
     const selectedGeometry = await new Promise<{ x: number; y: number; width: number; height: number } | undefined>((resolve) => {
       ipcMain.once('selection:complete', (_event, geometry: { x: number; y: number; width: number; height: number }) => {
         selectionWin?.close();
-
-        // Ensure width and height are even numbers for libx264 compatibility
         const safeWidth = Math.floor(geometry.width / 2) * 2;
         const safeHeight = Math.floor(geometry.height / 2) * 2;
 
-        // Check if the resulting size is too small to record
         if (safeWidth < 10 || safeHeight < 10) {
           log.error('Selected area is too small to record after adjustment.');
-          recorderWin?.show(); // Show recorder again
+          recorderWin?.show();
           dialog.showErrorBox('Recording Error', 'The selected area is too small to record. Please select a larger area.');
           resolve(undefined);
           return;
         }
-
         log.info(`Received selection geometry: ${JSON.stringify(geometry)}. Adjusted to: ${safeWidth}x${safeHeight}`);
-
         resolve({ ...geometry, width: safeWidth, height: safeHeight });
       });
 
       ipcMain.once('selection:cancel', () => {
         log.info('Selection was cancelled.');
         selectionWin?.close();
-        recorderWin?.show(); // Show recorder again
+        recorderWin?.show();
         resolve(undefined);
       });
     });
@@ -1091,16 +1070,17 @@ async function handleStartRecording(_event: IpcMainInvokeEvent, options: {
       '-video_size', `${selectedGeometry.width}x${selectedGeometry.height}`,
       '-i', `${display}+${selectedGeometry.x},${selectedGeometry.y}`
     );
-
+    
+    // QUAN TRỌNG: Return ngay tại đây
     return startActualRecording(baseFfmpegArgs, webcamInputAdded);
-  } else {
+
+  } else { // Source is 'fullscreen'
     const allDisplays = screen.getAllDisplays();
     const targetDisplay = allDisplays.find(d => d.id === displayId) || screen.getPrimaryDisplay();
     const { x, y, width, height } = targetDisplay.bounds;
     const safeWidth = Math.floor(width / 2) * 2;
     const safeHeight = Math.floor(height / 2) * 2;
 
-    // Add arguments to `baseFfmpegArgs`
     switch (process.platform) {
       case 'linux':
         baseFfmpegArgs.push('-f', 'x11grab', '-video_size', `${safeWidth}x${safeHeight}`, '-i', `${display}+${x},${y}`);
@@ -1114,9 +1094,10 @@ async function handleStartRecording(_event: IpcMainInvokeEvent, options: {
         break;
       }
     }
+    
+    // QUAN TRỌNG: Return ngay tại đây
+    return startActualRecording(baseFfmpegArgs, webcamInputAdded);
   }
-
-  return startActualRecording(baseFfmpegArgs, webcamInputAdded);
 }
 
 async function handleStopRecording(screenVideoPath: string, webcamVideoPath: string | undefined, metadataPath: string) {
