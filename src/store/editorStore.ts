@@ -231,7 +231,7 @@ export const useEditorStore = create(
           if (clicks.length > 0) {
             let currentGroup = [clicks[0]];
             for (let i = 1; i < clicks.length; i++) {
-              if (clicks[i].timestamp - currentGroup[currentGroup.length - 1].timestamp < 3.0) {
+              if (clicks[i].timestamp - currentGroup[currentGroup.length - 1].timestamp < ZOOM.AUTO_ZOOM_MIN_DURATION) {
                 currentGroup.push(clicks[i]);
               } else {
                 mergedClickGroups.push(currentGroup);
