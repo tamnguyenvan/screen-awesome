@@ -157,6 +157,9 @@ export function PresetModal({ isOpen, onClose }: PresetModalProps) {
                 <PresetPreview 
                   styles={previewPreset.styles}
                   aspectRatio={previewPreset.aspectRatio}
+                  isWebcamVisible={previewPreset.isWebcamVisible}
+                  webcamPosition={previewPreset.webcamPosition}
+                  webcamStyles={previewPreset.webcamStyles}
                 />
               </div>
             ) : (
