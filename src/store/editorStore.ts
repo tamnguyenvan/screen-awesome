@@ -83,7 +83,7 @@ const initialAppState = {
 };
 
 const initialFrameStyles: FrameStyles = {
-  padding: 2,
+  padding: 5,
   background: {
     type: 'wallpaper',
     thumbnailUrl: WALLPAPERS[0].thumbnailUrl,
@@ -92,7 +92,7 @@ const initialFrameStyles: FrameStyles = {
   borderRadius: 16,
   shadow: 5, // Controls blur and offset strength
   shadowColor: 'rgba(0, 0, 0, 0.4)', // Default shadow color with 40% opacity
-  borderWidth: 8,
+  borderWidth: 6,
 }
 
 const _calculateAnchors = (
