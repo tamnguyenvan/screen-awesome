@@ -452,7 +452,7 @@ export function RecorderPage() {
                 size="icon"
                 className={cn(
                   "h-12 w-12",
-                  "rounded-2xl",
+                  "rounded-full",
                   isButtonDisabled && showLinuxWarning && "bg-amber-500/20 hover:bg-amber-500/30 text-amber-300 border border-amber-500/30",
                   isButtonDisabled && !showLinuxWarning && "opacity-50"
                 )}
