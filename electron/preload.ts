@@ -147,6 +147,7 @@ export const electronAPI = {
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   getSetting: <T = any>(key: string): Promise<T> => ipcRenderer.invoke('settings:get', key),
   setSetting: (key: string, value: unknown): void => ipcRenderer.send('settings:set', key, value),
+  getPath: (name: 'home' | 'userData' | 'desktop'): Promise<string> => ipcRenderer.invoke('app:getPath', name),
 
   // --- Window Controls ---
   minimizeWindow: () => ipcRenderer.send('window:minimize'),

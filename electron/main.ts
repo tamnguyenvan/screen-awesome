@@ -1511,6 +1511,10 @@ app.whenReady().then(() => {
     shell.showItemInFolder(filePath);
   });
 
+  ipcMain.handle('app:getPath', (_event, name: 'home' | 'userData' | 'desktop') => {
+    return app.getPath(name);
+  });
+
   ipcMain.handle('app:getPlatform', () => {
     return process.platform;
   });
