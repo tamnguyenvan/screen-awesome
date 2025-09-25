@@ -737,18 +737,16 @@ async function ensureDirectoryExists(dirPath: string) {
   }
 }
 
-async function startActualRecording(inputArgs: string[], hasWebcam: boolean) {
+async function startActualRecording(inputArgs: string[], hasWebcam: boolean, hasMic: boolean) {
   const recordingDir = path.join(process.env.HOME || process.env.USERPROFILE || '.', '.screenawesome');
   await ensureDirectoryExists(recordingDir);
   const baseName = `ScreenAwesome-recording-${Date.now()}`;
 
-  // Create separate paths for screen and webcam
   const screenVideoPath = path.join(recordingDir, `${baseName}-screen.mp4`);
   const webcamVideoPath = hasWebcam ? path.join(recordingDir, `${baseName}-webcam.mp4`) : undefined;
   const metadataPath = path.join(recordingDir, `${baseName}.json`);
 
   recorderWin?.hide()
-
   createCountdownWindow()
 
   setTimeout(() => {
@@ -784,21 +782,32 @@ async function startActualRecording(inputArgs: string[], hasWebcam: boolean) {
       mouseTracker.start();
     }
 
-    // 4. Start FFmpeg with the provided arguments
+    // 5. Start FFmpeg with the provided arguments
     const finalArgs = [...inputArgs];
+
+    // Xác định chỉ số của các luồng đầu vào. Mic luôn là 0 nếu có.
+    const micIndex = hasMic ? 0 : -1;
+    const webcamIndex = hasMic ? (hasWebcam ? 1 : -1) : (hasWebcam ? 0 : -1);
+    const screenIndex = (hasMic ? 1 : 0) + (hasWebcam ? 1 : 0);
+
+    // Ánh xạ luồng video từ màn hình
+    finalArgs.push('-map', `${screenIndex}:v`);
+    
+    // Ánh xạ luồng audio nếu có mic, và chỉ định codec audio
+    if (hasMic) {
+      finalArgs.push('-map', `${micIndex}:a`, '-c:a', 'aac', '-b:a', '192k');
+    }
+    
+    // Thêm các tham số đầu ra cho video màn hình
+    finalArgs.push('-c:v', 'libx264', '-preset', 'ultrafast', '-pix_fmt', 'yuv420p', screenVideoPath);
+
+    // Nếu có ghi webcam, thêm một đầu ra thứ hai cho nó
     if (hasWebcam) {
-      // Input 0 is webcam, Input 1 is screen.
-      // We want the main (first) file to be the screen recording.
       finalArgs.push(
-        '-map', '1:v', '-c:v', 'libx264', '-preset', 'ultrafast', '-pix_fmt', 'yuv420p', screenVideoPath,
-        '-map', '0:v', '-c:v', 'libx264', '-preset', 'ultrafast', '-pix_fmt', 'yuv420p', webcamVideoPath!
-      );
-    } else {
-      // Only one input (screen)
-      finalArgs.push(
-        '-map', '0:v', '-c:v', 'libx264', '-preset', 'ultrafast', '-pix_fmt', 'yuv420p', screenVideoPath
+        '-map', `${webcamIndex}:v`, '-c:v', 'libx264', '-preset', 'ultrafast', '-pix_fmt', 'yuv420p', webcamVideoPath!
       );
     }
+
     log.info(`FFmpeg path: ${FFMPEG_PATH}`)
     log.info(`Starting FFmpeg with args: ${finalArgs.join(' ')}`)
     ffmpegProcess = spawn(FFMPEG_PATH, finalArgs);
@@ -806,7 +815,7 @@ async function startActualRecording(inputArgs: string[], hasWebcam: boolean) {
       log.info(`FFmpeg: ${data}`)
     })
 
-    // 5. Create Tray Icon
+    // 6. Create Tray Icon
     const icon = nativeImage.createFromPath(path.join(process.env.VITE_PUBLIC, 'screenawesome-appicon-tray.png'))
     tray = new Tray(icon)
     const contextMenu = Menu.buildFromTemplate([
@@ -951,12 +960,33 @@ async function handleStartRecording(_event: IpcMainInvokeEvent, options: {
   geometry?: { x: number, y: number, width: number, height: number };
   windowTitle?: string;
   displayId?: number;
+  mic?: { deviceId: string; deviceLabel: string; index: number };
   webcam?: { deviceId: string; deviceLabel: string; index: number };
 }) {
-  const { source, geometry, windowTitle, displayId, webcam } = options;
+  const { source, geometry, windowTitle, displayId, mic, webcam } = options;
   const display = process.env.DISPLAY || ':0.0';
   const baseFfmpegArgs: string[] = [];
+  let micInputAdded = false;
   let webcamInputAdded = false;
+
+  // --- Mic Input ---
+  if (mic) {
+    log.info('[Main] Adding microphone input:', mic.deviceLabel);
+    switch (process.platform) {
+      case 'linux':
+        // 'default' là lựa chọn an toàn cho nhiều hệ thống
+        baseFfmpegArgs.push('-f', 'alsa', '-i', 'default');
+        break;
+      case 'win32':
+        baseFfmpegArgs.push('-f', 'dshow', '-i', `audio=${mic.deviceLabel}`);
+        break;
+      case 'darwin':
+        // Định dạng là video:audio, ở đây chỉ có audio
+        baseFfmpegArgs.push('-f', 'avfoundation', '-i', `:${mic.index}`);
+        break;
+    }
+    micInputAdded = true;
+  }
 
   // --- Webcam Input ---
   if (webcam) {
@@ -1014,23 +1044,23 @@ async function handleStartRecording(_event: IpcMainInvokeEvent, options: {
 
       log.info(`Starting WINDOW recording for geometry: ${safeWidth}x${safeHeight}+${intX},${intY}`);
       baseFfmpegArgs.push('-f', 'x11grab', '-video_size', `${safeWidth}x${safeHeight}`, '-i', `${display}+${intX},${intY}`);
-    
+
     } else if (process.platform === 'win32') {
-        if (!windowTitle) {
-          log.error('Window recording started without a window title.');
-          dialog.showErrorBox('Recording Error', 'No window was selected for recording.');
-          return { canceled: true, filePath: undefined };
-        }
-        log.info(`Starting WINDOW recording for title: "${windowTitle}"`);
-        baseFfmpegArgs.push('-f', 'gdigrab', '-i', `title=${windowTitle}`);
-    
+      if (!windowTitle) {
+        log.error('Window recording started without a window title.');
+        dialog.showErrorBox('Recording Error', 'No window was selected for recording.');
+        return { canceled: true, filePath: undefined };
+      }
+      log.info(`Starting WINDOW recording for title: "${windowTitle}"`);
+      baseFfmpegArgs.push('-f', 'gdigrab', '-i', `title=${windowTitle}`);
+
     } else { // macOS và các OS khác
       log.error('Window recording is not yet supported on this platform.');
       dialog.showErrorBox('Feature Not Supported', 'Window recording is not yet implemented for this OS.');
       return { canceled: true, filePath: undefined };
     }
-    
-    return startActualRecording(baseFfmpegArgs, webcamInputAdded);
+
+    return startActualRecording(baseFfmpegArgs, webcamInputAdded, micInputAdded);
 
   } else if (source === 'area') {
     recorderWin?.hide();
@@ -1070,9 +1100,8 @@ async function handleStartRecording(_event: IpcMainInvokeEvent, options: {
       '-video_size', `${selectedGeometry.width}x${selectedGeometry.height}`,
       '-i', `${display}+${selectedGeometry.x},${selectedGeometry.y}`
     );
-    
-    // QUAN TRỌNG: Return ngay tại đây
-    return startActualRecording(baseFfmpegArgs, webcamInputAdded);
+
+    return startActualRecording(baseFfmpegArgs, webcamInputAdded, micInputAdded);
 
   } else { // Source is 'fullscreen'
     const allDisplays = screen.getAllDisplays();
@@ -1094,9 +1123,8 @@ async function handleStartRecording(_event: IpcMainInvokeEvent, options: {
         break;
       }
     }
-    
-    // QUAN TRỌNG: Return ngay tại đây
-    return startActualRecording(baseFfmpegArgs, webcamInputAdded);
+
+    return startActualRecording(baseFfmpegArgs, webcamInputAdded, micInputAdded);
   }
 }
 

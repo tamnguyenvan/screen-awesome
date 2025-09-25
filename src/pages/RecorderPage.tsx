@@ -2,7 +2,7 @@ import { useState, useEffect, useRef } from 'react';
 import {
   Mic, Webcam, Monitor, SquareDashed, Loader2,
   RefreshCw, AlertTriangle, MousePointerClick, Video, AppWindowMac, X, GripVertical, MousePointer,
-  VideoOff
+  VideoOff, MicOff
 } from 'lucide-react';
 import { Button } from '../components/ui/button';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '../components/ui/select';
@@ -34,6 +34,12 @@ type WebcamDevice = {
   deviceId: string;
   label: string;
   kind: 'videoinput';
+};
+
+type MicDevice = {
+  deviceId: string;
+  label: string;
+  kind: 'audioinput';
 };
 
 const LinuxToolsWarningPanel = ({ missingTools }: { missingTools: string[] }) => {
@@ -167,6 +173,8 @@ export function RecorderPage() {
   const [selectedDisplayId, setSelectedDisplayId] = useState<string>('');
   const [webcams, setWebcams] = useState<WebcamDevice[]>([]);
   const [selectedWebcamId, setSelectedWebcamId] = useState<string>('none');
+  const [mics, setMics] = useState<MicDevice[]>([]);
+  const [selectedMicId, setSelectedMicId] = useState<string>('none');
   const [cursorSize, setCursorSize] = useState<number>(24);
   const webcamPreviewRef = useRef<HTMLVideoElement>(null);
   const webcamStreamRef = useRef<MediaStream | null>(null);
@@ -212,6 +220,7 @@ export function RecorderPage() {
 
   useEffect(() => {
     fetchWebcams();
+    fetchMics();
   }, []);
 
   const fetchWebcams = async () => {
@@ -229,6 +238,23 @@ export function RecorderPage() {
       setSelectedWebcamId('none');
     }
   };
+
+  const fetchMics = async () => {
+    try {
+      // Yêu cầu quyền truy cập audio
+      await navigator.mediaDevices.getUserMedia({ audio: true, video: false });
+    } catch (err) { console.warn("Could not get microphone permission:", err); }
+
+    const devices = (await navigator.mediaDevices.enumerateDevices()).filter(d => d.kind === 'audioinput') as MicDevice[];
+    setMics(devices);
+
+    const savedMicId = localStorage.getItem('screenawesome_selectedMicId');
+    if (savedMicId && devices.some(d => d.deviceId === savedMicId)) {
+      setSelectedMicId(savedMicId);
+    } else {
+      setSelectedMicId('none');
+    }
+  }
 
   useEffect(() => {
     const videoEl = webcamPreviewRef.current;
@@ -326,10 +352,25 @@ export function RecorderPage() {
         }
       }
 
+      let micPayload;
+      if (selectedMicId !== 'none' && mics.length > 0) {
+        const selectedDevice = mics.find(d => d.deviceId === selectedMicId);
+        const selectedDeviceIndex = mics.findIndex(d => d.deviceId === selectedMicId);
+
+        if (selectedDevice && selectedDeviceIndex > -1) {
+          micPayload = {
+            deviceId: selectedDevice.deviceId,
+            deviceLabel: selectedDevice.label,
+            index: selectedDeviceIndex
+          }
+        }
+      }
+
       const result = await window.electronAPI.startRecording({
         source,
         displayId: source === 'fullscreen' ? Number(selectedDisplayId) : undefined,
         webcam: webcamPayload,
+        mic: micPayload,
         ...options
       });
       if (result.canceled) {
@@ -350,6 +391,10 @@ export function RecorderPage() {
     setSelectedWebcamId(deviceId);
     localStorage.setItem('screenawesome_selectedWebcamId', deviceId);
   };
+  const handleMicChange = (deviceId: string) => {
+    setSelectedMicId(deviceId);
+    localStorage.setItem('screenawesome_selectedMicId', deviceId);
+  }
 
   const handleCursorSizeChange = (newSize: number) => {
     if (platform === 'linux') {
@@ -510,14 +555,25 @@ export function RecorderPage() {
                   </SelectContent>
                 </Select>
               </div>
-              <Button
-                variant="secondary"
-                size="icon"
-                disabled
-                className="h-10 w-10 opacity-50 rounded-2xl"
-              >
-                <Mic size={18} />
-              </Button>
+
+              <div className="flex items-center" style={{ WebkitAppRegion: 'no-drag' }}>
+                <Select value={selectedMicId} onValueChange={handleMicChange}>
+                  <SelectTrigger className="w-12 h-10 rounded-2xl">
+                    <SelectValue asChild>
+                      {selectedMicId !== 'none'
+                        ? <Mic size={18} className="text-primary" />
+                        : <MicOff size={18} className="text-muted-foreground" />
+                      }
+                    </SelectValue>
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="none">Don't record microphone</SelectItem>
+                    {mics.map(mic => (
+                      <SelectItem key={mic.deviceId} value={mic.deviceId}>{mic.label || `Microphone ${mics.indexOf(mic) + 1}`}</SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
 
               {platform === 'linux' && (
                 <>
