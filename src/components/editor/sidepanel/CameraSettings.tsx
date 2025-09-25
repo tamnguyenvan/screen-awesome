@@ -1,12 +1,15 @@
+import { useMemo } from 'react';
 import { useEditorStore } from '../../../store/editorStore';
 import { ControlGroup } from './ControlGroup';
 import {
   CornerUpLeft, CornerUpRight, CornerDownLeft, CornerDownRight,
-  Video, Eye, EyeOff, Image
+  Video, Eye, EyeOff, Image, Maximize
 } from 'lucide-react';
 import { Button } from '../../ui/button';
 import Slider from '../../ui/slider';
 import { useShallow } from 'zustand/react/shallow';
+import { ColorPicker } from '../../ui/color-picker';
+import { rgbaToHexAlpha, hexToRgb } from '../../../lib/utils';
 
 export function CameraSettings() {
   const { isWebcamVisible, webcamPosition, webcamStyles, setWebcamVisibility, setWebcamPosition, updateWebcamStyle } = useEditorStore(
@@ -26,6 +29,28 @@ export function CameraSettings() {
     { pos: 'bottom-left' as const, icon: <CornerDownLeft className="w-5 h-5" />, label: 'Bottom Left' },
     { pos: 'bottom-right' as const, icon: <CornerDownRight className="w-5 h-5" />, label: 'Bottom Right' },
   ];
+
+  // Correctly separate color and alpha from RGBA string
+  const { hex: shadowHex, alpha: shadowAlpha } = useMemo(
+    () => rgbaToHexAlpha(webcamStyles.shadowColor),
+    [webcamStyles.shadowColor]
+  );
+
+  const handleShadowColorChange = (newHex: string) => {
+    const rgb = hexToRgb(newHex);
+    if (rgb) {
+      const newRgbaColor = `rgba(${rgb.r}, ${rgb.g}, ${rgb.b}, ${shadowAlpha})`;
+      updateWebcamStyle({ shadowColor: newRgbaColor });
+    }
+  };
+
+  const handleShadowOpacityChange = (newAlpha: number) => {
+    const rgb = hexToRgb(shadowHex);
+    if (rgb) {
+      const newRgbaColor = `rgba(${rgb.r}, ${rgb.g}, ${rgb.b}, ${newAlpha})`;
+      updateWebcamStyle({ shadowColor: newRgbaColor });
+    }
+  };
 
   return (
     <div className="h-full flex flex-col">
@@ -91,71 +116,68 @@ export function CameraSettings() {
           icon={<Image className="w-4 h-4 text-primary" />}
           description="Adjust size and shadow"
         >
-          <div>
-            <div className="flex items-center gap-2 text-sm font-medium text-sidebar-foreground mb-4">
-              <svg xmlns="http://www.w3.org/2000/svg" height="16px" viewBox="0 -960 960 960" width="16px" fill="currentColor" className="text-primary">
-                <path d="M160-80q-33 0-56.5-23.5T80-160v-480q0-33 23.5-56.5T160-720h80v-80q0-33 23.5-56.5T320-880h480q33 0 56.5 23.5T880-800v480q0 33-23.5 56.5T800-240h-80v80q0 33-23.5 56.5T640-80H160Zm160-240h480v-480H320v480Z" />
-              </svg>
-              <span>Shadow</span>
+          <div className="space-y-6">
+            {/* Webcam Size Control */}
+            <div>
+              <label className="flex items-center justify-between text-sm font-medium text-sidebar-foreground mb-3">
+                <div className="flex items-center gap-2">
+                  <Maximize className="w-4 h-4 text-primary" />
+                  <span>Size</span>
+                </div>
+                <span className="text-xs text-muted-foreground">{webcamStyles.size}%</span>
+              </label>
+              <Slider
+                min={10} max={50} step={1}
+                value={webcamStyles.size}
+                onChange={(value) => updateWebcamStyle({ size: value })}
+              />
             </div>
 
-            {/* Grid layout cho Shadow controls */}
-            <div className="grid grid-cols-1 gap-4">
-              {/* Shadow Size */}
-              <div>
-                <div className="flex items-center justify-between mb-2">
-                  <span className="text-sm text-muted-foreground">Size</span>
-                  <span className="text-xs text-muted-foreground font-medium">{webcamStyles.shadow}px</span>
-                </div>
-                <Slider
-                  min={0} max={40} step={1}
-                  value={webcamStyles.shadow}
-                  onChange={(value) => updateWebcamStyle({ shadow: value })}
-                />
+            {/* Webcam Shadow Control */}
+            <div>
+              <div className="flex items-center gap-2 text-sm font-medium text-sidebar-foreground mb-4">
+                <svg xmlns="http://www.w3.org/2000/svg" height="16px" viewBox="0 -960 960 960" width="16px" fill="currentColor" className="text-primary">
+                  <path d="M160-80q-33 0-56.5-23.5T80-160v-480q0-33 23.5-56.5T160-720h80v-80q0-33 23.5-56.5T320-880h480q33 0 56.5 23.5T880-800v480q0 33-23.5 56.5T800-240h-80v80q0 33-23.5 56.5T640-80H160Zm160-240h480v-480H320v480Z" />
+                </svg>
+                <span>Shadow</span>
               </div>
 
-              {/* Shadow Color & Opacity trong grid 2 cột */}
-              <div className="grid grid-cols-2 gap-4">
+              <div className="grid grid-cols-1 gap-4">
                 <div>
                   <div className="flex items-center justify-between mb-2">
-                    <span className="text-sm text-muted-foreground">Color</span>
-                    <input
-                      type="color"
-                      value={webcamStyles.shadowColor.substring(0, 7)}
-                      onChange={(e) =>
-                        updateWebcamStyle({
-                          shadowColor: e.target.value + webcamStyles.shadowColor.substring(7),
-                        })
-                      }
-                      className="w-6 h-6 rounded border border-border cursor-pointer transition-all duration-200"
-                    />
-                  </div>
-                </div>
-
-                <div>
-                  <div className="flex items-center justify-between mb-2">
-                    <span className="text-sm text-muted-foreground">Opacity</span>
-                    <span className="text-xs text-muted-foreground font-medium">
-                      {Math.round((parseFloat(webcamStyles.shadowColor.split(',')[3] || '0.4') * 100))}%
-                    </span>
+                    <span className="text-sm text-muted-foreground">Size</span>
+                    <span className="text-xs text-muted-foreground font-medium">{webcamStyles.shadow}px</span>
                   </div>
                   <Slider
-                    min={0}
-                    max={1}
-                    step={0.01}
-                    value={parseFloat(webcamStyles.shadowColor.split(',')[3] || '0.4')}
-                    onChange={(value) => {
-                      const parts = webcamStyles.shadowColor.match(
-                        /^rgba?\((\d+),\s*(\d+),\s*(\d+)(,\s*\d*\.?\d+)?\)$/
-                      );
-                      if (parts) {
-                        const newColor = `rgba(${parts[1]}, ${parts[2]}, ${parts[3]}, ${value})`;
-                        updateWebcamStyle({ shadowColor: newColor });
-                      } else {
-                        updateWebcamStyle({ shadowColor: `rgba(0, 0, 0, ${value})` });
-                      }
-                    }}
+                    min={0} max={40} step={1}
+                    value={webcamStyles.shadow}
+                    onChange={(value) => updateWebcamStyle({ shadow: value })}
                   />
+                </div>
+
+                <div className="grid grid-cols-2 gap-4">
+                  <div>
+                    <ColorPicker
+                      label="Color"
+                      value={shadowHex} // Use the calculated hex value
+                      onChange={handleShadowColorChange}
+                    />
+                  </div>
+                  <div>
+                    <div className="flex items-center justify-between mb-2">
+                      <span className="text-sm text-muted-foreground">Opacity</span>
+                      <span className="text-xs text-muted-foreground font-medium">
+                        {Math.round(shadowAlpha * 100)}%</span>
+                    </div>
+
+                    <Slider
+                      min={0}
+                      max={1}
+                      step={0.01}
+                      value={shadowAlpha}
+                      onChange={handleShadowOpacityChange}
+                    />
+                  </div>
                 </div>
               </div>
             </div>

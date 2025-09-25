@@ -1,6 +1,9 @@
+import { useMemo } from 'react';
 import { useEditorStore } from '../../../store/editorStore';
+import { ColorPicker } from '../../ui/color-picker';
 import Slider from '../../ui/slider';
 import { ControlGroup } from './ControlGroup';
+import { rgbaToHexAlpha, hexToRgb } from '../../../lib/utils';
 
 export function FrameEffectsSettings() {
   const { frameStyles, updateFrameStyle } = useEditorStore();
@@ -10,6 +13,31 @@ export function FrameEffectsSettings() {
       [name]: typeof value === 'string' ? parseFloat(value) || 0 : value,
     });
   };
+
+  // Memoize the conversion to prevent re-calculating on every render
+  const { hex: shadowHex, alpha: shadowAlpha } = useMemo(
+    () => rgbaToHexAlpha(frameStyles.shadowColor),
+    [frameStyles.shadowColor]
+  );
+
+  const handleShadowColorChange = (newHex: string) => {
+    const rgb = hexToRgb(newHex);
+    if (rgb) {
+      // Re-combine the new color with the existing alpha value
+      const newRgbaColor = `rgba(${rgb.r}, ${rgb.g}, ${rgb.b}, ${shadowAlpha})`;
+      updateFrameStyle({ shadowColor: newRgbaColor });
+    }
+  };
+
+  const handleShadowOpacityChange = (newAlpha: number) => {
+    const rgb = hexToRgb(shadowHex);
+    if (rgb) {
+      // Re-combine the existing color with the new alpha value
+      const newRgbaColor = `rgba(${rgb.r}, ${rgb.g}, ${rgb.b}, ${newAlpha})`;
+      updateFrameStyle({ shadowColor: newRgbaColor });
+    }
+  };
+
 
   return (
     <>
@@ -45,7 +73,7 @@ export function FrameEffectsSettings() {
           <div>
             <label className="flex items-center justify-between text-sm font-medium text-sidebar-foreground mb-3">
               <div className="flex items-center gap-2">
-                <svg xmlns="http://www.w3.org/2000/svg" height="16px" viewBox="0 -960 960 960" width="16px" fill="currentColor" className="text-primary"> {/* Thêm text-primary, giảm size từ 24px xuống 16px */}
+                <svg xmlns="http://www.w3.org/2000/svg" height="16px" viewBox="0 -960 960 960" width="16px" fill="currentColor" className="text-primary">
                   <path d="M120-120v-80h80v80h-80Zm0-160v-80h80v80h-80Zm0-160v-80h80v80h-80Zm0-160v-80h80v80h-80Zm0-160v-80h80v80h-80Zm160 640v-80h80v80h-80Zm0-640v-80h80v80h-80Zm160 640v-80h80v80h-80Zm160 0v-80h80v80h-80Zm160 0v-80h80v80h-80Zm0-160v-80h80v80h-80Zm80-160h-80v-200q0-50-35-85t-85-35H440v-80h200q83 0 141.5 58.5T840-640v200Z" />
                 </svg>
                 <span>Corner Radius</span>
@@ -69,9 +97,7 @@ export function FrameEffectsSettings() {
               <span>Shadow</span>
             </div>
 
-            {/* Grid layout cho Shadow controls */}
             <div className="grid grid-cols-1 gap-4">
-              {/* Shadow Size */}
               <div>
                 <div className="flex items-center justify-between mb-2">
                   <span className="text-sm text-muted-foreground">Size</span>
@@ -86,54 +112,32 @@ export function FrameEffectsSettings() {
                 />
               </div>
 
-              {/* Shadow Color & Opacity */}
               <div className="grid grid-cols-2 gap-4">
                 <div>
-                  <div className="flex items-center justify-between mb-2">
-                    <span className="text-sm text-muted-foreground">Color</span>
-                    <input
-                      type="color"
-                      value={frameStyles.shadowColor.substring(0, 7)}
-                      onChange={(e) =>
-                        updateFrameStyle({
-                          shadowColor: e.target.value + frameStyles.shadowColor.substring(7),
-                        })
-                      }
-                      className="w-6 h-6 rounded border border-border cursor-pointer transition-all duration-200"
-                    />
-                  </div>
+                  <ColorPicker
+                    label="Color"
+                    value={shadowHex}
+                    onChange={handleShadowColorChange}
+                  />
                 </div>
-
                 <div>
                   <div className="flex items-center justify-between mb-2">
                     <span className="text-sm text-muted-foreground">Opacity</span>
-                    <span className="text-xs text-muted-foreground font-medium">
-                      {Math.round((parseFloat(frameStyles.shadowColor.split(',')[3] || '0.4') * 100))}%
-                    </span>
+                    <span className="text-xs text-muted-foreground font-medium">{Math.round(shadowAlpha * 100)}%</span>
                   </div>
                   <Slider
                     min={0}
                     max={1}
                     step={0.01}
-                    value={parseFloat(frameStyles.shadowColor.split(',')[3] || '0.4')}
-                    onChange={(value) => {
-                      const parts = frameStyles.shadowColor.match(
-                        /^rgba?\((\d+),\s*(\d+),\s*(\d+)(,\s*\d*\.?\d+)?\)$/
-                      );
-                      if (parts) {
-                        const newColor = `rgba(${parts[1]}, ${parts[2]}, ${parts[3]}, ${value})`;
-                        updateFrameStyle({ shadowColor: newColor });
-                      } else {
-                        updateFrameStyle({ shadowColor: `rgba(0, 0, 0, ${value})` });
-                      }
-                    }}
+                    value={shadowAlpha}
+                    onChange={handleShadowOpacityChange}
                   />
                 </div>
               </div>
             </div>
           </div>
 
-          {/* Border Thickness - cải thiện tương tự */}
+          {/* Border Thickness */}
           <div>
             <label className="flex items-center justify-between text-sm font-medium text-sidebar-foreground mb-3">
               <div className="flex items-center gap-2">

@@ -1,5 +1,3 @@
-// src/components/editor/sidepanel/BackgroundSettings.tsx
-
 import React, { useState, useRef, useEffect } from 'react';
 import { useEditorStore } from '../../../store/editorStore';
 import { cn } from '../../../lib/utils';
@@ -9,52 +7,11 @@ import {
   ArrowUp, ArrowDown, ArrowLeft, ArrowRight, ArrowDownRight, ArrowUpLeft, ArrowDownLeft, Plus, Paintbrush
 } from 'lucide-react';
 import { ControlGroup } from './ControlGroup';
-import { Button } from '../../ui/button'; // Import Button component
+import { Button } from '../../ui/button';
+import { ColorPickerRoundedRect } from '../../ui/color-picker';
 
 type BackgroundTab = 'color' | 'gradient' | 'image' | 'wallpaper';
 
-// Helper component for circular color picker
-const ColorPickerRoundedRect = ({
-  label,
-  color,
-  name,
-  onChange,
-  size = 'sm'
-}: {
-  label: string;
-  color: string;
-  name: string;
-  onChange: (e: React.ChangeEvent<HTMLInputElement>) => void;
-  size?: 'sm' | 'md' | 'lg';
-}) => {
-  const sizeClasses = {
-    sm: 'w-8 h-8',
-    md: 'w-10 h-10',
-    lg: 'w-12 h-12'
-  };
-
-  return (
-    <div className="flex items-center gap-3">
-      <label className={cn("relative cursor-pointer group flex-shrink-0", sizeClasses[size])}>
-        <input
-          type="color"
-          name={name}
-          value={color}
-          onChange={onChange}
-          className="absolute inset-0 w-full h-full opacity-0 cursor-pointer"
-        />
-        <div
-          className={cn(
-            "w-full aspect-square rounded-lg border-2 transition-all duration-300",
-            "border-sidebar-border hover:border-primary/60"
-          )}
-          style={{ backgroundColor: color }}
-        />
-      </label>
-      <span className="text-sm text-foreground font-medium">{label}</span>
-    </div>
-  );
-};
 
 const GRADIENT_PRESETS = [
   { name: 'Top to Bottom', direction: 'to bottom', icon: ArrowDown },
@@ -81,20 +38,15 @@ export function BackgroundSettings() {
   const [activeTab, setActiveTab] = useState<BackgroundTab>(frameStyles.background.type);
   const imageInputRef = useRef<HTMLInputElement>(null);
 
-  // CHÚ THÍCH: Thêm state cục bộ để quản lý màu gradient đang được chỉnh sửa.
-  // Điều này cho phép người dùng chọn màu mà không cập nhật ngay lập tức state toàn cục.
   const [localGradient, setLocalGradient] = useState({
     start: frameStyles.background.gradientStart || '#6366f1',
     end: frameStyles.background.gradientEnd || '#9ca9ff'
   });
 
-  // Sync tab with global state if it changes from somewhere else
   useEffect(() => {
     setActiveTab(frameStyles.background.type);
   }, [frameStyles.background.type]);
 
-  // CHÚ THÍCH: Đồng bộ state cục bộ (localGradient) với state toàn cục (zustand)
-  // khi tab gradient được chọn hoặc khi state toàn cục thay đổi từ nơi khác (ví dụ: undo/redo).
   useEffect(() => {
     if (frameStyles.background.type === 'gradient') {
       setLocalGradient({
@@ -129,13 +81,11 @@ export function BackgroundSettings() {
     imageInputRef.current?.click();
   }
 
-  // CHÚ THÍCH: Hàm mới để áp dụng các màu gradient từ state cục bộ vào state toàn cục.
   const handleApplyGradient = () => {
     updateBackground({
       type: 'gradient',
       gradientStart: localGradient.start,
       gradientEnd: localGradient.end,
-      // Giữ lại direction hiện tại từ state toàn cục
       gradientDirection: frameStyles.background.gradientDirection,
     });
   };
