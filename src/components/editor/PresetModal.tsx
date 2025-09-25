@@ -4,8 +4,9 @@ import { useEditorStore } from '../../store/editorStore';
 import { Button } from '../ui/button';
 import { Input } from '../ui/input';
 import { PresetPreview } from './PresetPreview';
+import { Preset } from '../../types/store';
 import { cn } from '../../lib/utils';
-import { Plus, Trash2, Check, Lock } from 'lucide-react';
+import { Plus, Trash2, Check, Lock, RefreshCw } from 'lucide-react';
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '../ui/tooltip';
 
 
@@ -15,13 +16,15 @@ interface PresetModalProps {
 }
 
 export function PresetModal({ isOpen, onClose }: PresetModalProps) {
-  const { presets, activePresetId, applyPreset, saveCurrentStyleAsPreset, deletePreset } = useEditorStore(
+  const { presets, activePresetId, applyPreset, saveCurrentStyleAsPreset, deletePreset, resetPreset, updatePresetName } = useEditorStore(
     useShallow(state => ({
       presets: state.presets,
       activePresetId: state.activePresetId,
       applyPreset: state.applyPreset,
       saveCurrentStyleAsPreset: state.saveCurrentStyleAsPreset,
       deletePreset: state.deletePreset,
+      resetPreset: state.resetPreset,
+      updatePresetName: state.updatePresetName,
     }))
   );
   
@@ -29,6 +32,8 @@ export function PresetModal({ isOpen, onClose }: PresetModalProps) {
   const [previewId, setPreviewId] = useState<string | null>(activePresetId);
   const [newPresetName, setNewPresetName] = useState('');
 
+  const [editingId, setEditingId] = useState<string | null>(null);
+  const [editingName, setEditingName] = useState('');
   // Reset previewId when modal is opened or active preset changes
   useEffect(() => {
     if (isOpen) {
@@ -57,6 +62,28 @@ export function PresetModal({ isOpen, onClose }: PresetModalProps) {
       setNewPresetName('');
     }
   };
+
+  const handleDoubleClick = (preset: Preset) => {
+    if (!preset.isDefault) {
+      setEditingId(preset.id);
+      setEditingName(preset.name);
+    }
+  };
+
+  const handleRename = () => {
+    if (editingId && editingName.trim()) {
+      updatePresetName(editingId, editingName.trim());
+    }
+    setEditingId(null);
+    setEditingName('');
+  };
+
+  const cancelRename = () => {
+    setEditingId(null);
+    setEditingName('');
+  };
+
+
   
   const handleSelect = () => {
     if (previewId) {
@@ -90,22 +117,39 @@ export function PresetModal({ isOpen, onClose }: PresetModalProps) {
           {/* Left Column: Preset List */}
           <div className="w-1/3 border-r border-border p-4 flex flex-col">
             <div className="flex-1 overflow-y-auto space-y-2 pr-2">
-              {presetList.map(p => (
-                <button
-                  key={p.id}
-                  onClick={() => setPreviewId(p.id)}
-                  className={cn(
-                    "w-full text-left p-3 rounded-lg flex items-center justify-between transition-colors",
-                    previewId === p.id ? 'bg-primary/10 text-primary' : 'text-foreground hover:bg-accent/50'
-                  )}
-                >
-                  <span className="font-medium flex items-center gap-2">
-                    {p.name}
-                    {p.isDefault && <Lock className="w-3 h-3 text-muted-foreground" />}
-                  </span>
-                  {activePresetId === p.id && <Check className="w-4 h-4 text-primary" />}
-                </button>
-              ))}
+              {presetList.map(p =>
+                editingId === p.id ? (
+                  <div key={p.id} className="p-1.5">
+                    <Input
+                      value={editingName}
+                      onChange={(e) => setEditingName(e.target.value)}
+                      onBlur={handleRename}
+                      onKeyDown={(e) => {
+                        if (e.key === 'Enter') handleRename();
+                        if (e.key === 'Escape') cancelRename();
+                      }}
+                      autoFocus
+                      className="h-9"
+                    />
+                  </div>
+                ) : (
+                  <button
+                    key={p.id}
+                    onClick={() => setPreviewId(p.id)}
+                    onDoubleClick={() => handleDoubleClick(p)}
+                    className={cn(
+                      "w-full text-left p-3 rounded-lg flex items-center justify-between transition-colors",
+                      previewId === p.id ? 'bg-primary/10 text-primary' : 'text-foreground hover:bg-accent/50'
+                    )}
+                  >
+                    <span className="font-medium flex items-center gap-2">
+                      {p.name}
+                      {p.isDefault && <Lock className="w-3 h-3 text-muted-foreground" />}
+                    </span>
+                    {activePresetId === p.id && <Check className="w-4 h-4 text-primary" />}
+                  </button>
+                )
+              )}
             </div>
             <div className="pt-4 border-t border-border mt-2">
               <div className="flex items-center gap-2">
@@ -131,28 +175,32 @@ export function PresetModal({ isOpen, onClose }: PresetModalProps) {
                     {previewPreset.name}
                     {previewPreset.isDefault && <Lock className="w-4 h-4 text-muted-foreground" />}
                   </h3>
-                  <TooltipProvider>
-                    <Tooltip>
-                      <TooltipTrigger asChild>
-                        {/* Wrapper div is necessary for tooltip on disabled button */}
-                        <div>
-                          <Button 
-                            variant="destructive" 
-                            size="sm" 
-                            onClick={() => handleDelete(previewPreset.id)}
-                            disabled={previewPreset.isDefault}
+                  {previewPreset.isDefault ? (
+                    <TooltipProvider>
+                      <Tooltip>
+                        <TooltipTrigger asChild>
+                          <Button
+                            variant="outline"
+                            size="sm"
+                            onClick={() => resetPreset(previewPreset.id)}
                           >
-                            <Trash2 className="w-4 h-4 mr-2"/> Delete
+                            <RefreshCw className="w-4 h-4 mr-2"/> Reset
                           </Button>
-                        </div>
-                      </TooltipTrigger>
-                      {previewPreset.isDefault && (
+                        </TooltipTrigger>
                         <TooltipContent>
-                          <p>The default preset cannot be deleted.</p>
+                          <p>Restore this preset to its original settings.</p>
                         </TooltipContent>
-                      )}
-                    </Tooltip>
-                  </TooltipProvider>
+                      </Tooltip>
+                    </TooltipProvider>
+                  ) : (
+                    <Button
+                      variant="destructive"
+                      size="sm"
+                      onClick={() => handleDelete(previewPreset.id)}
+                    >
+                      <Trash2 className="w-4 h-4 mr-2"/> Delete
+                    </Button>
+                  )}
                 </div>
                 <PresetPreview 
                   styles={previewPreset.styles}

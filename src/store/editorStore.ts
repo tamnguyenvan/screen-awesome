@@ -11,6 +11,29 @@ import {
   AnchorPoint
 } from '../types/store';
 
+// --- Constants ---
+const HARDCODED_DEFAULT_PRESET_STYLES: FrameStyles = {
+  padding: 5,
+  background: {
+    type: 'wallpaper',
+    thumbnailUrl: WALLPAPERS[0].thumbnailUrl,
+    imageUrl: WALLPAPERS[0].imageUrl,
+  },
+  borderRadius: 16,
+  shadow: 5,
+  shadowColor: 'rgba(0, 0, 0, 0.4)',
+  borderWidth: 6,
+};
+
+const HARDCODED_DEFAULT_PRESET: Omit<Preset, 'id' | 'name'> = {
+  styles: HARDCODED_DEFAULT_PRESET_STYLES,
+  aspectRatio: '16:9',
+  isDefault: true,
+  webcamStyles: { size: 30, shadow: 15, shadowColor: 'rgba(0, 0, 0, 0.4)' },
+  webcamPosition: { pos: 'bottom-right' },
+  isWebcamVisible: false,
+};
+
 
 // --- Types ---
 let debounceTimer: NodeJS.Timeout;
@@ -40,6 +63,8 @@ export interface EditorActions {
   initializePresets: () => Promise<void>;
   applyPreset: (id: string) => void;
   _recalculateZIndices: () => void;
+  resetPreset: (id: string) => void;
+  updatePresetName: (id: string, name: string) => void;
   saveCurrentStyleAsPreset: (name: string) => void;
   updateActivePreset: () => void;
   deletePreset: (id: string) => void;
@@ -540,13 +565,12 @@ export const useEditorStore = create(
             if (Object.keys(loadedPresets).length === 0) {
               // Case 1: No presets exist at all. Create a new default.
               const defaultId = `preset-default-${Date.now()}`;
-              loadedPresets[defaultId] = {
+              loadedPresets[defaultId] = JSON.parse(JSON.stringify({
                 id: defaultId,
                 name: 'Default',
-                styles: JSON.parse(JSON.stringify(initialFrameStyles)),
-                aspectRatio: '16:9',
-                isDefault: true,
-              };
+                ...HARDCODED_DEFAULT_PRESET
+              }));
+
               defaultPreset = loadedPresets[defaultId];
             } else {
               // Case 2: Presets exist but none are marked as default (migration).
@@ -613,6 +637,32 @@ export const useEditorStore = create(
 
       _recalculateZIndices: () => _recalculateZIndices(set),
 
+      resetPreset: (id) => {
+        set(state => {
+          const presetToReset = state.presets[id];
+          if (presetToReset && presetToReset.isDefault) {
+            presetToReset.styles = JSON.parse(JSON.stringify(HARDCODED_DEFAULT_PRESET.styles));
+            presetToReset.aspectRatio = HARDCODED_DEFAULT_PRESET.aspectRatio;
+            presetToReset.webcamStyles = JSON.parse(JSON.stringify(HARDCODED_DEFAULT_PRESET.webcamStyles));
+            presetToReset.webcamPosition = JSON.parse(JSON.stringify(HARDCODED_DEFAULT_PRESET.webcamPosition));
+            presetToReset.isWebcamVisible = HARDCODED_DEFAULT_PRESET.isWebcamVisible;
+            
+            if (state.activePresetId === id) {
+                get().applyPreset(id);
+            }
+          }
+        });
+        _persistPresets(get().presets);
+      },
+      updatePresetName: (id, name) => {
+        set(state => {
+          const preset = state.presets[id];
+          if (preset && !preset.isDefault) {
+            preset.name = name;
+          }
+        });
+        _persistPresets(get().presets);
+      },
       saveCurrentStyleAsPreset: (name) => {
         const id = `preset-${Date.now()}`;
         const newPreset: Preset = {
