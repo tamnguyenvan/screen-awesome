@@ -72,7 +72,7 @@ const initialProjectState = {
   webcamVideoUrl: null,
   isWebcamVisible: false,
   webcamPosition: { pos: 'bottom-right' } as WebcamPosition,
-  webcamStyles: { size: 30, shadow: 15 },
+  webcamStyles: { size: 30, shadow: 15, shadowColor: 'rgba(0, 0, 0, 0.4)' }, // Added shadowColor
 };
 
 const initialAppState = {
@@ -90,7 +90,8 @@ const initialFrameStyles: FrameStyles = {
     imageUrl: WALLPAPERS[0].imageUrl,
   },
   borderRadius: 16,
-  shadow: 5,
+  shadow: 5, // Controls blur and offset strength
+  shadowColor: 'rgba(0, 0, 0, 0.4)', // Default shadow color with 40% opacity
   borderWidth: 8,
 }
 
@@ -557,6 +558,19 @@ export const useEditorStore = create(
             }
           }
           
+          // Ensure `shadowColor` property exists in old presets for backward compatibility
+          Object.values(loadedPresets).forEach(preset => {
+            if (preset.styles && preset.styles.shadowColor === undefined) {
+              preset.styles.shadowColor = initialFrameStyles.shadowColor;
+              presetsModified = true;
+            }
+            if (preset.webcamStyles && preset.webcamStyles.shadowColor === undefined) {
+              preset.webcamStyles.shadowColor = initialProjectState.webcamStyles.shadowColor;
+              presetsModified = true;
+            }
+          });
+
+
           if (presetsModified) {
             await window.electronAPI.setSetting('presets', loadedPresets);
           }
@@ -583,6 +597,17 @@ export const useEditorStore = create(
             state.frameStyles = JSON.parse(JSON.stringify(preset.styles));
             state.aspectRatio = preset.aspectRatio;
             state.activePresetId = id;
+
+            // Apply webcam settings from preset if available
+            if (preset.webcamStyles) {
+              state.webcamStyles = JSON.parse(JSON.stringify(preset.webcamStyles));
+            }
+            if (preset.webcamPosition) {
+              state.webcamPosition = JSON.parse(JSON.stringify(preset.webcamPosition));
+            }
+            if (preset.isWebcamVisible !== undefined) {
+              state.isWebcamVisible = preset.isWebcamVisible;
+            }
           });
           localStorage.setItem(APP.LAST_PRESET_ID_KEY, id);
         }
@@ -598,6 +623,11 @@ export const useEditorStore = create(
           styles: JSON.parse(JSON.stringify(get().frameStyles)),
           aspectRatio: get().aspectRatio,
           isDefault: false, // New presets are never the default one
+
+          // Save current webcam settings with the preset
+          webcamPosition: JSON.parse(JSON.stringify(get().webcamPosition)),
+          webcamStyles: JSON.parse(JSON.stringify(get().webcamStyles)),
+          isWebcamVisible: get().isWebcamVisible,
         };
         set(state => {
           state.presets[id] = newPreset;
@@ -608,11 +638,14 @@ export const useEditorStore = create(
       },
 
       updateActivePreset: () => {
-        const { activePresetId, presets, frameStyles, aspectRatio } = get();
+        const { activePresetId, presets, frameStyles, aspectRatio, webcamPosition, webcamStyles, isWebcamVisible } = get();
         if (activePresetId && presets[activePresetId]) {
           set(state => {
             state.presets[activePresetId].styles = JSON.parse(JSON.stringify(frameStyles));
             state.presets[activePresetId].aspectRatio = aspectRatio;
+            state.presets[activePresetId].webcamPosition = JSON.parse(JSON.stringify(webcamPosition));
+            state.presets[activePresetId].webcamStyles = JSON.parse(JSON.stringify(webcamStyles));
+            state.presets[activePresetId].isWebcamVisible = isWebcamVisible;
           });
           _persistPresets(get().presets);
         }

@@ -1,9 +1,10 @@
 import { useEditorStore } from '../../../store/editorStore';
 import { ControlGroup } from './ControlGroup';
-import { CornerUpLeft, CornerUpRight, CornerDownLeft, CornerDownRight, Video, Eye, EyeOff, Image } from 'lucide-react';
+import { CornerUpLeft, CornerUpRight, CornerDownLeft, CornerDownRight, Video, Eye, EyeOff, Image, Palette } from 'lucide-react'; // Added Palette
 import { Button } from '../../ui/button';
 import Slider from '../../ui/slider';
 import { useShallow } from 'zustand/react/shallow';
+import { OpacityIcon } from '../../ui/icons';
 
 export function CameraSettings() {
   const { isWebcamVisible, webcamPosition, webcamStyles, setWebcamVisibility, setWebcamPosition, updateWebcamStyle } = useEditorStore(
@@ -88,27 +89,70 @@ export function CameraSettings() {
           icon={<Image className="w-4 h-4 text-primary" />}
           description="Adjust size and shadow"
         >
-          <div className="space-y-6">
-            <div>
-              <label className="flex items-center justify-between mb-3">
-                <span className="text-sm font-medium text-sidebar-foreground">Size</span>
-                <span className="text-xs text-muted-foreground">{webcamStyles.size}%</span>
-              </label>
-              <Slider
-                min={5} max={40} step={1}
-                value={webcamStyles.size}
-                onChange={(value) => updateWebcamStyle({ size: value })}
-              />
-            </div>
-            <div>
-              <label className="flex items-center justify-between mb-3">
-                <span className="text-sm font-medium text-sidebar-foreground">Shadow</span>
-                <span className="text-xs text-muted-foreground">{webcamStyles.shadow}</span>
-              </label>
+          <div>
+            <label className="flex items-center gap-2 text-sm font-medium text-sidebar-foreground mb-4">
+              <span>Shadow</span>
+            </label>
+
+            {/* Shadow Size */}
+            <div className="mb-6">
+              <div className="flex items-center justify-between mb-2">
+                <span className="text-sm text-sidebar-foreground">Size</span>
+                <span className="text-xs text-muted-foreground">{webcamStyles.shadow}px</span>
+              </div>
               <Slider
                 min={0} max={40} step={1}
                 value={webcamStyles.shadow}
                 onChange={(value) => updateWebcamStyle({ shadow: value })}
+              />
+            </div>
+
+            {/* Shadow Color */}
+            <div className="mb-6">
+              <div className="flex items-center justify-between mb-2">
+                <span className="text-sm text-sidebar-foreground flex items-center gap-2">
+                  <Palette className="w-4 h-4" /> Color
+                </span>
+                <input
+                  type="color"
+                  value={webcamStyles.shadowColor.substring(0, 7)}
+                  onChange={(e) =>
+                    updateWebcamStyle({
+                      shadowColor: e.target.value + webcamStyles.shadowColor.substring(7),
+                    })
+                  }
+                  className="w-8 h-8 rounded-full border border-border cursor-pointer transition-all duration-200"
+                />
+              </div>
+            </div>
+
+            {/* Shadow Opacity */}
+            <div>
+              <div className="flex items-center justify-between mb-2">
+                <span className="text-sm font-medium text-sidebar-foreground flex items-center gap-2">
+                  <OpacityIcon /> Opacity
+                </span>
+                <span className="text-xs text-muted-foreground">
+                  {Math.round((parseFloat(webcamStyles.shadowColor.split(',')[3] || '0.4') * 100))}%
+                </span>
+              </div>
+              <Slider
+                min={0}
+                max={1}
+                step={0.01}
+                className="w-full"
+                value={parseFloat(webcamStyles.shadowColor.split(',')[3] || '0.4')}
+                onChange={(value) => {
+                  const parts = webcamStyles.shadowColor.match(
+                    /^rgba?\((\d+),\s*(\d+),\s*(\d+)(,\s*\d*\.?\d+)?\)$/
+                  );
+                  if (parts) {
+                    const newColor = `rgba(${parts[1]}, ${parts[2]}, ${parts[3]}, ${value})`;
+                    updateWebcamStyle({ shadowColor: newColor });
+                  } else {
+                    updateWebcamStyle({ shadowColor: `rgba(0, 0, 0, ${value})` });
+                  }
+                }}
               />
             </div>
           </div>

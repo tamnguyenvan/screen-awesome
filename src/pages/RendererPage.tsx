@@ -230,8 +230,8 @@ export function RendererPage() {
           ctx.scale(scale, scale);
           ctx.translate((translateX / 100) * frameWidth, (translateY / 100) * frameHeight);
           ctx.translate(-frameWidth / 2, -frameHeight / 2);
-          const { shadow, borderRadius } = frameStyles;
-          ctx.shadowColor = `rgba(0, 0, 0, ${Math.min(shadow * 0.015, 0.4)})`;
+          const { shadow, borderRadius, shadowColor } = frameStyles; // Destructure shadowColor
+          ctx.shadowColor = shadowColor; // Use the new shadowColor
           ctx.shadowBlur = shadow * 1.5;
           ctx.shadowOffsetY = shadow;
           const frameOuterPath = new Path2D();
@@ -263,10 +263,15 @@ export function RendererPage() {
             const webcamPath = new Path2D();
             webcamPath.roundRect(webcamX, webcamY, webcamWidth, webcamHeight, webcamRadius);
             ctx.clip(webcamPath);
+            
+            // Apply webcam shadow
+            ctx.shadowColor = webcamStyles.shadowColor; // Use the new webcam shadowColor
+            ctx.shadowBlur = webcamStyles.shadow * 1.5;
+            ctx.shadowOffsetY = webcamStyles.shadow;
+            
             ctx.drawImage(webcamVideo, webcamX, webcamY, webcamWidth, webcamHeight);
             ctx.restore();
           }
-          // --- Kết thúc logic vẽ canvas ---
 
           const imageData = ctx.getImageData(0, 0, outputWidth, outputHeight);
           const frameBuffer = Buffer.from(imageData.data.buffer);

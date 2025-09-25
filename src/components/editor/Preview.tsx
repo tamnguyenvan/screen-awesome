@@ -80,11 +80,12 @@ export const Preview = memo(({ videoRef }: { videoRef: React.RefObject<HTMLVideo
       // Use the new transform logic
       const { scale, translateX, translateY, transformOrigin } = calculateZoomTransform(liveCurrentTime);
 
-      const shadowOpacity = Math.min(frameStyles.shadow * 0.015, 0.4);
-      const shadowBlur = frameStyles.shadow * 1.5;
+      // Apply shadow using the new shadowColor and shadow (for blur/offset) properties
+      const shadowBlur = frameStyles.shadow * 1.5; // Example: shadow value maps to blur
+      const shadowOffsetY = frameStyles.shadow; // Example: shadow value maps to offset Y
       
       const style = frameContainerRef.current.style;
-      style.filter = `drop-shadow(0px ${frameStyles.shadow}px ${shadowBlur}px rgba(0, 0, 0, ${shadowOpacity}))`;
+      style.filter = `drop-shadow(0px ${shadowOffsetY}px ${shadowBlur}px ${frameStyles.shadowColor})`; // Use shadowColor here
       
       // Apply the new transform properties
       style.transformOrigin = transformOrigin;
@@ -101,7 +102,7 @@ export const Preview = memo(({ videoRef }: { videoRef: React.RefObject<HTMLVideo
       updateTransform();
     }
     return () => cancelAnimationFrame(animationFrameId);
-  }, [isPlaying, videoRef, frameStyles.shadow]);
+  }, [isPlaying, videoRef, frameStyles.shadow, frameStyles.shadowColor]); // Added frameStyles.shadowColor to dependencies
 
   useEffect(() => {
     const video = videoRef.current;
@@ -197,13 +198,11 @@ export const Preview = memo(({ videoRef }: { videoRef: React.RefObject<HTMLVideo
   }), [frameStyles.borderRadius, frameStyles.borderWidth]);
 
   const webcamDynamicStyle = useMemo(() => {
-    const shadow = webcamStyles.shadow;
-    const shadowOpacity = Math.min(shadow * 0.015, 0.4);
-    const shadowBlur = shadow * 1.5;
-    const shadowY = shadow;
+    const shadowBlur = webcamStyles.shadow * 1.5; // Use webcamStyles.shadow for blur
+    const shadowOffsetY = webcamStyles.shadow; // Use webcamStyles.shadow for offset Y
     return {
       height: `${webcamStyles.size}%`,
-      filter: `drop-shadow(0px ${shadowY}px ${shadowBlur}px rgba(0, 0, 0, ${shadowOpacity}))`,
+      filter: `drop-shadow(0px ${shadowOffsetY}px ${shadowBlur}px ${webcamStyles.shadowColor})`, // Use webcamStyles.shadowColor here
     };
   }, [webcamStyles]);
 
