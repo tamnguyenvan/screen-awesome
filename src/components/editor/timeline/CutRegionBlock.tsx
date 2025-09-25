@@ -1,5 +1,3 @@
-// src/components/editor/timeline/CutRegionBlock.tsx
-
 import { memo } from 'react';
 import { TimelineRegion, CutRegion } from '../../../types/store';
 import { cn } from '../../../lib/utils';

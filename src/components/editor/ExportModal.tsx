@@ -35,7 +35,6 @@ const SettingsView = ({ onStartExport, onClose }: { onStartExport: (settings: Ex
     fps: 30,
     quality: 'medium',
   });
-  // Khởi tạo outputPath là một chuỗi rỗng
   const [outputPath, setOutputPath] = useState('');
 
   const handleValueChange = (key: keyof ExportSettings, value: string) => {
@@ -43,7 +42,7 @@ const SettingsView = ({ onStartExport, onClose }: { onStartExport: (settings: Ex
   };
 
   const handleBrowse = async () => {
-    // Sử dụng outputPath hiện tại làm giá trị mặc định cho hộp thoại lưu file
+    // Use the current outputPath as the default value for the save file dialog
     const result = await window.electronAPI.showSaveDialog({
       title: 'Save Video',
       defaultPath: outputPath,
@@ -62,17 +61,15 @@ const SettingsView = ({ onStartExport, onClose }: { onStartExport: (settings: Ex
       try {
         const homePath = await window.electronAPI.getPath('home');
         const filename = generateFilename(settings.format);
-        // Electron/Node sẽ tự động xử lý dấu gạch chéo đúng cho các HĐH
         setOutputPath(`${homePath}/${filename}`);
       } catch (error) {
         console.error("Failed to get home path, falling back to relative path.", error);
-        // Fallback về hành vi cũ nếu có lỗi
         setOutputPath(generateFilename(settings.format));
       }
     };
 
     setDefaultPath();
-  }, [settings.format]); // Chạy lại khi format thay đổi (mp4/gif)
+  }, [settings.format]);
 
   return (
     <>
@@ -133,7 +130,7 @@ const SettingsView = ({ onStartExport, onClose }: { onStartExport: (settings: Ex
                 <Input
                   value={outputPath}
                   onChange={(e) => setOutputPath(e.target.value)}
-                  placeholder="Loading default path..." // Placeholder trong khi chờ
+                  placeholder="Loading default path..."
                   className="w-full h-9 bg-background text-foreground"
                 />
               </div>

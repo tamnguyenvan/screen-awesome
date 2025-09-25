@@ -34,8 +34,8 @@ export interface Preset {
 
 export interface AnchorPoint {
   time: number;
-  x: number; // Tọa độ chuẩn hóa [-0.5, 0.5]
-  y: number; // Tọa độ chuẩn hóa [-0.5, 0.5]
+  x: number; // Normalized coordinates [-0.5, 0.5]
+  y: number; // Normalized coordinates [-0.5, 0.5]
 }
 
 export interface ZoomRegion {

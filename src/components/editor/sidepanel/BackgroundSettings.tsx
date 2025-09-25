@@ -248,9 +248,9 @@ export function BackgroundSettings() {
               </div>
 
               {/* Style section */}
-              <div className="col-span-8"> {/* Thay đổi từ flex-1 */}
+              <div className="col-span-8">
                 <h5 className="text-xs font-semibold text-muted-foreground mb-3 uppercase tracking-wider">Style</h5>
-                <div className="grid grid-cols-4 gap-3"> {/* Giảm gap từ 6 xuống 3 */}
+                <div className="grid grid-cols-4 gap-3">
                   {GRADIENT_PRESETS.map((preset, index) => {
                     const startColor = '#808080';
                     const endColor = '#ffffff';
@@ -262,7 +262,7 @@ export function BackgroundSettings() {
                       <button
                         key={index}
                         className={cn(
-                          "relative aspect-square rounded-lg overflow-hidden border-2 transition-all duration-200", // Thay đổi từ h-14 aspect-square
+                          "relative aspect-square rounded-lg overflow-hidden border-2 transition-all duration-200",
                           "flex items-center justify-center group",
                           frameStyles.background.gradientDirection === preset.direction
                             ? "border-primary ring-2 ring-primary/20"

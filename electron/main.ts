@@ -63,20 +63,20 @@ if (process.platform === 'win32') {
 }
 
 
-// Interface chung để dễ quản lý
+// Common interface for easier management
 interface IMouseTracker extends EventEmitter {
   start(): void;
   stop(): void;
 }
 
-// Lớp tracker cho Linux sử dụng node-x11
+// Linux mouse tracker class using node-x11
 class LinuxMouseTracker extends EventEmitter implements IMouseTracker {
-  private intervalId: NodeJS.Timeout | null = null; // THÊM DÒNG NÀY
+  private intervalId: NodeJS.Timeout | null = null;
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   private X: any | null = null;
 
   async start() {
-    // Kiểm tra module trước khi bắt đầu
+    // Check module before starting
     if (!X11Module) {
       log.error("[MouseTracker-Linux] Cannot start because the x11 module was not loaded.");
       return;
@@ -86,9 +86,9 @@ class LinuxMouseTracker extends EventEmitter implements IMouseTracker {
       this.X = display.client;
       const root = display.screen[0].root;
 
-      // Yêu cầu X server gửi các sự kiện chuột
+      // Request X server to send mouse events
       const queryPointer = () => {
-        // KIỂM TRA THÊM ĐỂ AN TOÀN HƠN
+        // Check before querying to ensure safety
         if (!this.X) {
           return;
         }
@@ -128,7 +128,7 @@ class LinuxMouseTracker extends EventEmitter implements IMouseTracker {
         });
       }
 
-      // Lưu lại ID của interval
+      // Save interval ID
       this.intervalId = setInterval(queryPointer, 1000 / MOUSE_RECORDING_FPS);
 
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -138,23 +138,23 @@ class LinuxMouseTracker extends EventEmitter implements IMouseTracker {
 
     } catch (err) {
       log.error('[MouseTracker-Linux] Failed to start:', err);
-      // Có thể thông báo cho người dùng ở đây
+      // Can notify user here
     }
   }
 
   stop() {
-    // Hủy interval trước khi đóng kết nối
+    // Cancel interval before closing connection
     if (this.intervalId) {
       clearInterval(this.intervalId);
       this.intervalId = null;
     }
 
-    this.X?.close(); // Dùng optional chaining
+    this.X?.close(); // Use optional chaining
     this.X = null;
     log.info('[MouseTracker-Linux] Stopped listening for mouse events.');
   }
 
-  // Helper để tạo client bất đồng bộ
+  // Helper to create client asynchronously
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   private createClient(): Promise<any> {
     return new Promise((resolve, reject) => {
@@ -171,7 +171,7 @@ class LinuxMouseTracker extends EventEmitter implements IMouseTracker {
     });
   }
 
-  // Map mã nút của X11 sang tên dễ hiểu
+  // Map button code from X11 to a readable name
   private mapButton(buttonCode: number): string {
     switch (buttonCode) {
       case 256: return 'left';
@@ -182,7 +182,7 @@ class LinuxMouseTracker extends EventEmitter implements IMouseTracker {
   }
 }
 
-// Lớp tracker cho Windows sử dụng global-mouse-events
+// Windows mouse tracker class using global-mouse-events
 class WindowsMouseTracker extends EventEmitter implements IMouseTracker {
   private mouseEvents = new GlobalMouseEvents();
 
@@ -225,24 +225,24 @@ class WindowsMouseTracker extends EventEmitter implements IMouseTracker {
   }
 
   stop() {
-    // Thư viện này không có phương thức stop,
-    // nhưng việc gỡ bỏ listeners sẽ ngăn chặn việc phát sự kiện thêm.
+    // This library doesn't have a stop method,
+    // but removing listeners will prevent additional events from being emitted.
     this.mouseEvents.removeAllListeners();
     log.info('[MouseTracker-Windows] Stopped listening for mouse events.');
   }
 
-  // Map mã nút của thư viện sang tên dễ hiểu
+  // Map button code from global-mouse-events to a readable name
   private mapButton(buttonCode: number): string {
     switch (buttonCode) {
       case 1: return 'left';
-      case 2: return 'right'; // Lưu ý: thư viện này map nút phải là 2
+      case 2: return 'right'; // Note: this library maps right button to 2
       case 3: return 'middle';
       default: return 'unknown';
     }
   }
 }
 
-// Factory function để tạo tracker phù hợp
+// Factory function to create the appropriate tracker
 function createMouseTracker(): IMouseTracker | null {
   switch (process.platform) {
     case 'linux':
@@ -261,7 +261,7 @@ function createMouseTracker(): IMouseTracker | null {
       return new WindowsMouseTracker();
     default:
       log.warn(`Mouse tracking not supported on platform: ${process.platform}`);
-      // Không cần hiển thị dialog ở đây nữa vì startRecording sẽ không có tracker
+      // No need to show dialog here since startRecording will not have a tracker
       return null;
   }
 }
@@ -640,9 +640,9 @@ function createEditorWindow(videoPath: string, metadataPath: string, webcamVideo
 
 function cleanupAndSave(): Promise<void> {
   return new Promise((resolve) => {
-    // 1. Stop Mouse tracker and close metadata stream (LOGIC MỚI)
+    // 1. Stop Mouse tracker and close metadata stream
     if (mouseTracker) {
-      mouseTracker.stop(); // Dừng tracker
+      mouseTracker.stop(); // Stop tracker
       mouseTracker = null;
     }
 
@@ -664,10 +664,6 @@ function cleanupAndSave(): Promise<void> {
         log.info(`FFmpeg process exited with code ${code}`);
         resolve(); // Complete Promise when ffmpeg has closed
       });
-
-      // Send 'q' to ffmpeg to end it safely
-      // ffmpeg.stdin.write('q');
-      // ffmpeg.stdin.end();
 
       log.info('Sending SIGINT to FFmpeg to gracefully terminate recording...');
       ffmpeg.kill('SIGINT');
@@ -754,9 +750,9 @@ async function startActualRecording(inputArgs: string[], hasWebcam: boolean, has
 
     // 1. Reset state
     firstChunkWritten = true
-    recordingStartTime = Date.now(); // LƯU THỜI ĐIỂM BẮT ĐẦU
+    recordingStartTime = Date.now();
 
-    // 2. Start Mouse Tracker (LOGIC MỚI)
+    // 2. Start Mouse Tracker
     mouseTracker = createMouseTracker();
 
     // 3. Create metadata stream
@@ -785,23 +781,23 @@ async function startActualRecording(inputArgs: string[], hasWebcam: boolean, has
     // 5. Start FFmpeg with the provided arguments
     const finalArgs = [...inputArgs];
 
-    // Xác định chỉ số của các luồng đầu vào. Mic luôn là 0 nếu có.
+    // Determine the index of input streams. Mic is always 0 if available.
     const micIndex = hasMic ? 0 : -1;
     const webcamIndex = hasMic ? (hasWebcam ? 1 : -1) : (hasWebcam ? 0 : -1);
     const screenIndex = (hasMic ? 1 : 0) + (hasWebcam ? 1 : 0);
 
-    // Ánh xạ luồng video từ màn hình
+    // Map video stream from screen
     finalArgs.push('-map', `${screenIndex}:v`);
     
-    // Ánh xạ luồng audio nếu có mic, và chỉ định codec audio
+    // Map audio stream if mic is available, and specify audio codec
     if (hasMic) {
       finalArgs.push('-map', `${micIndex}:a`, '-c:a', 'aac', '-b:a', '192k');
     }
     
-    // Thêm các tham số đầu ra cho video màn hình
+    // Add output parameters for screen video
     finalArgs.push('-c:v', 'libx264', '-preset', 'ultrafast', '-pix_fmt', 'yuv420p', screenVideoPath);
 
-    // Nếu có ghi webcam, thêm một đầu ra thứ hai cho nó
+    // If webcam is available, add a second output for it
     if (hasWebcam) {
       finalArgs.push(
         '-map', `${webcamIndex}:v`, '-c:v', 'libx264', '-preset', 'ultrafast', '-pix_fmt', 'yuv420p', webcamVideoPath!
@@ -974,14 +970,14 @@ async function handleStartRecording(_event: IpcMainInvokeEvent, options: {
     log.info('[Main] Adding microphone input:', mic.deviceLabel);
     switch (process.platform) {
       case 'linux':
-        // 'default' là lựa chọn an toàn cho nhiều hệ thống
+        // 'default' is a safe choice for most systems
         baseFfmpegArgs.push('-f', 'alsa', '-i', 'default');
         break;
       case 'win32':
         baseFfmpegArgs.push('-f', 'dshow', '-i', `audio=${mic.deviceLabel}`);
         break;
       case 'darwin':
-        // Định dạng là video:audio, ở đây chỉ có audio
+        // Format is video:audio, here we only have audio
         baseFfmpegArgs.push('-f', 'avfoundation', '-i', `:${mic.index}`);
         break;
     }
@@ -1006,7 +1002,7 @@ async function handleStartRecording(_event: IpcMainInvokeEvent, options: {
   }
 
   // --- Source Logic ---
-  // Mỗi nhánh (if/else if/else) sẽ tự xây dựng args và return, không bị "fall-through"
+  // Each branch (if/else if/else) will build args and return, without "fall-through"
   if (source === 'window') {
     if (process.platform === 'linux') {
       if (!geometry) {
@@ -1054,7 +1050,7 @@ async function handleStartRecording(_event: IpcMainInvokeEvent, options: {
       log.info(`Starting WINDOW recording for title: "${windowTitle}"`);
       baseFfmpegArgs.push('-f', 'gdigrab', '-i', `title=${windowTitle}`);
 
-    } else { // macOS và các OS khác
+    } else { // macOS and other OS
       log.error('Window recording is not yet supported on this platform.');
       dialog.showErrorBox('Feature Not Supported', 'Window recording is not yet implemented for this OS.');
       return { canceled: true, filePath: undefined };

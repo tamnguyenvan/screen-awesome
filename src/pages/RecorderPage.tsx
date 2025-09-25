@@ -241,7 +241,7 @@ export function RecorderPage() {
 
   const fetchMics = async () => {
     try {
-      // Yêu cầu quyền truy cập audio
+      // Request audio access permission
       await navigator.mediaDevices.getUserMedia({ audio: true, video: false });
     } catch (err) { console.warn("Could not get microphone permission:", err); }
 

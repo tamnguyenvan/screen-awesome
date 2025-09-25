@@ -109,10 +109,10 @@ const _calculateAnchors = (
   const panStartTime = region.startTime + ZOOM.TRANSITION_DURATION;
   const panEndTime = region.startTime + region.duration - ZOOM.TRANSITION_DURATION;
 
-  // Lọc metadata chỉ trong khoảng thời gian lia camera
+  // Filter metadata within the pan time range
   const relevantMetadata = metadata.filter(m => m.timestamp >= panStartTime && m.timestamp <= panEndTime);
   if (relevantMetadata.length === 0) {
-    // Nếu không có di chuyển chuột, chỉ có anchor đầu và cuối
+    // If no mouse movement, only return start and end anchors
     return [
       { time: panStartTime, x: region.targetX, y: region.targetY },
       { time: panEndTime, x: region.targetX, y: region.targetY },
@@ -121,7 +121,7 @@ const _calculateAnchors = (
 
   const anchors: AnchorPoint[] = [];
 
-  // Anchor đầu tiên luôn là vị trí chuột tại thời điểm bắt đầu lia
+  // Yêu cầu quyền truy cập audio
   let lastAnchor: AnchorPoint = {
     time: relevantMetadata[0].timestamp,
     x: (relevantMetadata[0].x / videoWidth) - 0.5,
@@ -129,7 +129,6 @@ const _calculateAnchors = (
   };
   anchors.push(lastAnchor);
 
-  // Thuật toán tìm anchor của bạn
   for (const dataPoint of relevantMetadata) {
     const currentPos = {
       x: (dataPoint.x / videoWidth) - 0.5,
@@ -179,8 +178,8 @@ const _recalculateZIndices = (set: (fn: (state: EditorState) => void) => void) =
 
 // --- Store Implementation ---
 export const useEditorStore = create(
-  temporal( // Zundo middleware for undo/redo
-    immer<EditorState & EditorActions>((set, get) => ({ // Immer middleware for immutable updates
+  temporal(
+    immer<EditorState & EditorActions>((set, get) => ({
       ...initialProjectState,
       ...initialAppState,
       frameStyles: initialFrameStyles,
@@ -250,7 +249,7 @@ export const useEditorStore = create(
             const endTime = lastClick.timestamp + ZOOM.AUTO_ZOOM_POST_CLICK_PADDING;
 
             let duration = endTime - startTime;
-            // Đảm bảo thời lượng tối thiểu, đặc biệt cho các cú click đơn
+            // Ensure minimum duration, especially for single clicks
             if (duration < ZOOM.AUTO_ZOOM_MIN_DURATION) {
               duration = ZOOM.AUTO_ZOOM_MIN_DURATION;
             }
@@ -270,7 +269,6 @@ export const useEditorStore = create(
               zIndex: 0,
             };
 
-            // **TÍNH TOÁN ANCHOR CHO REGION MỚI**
             newRegion.anchors = _calculateAnchors(newRegion, processedMetadata, get().videoDimensions);
 
             acc[id] = newRegion;

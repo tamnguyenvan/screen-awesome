@@ -406,7 +406,6 @@ export function Timeline({ videoRef }: { videoRef: React.RefObject<HTMLVideoElem
             {/* Layer 2: Cut Regions (Full height overlays) */}
             <div className="absolute top-0 left-0 right-0 bottom-0 pointer-events-none">
               {allCutRegionsToRender.map(region => {
-                // ... logic tính toán z-index không đổi ...
                 let z;
                 if (selectedRegionId === region.id) {
                   z = 100;
