@@ -12,7 +12,7 @@ import {
 } from '../types/store';
 
 // --- Constants ---
-const HARDCODED_DEFAULT_PRESET_STYLES: FrameStyles = {
+const DEFAULT_PRESET_STYLES: FrameStyles = {
   padding: 5,
   background: {
     type: 'wallpaper',
@@ -25,8 +25,8 @@ const HARDCODED_DEFAULT_PRESET_STYLES: FrameStyles = {
   borderWidth: 6,
 };
 
-const HARDCODED_DEFAULT_PRESET: Omit<Preset, 'id' | 'name'> = {
-  styles: HARDCODED_DEFAULT_PRESET_STYLES,
+const DEFAULT_PRESET: Omit<Preset, 'id' | 'name'> = {
+  styles: DEFAULT_PRESET_STYLES,
   aspectRatio: '16:9',
   isDefault: true,
   webcamStyles: { size: 30, shadow: 15, shadowColor: 'rgba(0, 0, 0, 0.4)' },
@@ -568,7 +568,7 @@ export const useEditorStore = create(
               loadedPresets[defaultId] = JSON.parse(JSON.stringify({
                 id: defaultId,
                 name: 'Default',
-                ...HARDCODED_DEFAULT_PRESET
+                ...DEFAULT_PRESET
               }));
 
               defaultPreset = loadedPresets[defaultId];
@@ -641,11 +641,11 @@ export const useEditorStore = create(
         set(state => {
           const presetToReset = state.presets[id];
           if (presetToReset && presetToReset.isDefault) {
-            presetToReset.styles = JSON.parse(JSON.stringify(HARDCODED_DEFAULT_PRESET.styles));
-            presetToReset.aspectRatio = HARDCODED_DEFAULT_PRESET.aspectRatio;
-            presetToReset.webcamStyles = JSON.parse(JSON.stringify(HARDCODED_DEFAULT_PRESET.webcamStyles));
-            presetToReset.webcamPosition = JSON.parse(JSON.stringify(HARDCODED_DEFAULT_PRESET.webcamPosition));
-            presetToReset.isWebcamVisible = HARDCODED_DEFAULT_PRESET.isWebcamVisible;
+            presetToReset.styles = JSON.parse(JSON.stringify(DEFAULT_PRESET.styles));
+            presetToReset.aspectRatio = DEFAULT_PRESET.aspectRatio;
+            presetToReset.webcamStyles = JSON.parse(JSON.stringify(DEFAULT_PRESET.webcamStyles));
+            presetToReset.webcamPosition = JSON.parse(JSON.stringify(DEFAULT_PRESET.webcamPosition));
+            presetToReset.isWebcamVisible = DEFAULT_PRESET.isWebcamVisible;
             
             if (state.activePresetId === id) {
                 get().applyPreset(id);
