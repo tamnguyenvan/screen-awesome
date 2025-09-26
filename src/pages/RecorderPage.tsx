@@ -442,7 +442,7 @@ export function RecorderPage() {
             onClick={() => window.electronAPI.closeWindow()}
             style={{ WebkitAppRegion: 'no-drag' }}
             className={cn(
-              "absolute -top-1 -right-1 z-20 flex items-center justify-center w-6 h-6 rounded-full",
+              "absolute -top-1 -left-1 z-20 flex items-center justify-center w-6 h-6 rounded-full",
               "bg-card border border-border hover:bg-destructive text-muted-foreground hover:text-white shadow-lg"
             )}
             aria-label="Close Recorder"
