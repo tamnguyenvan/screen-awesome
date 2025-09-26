@@ -221,6 +221,7 @@ export const Preview = memo(({ videoRef }: { videoRef: React.RefObject<HTMLVideo
 
   return (
     <div
+      id="preview-container"
       className="transition-all duration-300 ease-out flex items-center justify-center relative overflow-hidden"
       style={{ ...backgroundStyle, aspectRatio: cssAspectRatio, maxWidth: '100%', maxHeight: '100%' }}
     >
