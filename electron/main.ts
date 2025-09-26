@@ -1403,6 +1403,7 @@ function createRecorderWindow() {
   // Handle cleanup if the recorder window is closed during recording
   recorderWin.on('close', (event) => {
     if (ffmpegProcess) {
+      // Case 1: Window is closed DURING a recording.
       log.warn('[Main] Recorder window closed during recording. Cleaning up...');
       // Prevent the window from closing immediately to allow cleanup
       event.preventDefault();
@@ -1412,6 +1413,11 @@ function createRecorderWindow() {
           recorderWin.close();
         }
       });
+    } else {
+      // Case 2: Window is closed BEFORE a recording starts.
+      // We need to reset the cursor size to its default value.
+      log.info('[Main] Recorder window closed before recording. Resetting cursor size.');
+      resetCursorSize();
     }
   });
 
