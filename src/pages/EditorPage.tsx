@@ -4,6 +4,7 @@ import { Preview } from '../components/editor/Preview';
 import { SidePanel } from '../components/editor/SidePanel';
 import { Timeline } from '../components/editor/Timeline';
 import { PreviewControls } from '../components/editor/PreviewControls';
+import { UpdateNotification } from '../components/editor/UpdateNotification';
 import { ExportButton } from '../components/editor/ExportButton';
 import { ExportModal, ExportSettings } from '../components/editor/ExportModal';
 import { WindowControls } from '../components/editor/WindowControls';
@@ -24,6 +25,7 @@ export function EditorPage() {
   const [exportProgress, setExportProgress] = useState(0);
   const [exportResult, setExportResult] = useState<{ success: boolean; outputPath?: string; error?: string } | null>(null);
   const [isPresetModalOpen, setPresetModalOpen] = useState(false);
+  const [updateInfo, setUpdateInfo] = useState<{ version: string; url: string } | null>(null);
   const [platform, setPlatform] = useState<NodeJS.Platform | null>(null);
 
   const handleDeleteSelectedRegion = useCallback(() => {
@@ -44,6 +46,15 @@ export function EditorPage() {
     },
     [handleDeleteSelectedRegion, undo, redo, togglePlay]
   );
+
+  useEffect(() => {
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const cleanup = window.electronAPI.onUpdateAvailable((info: any) => {
+      console.log('Update available:', info);
+      setUpdateInfo(info);
+    });
+    return () => cleanup();
+  }, []);
 
   useEffect(() => {
     window.electronAPI.getPlatform().then(setPlatform);
@@ -148,6 +159,8 @@ export function EditorPage() {
         <h1 className="text-sm font-semibold text-foreground pointer-events-none">ScreenAwesome</h1>
 
         <div className="absolute right-3 top-1/2 -translate-y-1/2 flex items-center gap-2" style={{ WebkitAppRegion: 'no-drag' }}>
+          {updateInfo && <UpdateNotification info={updateInfo} />}
+
           <Button
             variant="ghost"
             size="icon"

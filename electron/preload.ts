@@ -62,6 +62,12 @@ type DisplayInfo = {
   isPrimary: boolean;
 }
 
+// --- Update ---
+type UpdateInfo = {
+  version: string;
+  url: string;
+};
+
 // Define API to be exposed to window object
 export const electronAPI = {
   // --- Recording ---
@@ -124,6 +130,15 @@ export const electronAPI = {
   },
 
   showItemInFolder: (path: string): void => ipcRenderer.send('shell:showItemInFolder', path),
+
+  onUpdateAvailable: (callback: (info: UpdateInfo) => void) => {
+    const listener = (_event: IpcRendererEvent, info: UpdateInfo) => callback(info);
+    ipcRenderer.on('update:available', listener);
+    return () => {
+      ipcRenderer.removeListener('update:available', listener);
+    };
+  },
+  openExternal: (url: string): void => ipcRenderer.send('shell:openExternal', url),
 
   // --- Render Worker ---
   onRenderStart: (callback: (payload: RenderStartPayload) => void) => {

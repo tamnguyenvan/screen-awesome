@@ -22,7 +22,7 @@ process.on('unhandledRejection', (reason, promise) => {
 
 import {
   app, BrowserWindow, ipcMain, Tray, Menu, IpcMainEvent,
-  nativeImage, protocol, IpcMainInvokeEvent, dialog, desktopCapturer, screen, shell
+  nativeImage, protocol, IpcMainInvokeEvent, dialog, desktopCapturer, screen, shell, net
 } from 'electron'
 import { fileURLToPath, format as formatUrl } from 'node:url'
 import path from 'node:path'
@@ -343,6 +343,74 @@ let framesSentCount = 0; // Counter for frames actually sent during export
 let originalCursorSize: number | null = null;
 let currentRecordingSession: RecordingSession | null = null; // ADDED: Global state for active recording files
 
+async function checkForUpdates() {
+  if (!editorWin) return;
+
+  const currentVersion = app.getVersion();
+  const repoOwner = 'tamnguyenvan';
+  const repoName = 'screen-awesome';
+  const url = `https://api.github.com/repos/${repoOwner}/${repoName}/releases/latest`;
+  const maxAttempts = 3;
+  const retryDelay = 3000; // 3 seconds
+  let currentAttempt = 0;
+
+  const attemptRequest = () => {
+    currentAttempt++;
+    log.info(`[UpdateCheck] Checking for updates. Attempt ${currentAttempt}/${maxAttempts}...`);
+
+    const request = net.request({
+      method: 'GET',
+      url: url,
+    });
+
+    request.on('response', (response) => {
+      if (response.statusCode === 200) {
+        let body = '';
+        response.on('data', (chunk) => { body += chunk.toString(); });
+        response.on('end', () => {
+          try {
+            const release = JSON.parse(body);
+            const latestVersion = release.tag_name.startsWith('v') ? release.tag_name.substring(1) : release.tag_name;
+            const downloadUrl = release.html_url;
+
+            log.info(`[UpdateCheck] Latest version found: ${latestVersion}`);
+
+            if (latestVersion > currentVersion) {
+              log.info(`[UpdateCheck] New version available! Sending notification to renderer.`);
+              editorWin?.webContents.send('update:available', { version: latestVersion, url: downloadUrl });
+            } else {
+              log.info(`[UpdateCheck] Application is up to date.`);
+            }
+          } catch (error) {
+            log.error('[UpdateCheck] Failed to parse release JSON:', error);
+          }
+        });
+      } else {
+        log.warn(`[UpdateCheck] Attempt ${currentAttempt} failed with status code: ${response.statusCode}`);
+        if (currentAttempt < maxAttempts) {
+          setTimeout(attemptRequest, retryDelay);
+        } else {
+          log.error(`[UpdateCheck] All ${maxAttempts} attempts failed. Giving up.`);
+        }
+      }
+    });
+
+    request.on('error', (error) => {
+      log.warn(`[UpdateCheck] Attempt ${currentAttempt} failed with network error:`, error.message);
+      if (currentAttempt < maxAttempts) {
+        setTimeout(attemptRequest, retryDelay);
+      } else {
+        log.error(`[UpdateCheck] All ${maxAttempts} attempts failed. Giving up.`);
+      }
+    });
+
+    request.end();
+  };
+
+  // Start the first attempt
+  attemptRequest();
+}
+
 async function handleLoadPresets() {
   log.info('[Main] Loading presets from electron-store.');
   const presets = store.get('presets');
@@ -650,6 +718,7 @@ function createEditorWindow(videoPath: string, metadataPath: string, webcamVideo
   editorWin.webContents.on('did-finish-load', () => {
     log.info(`[Main] Editor window finished loading. Sending project data...`);
     editorWin?.webContents.send('project:open', { videoPath, metadataPath, webcamVideoPath });
+    checkForUpdates();
   });
 
   // if (process.env.NODE_ENV === 'development') {
@@ -1631,6 +1700,9 @@ app.whenReady().then(() => {
   });
   ipcMain.on('shell:showItemInFolder', (_event, filePath: string) => {
     shell.showItemInFolder(filePath);
+  });
+  ipcMain.on('shell:openExternal', (_event, url: string) => {
+    shell.openExternal(url);
   });
 
   ipcMain.handle('app:getPath', (_event, name: 'home' | 'userData' | 'desktop') => {
