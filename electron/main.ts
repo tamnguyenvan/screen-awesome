@@ -184,10 +184,13 @@ class LinuxMouseTracker extends EventEmitter implements IMouseTracker {
 
 // Windows mouse tracker class using global-mouse-events
 class WindowsMouseTracker extends EventEmitter implements IMouseTracker {
-  private mouseEvents = new GlobalMouseEvents();
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  private mouseEvents: any | null = null;
 
   start() {
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    this.mouseEvents = new GlobalMouseEvents();
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
     this.mouseEvents.on('mousemove', (event: any) => {
       this.emit('data', {
         timestamp: Date.now(),
@@ -227,7 +230,8 @@ class WindowsMouseTracker extends EventEmitter implements IMouseTracker {
   stop() {
     // This library doesn't have a stop method,
     // but removing listeners will prevent additional events from being emitted.
-    this.mouseEvents.removeAllListeners();
+    this.mouseEvents?.removeAllListeners();
+    this.mouseEvents = null;
     log.info('[MouseTracker-Windows] Stopped listening for mouse events.');
   }
 
@@ -235,7 +239,7 @@ class WindowsMouseTracker extends EventEmitter implements IMouseTracker {
   private mapButton(buttonCode: number): string {
     switch (buttonCode) {
       case 1: return 'left';
-      case 2: return 'right'; // Note: this library maps right button to 2
+      case 2: return 'right';
       case 3: return 'middle';
       default: return 'unknown';
     }
