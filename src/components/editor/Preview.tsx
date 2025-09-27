@@ -1,7 +1,7 @@
 import React, { useEffect, useMemo, useRef, memo, useState } from 'react';
 import { useEditorStore, usePlaybackState } from '../../store/editorStore';
 import { calculateZoomTransform } from '../../lib/transform';
-import { Film, Play, Pause } from 'lucide-react';
+import { Film, Play, Pause, Fullscreen, Shrink } from 'lucide-react';
 import { useShallow } from 'zustand/react/shallow';
 import { cn, formatTime } from '../../lib/utils';
 import Slider from '../ui/slider';
@@ -35,7 +35,8 @@ const generateBackgroundStyle = (backgroundState: ReturnType<typeof useEditorSto
 export const Preview = memo(({ videoRef }: { videoRef: React.RefObject<HTMLVideoElement> }) => {
   const { frameStyles, videoUrl, aspectRatio, videoDimensions, cutRegions,
     webcamVideoUrl, webcamPosition, isWebcamVisible, webcamStyles,
-    duration, currentTime, togglePlay
+    duration, currentTime, togglePlay,
+    isPreviewFullScreen, togglePreviewFullScreen
   } = useEditorStore(
     useShallow(state => ({
       frameStyles: state.frameStyles,
@@ -50,6 +51,8 @@ export const Preview = memo(({ videoRef }: { videoRef: React.RefObject<HTMLVideo
       duration: state.duration,
       currentTime: state.currentTime,
       togglePlay: state.togglePlay,
+      isPreviewFullScreen: state.isPreviewFullScreen,
+      togglePreviewFullScreen: state.togglePreviewFullScreen,
     })));
 
   const { setPlaying, setCurrentTime, setDuration, setVideoDimensions } = useEditorStore(
@@ -249,7 +252,7 @@ export const Preview = memo(({ videoRef }: { videoRef: React.RefObject<HTMLVideo
       <div
         id="preview-container"
         ref={previewContainerRef}
-        className="flex-1 w-full transition-all duration-300 ease-out flex items-center justify-center relative overflow-hidden"
+        className="transition-all duration-300 ease-out flex items-center justify-center relative overflow-hidden"
         style={{ ...backgroundStyle, aspectRatio: cssAspectRatio, maxWidth: '100%', maxHeight: '100%' }}
       >
         <div className="w-full h-full flex items-center justify-center relative" style={{ padding: `${frameStyles.padding}%` }}>
@@ -339,6 +342,14 @@ export const Preview = memo(({ videoRef }: { videoRef: React.RefObject<HTMLVideo
               disabled={duration === 0}
               className="flex-1"
             />
+            <Button
+              variant="ghost"
+              size="icon"
+              onClick={togglePreviewFullScreen}
+              className="flex-shrink-0 text-foreground/70 hover:text-foreground h-8 w-8"
+            >
+              {isPreviewFullScreen ? <Shrink className="w-4 h-4" /> : <Fullscreen className="w-4 h-4" />}
+            </Button>
           </div>
         </div>
       )}

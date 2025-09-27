@@ -106,6 +106,7 @@ export interface EditorState {
   presets: Record<string, Preset>;
   activePresetId: string | null;
   presetSaveStatus: 'idle' | 'saving' | 'saved';
+  isPreviewFullScreen: boolean;
 
   // webcam
   webcamVideoPath: string | null;

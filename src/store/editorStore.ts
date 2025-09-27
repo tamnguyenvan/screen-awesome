@@ -68,6 +68,7 @@ export interface EditorActions {
   saveCurrentStyleAsPreset: (name: string) => void;
   updateActivePreset: () => void;
   deletePreset: (id: string) => void;
+  togglePreviewFullScreen: () => void;
 
   // webcam
   setWebcamPosition: (position: WebcamPosition) => void;
@@ -93,6 +94,7 @@ const initialProjectState = {
   activeZoomRegionId: null,
   isCurrentlyCut: false,
   timelineZoom: 1,
+  isPreviewFullScreen: false,
   webcamVideoPath: null,
   webcamVideoUrl: null,
   isWebcamVisible: false,
@@ -728,6 +730,8 @@ export const useEditorStore = create(
         Object.assign(state, initialAppState);
         state.frameStyles = initialFrameStyles;
       }),
+
+      togglePreviewFullScreen: () => set(state => { state.isPreviewFullScreen = !state.isPreviewFullScreen }),
 
       setWebcamPosition: (position) => set({ webcamPosition: position }),
       setWebcamVisibility: (isVisible) => set({ isWebcamVisible: isVisible }),
