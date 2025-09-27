@@ -62,6 +62,28 @@ if (process.platform === 'win32') {
   }
 }
 
+// --- Windows Specific Imports ---
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+let Winreg: any;
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+let u32: any;
+
+if (process.platform === 'win32') {
+  try {
+    Winreg = require('winreg');
+    log.info('[Main] Successfully loaded winreg module for Windows.');
+  } catch (e) {
+    log.error('[Main] Failed to load winreg module. Cursor size management on Windows will be disabled.', e);
+  }
+  try {
+    const W32 = require('win32-api');
+    u32 = W32.U.user32;
+    log.info('[Main] Successfully loaded win32-api module for Windows.');
+  } catch (e) {
+    log.error('[Main] Failed to load win32-api module. Cursor size management on Windows will be disabled.', e);
+  }
+}
+
 
 // Common interface for easier management
 interface IMouseTracker extends EventEmitter {
@@ -190,7 +212,7 @@ class WindowsMouseTracker extends EventEmitter implements IMouseTracker {
   start() {
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     this.mouseEvents = new GlobalMouseEvents();
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
     this.mouseEvents.on('mousemove', (event: any) => {
       this.emit('data', {
         timestamp: Date.now(),
@@ -434,86 +456,136 @@ function getLinuxDE(): 'GNOME' | 'KDE' | 'XFCE' | 'Unknown' {
 }
 
 // IPC Handler to get current cursor size
+// IPC Handler to get current cursor size
 async function handleGetCursorSize(): Promise<number> {
-  if (process.platform !== 'linux') {
-    return 24; // Default size for non-Linux
-  }
+  switch (process.platform) {
+    case 'win32':
+      if (!Winreg) {
+        log.warn('[Main] winreg module not available. Cannot get cursor size on Windows.');
+        return 24;
+      }
+      try {
+        const regKey = new Winreg({ hive: Winreg.HKCU, key: '\\Control Panel\\Cursors' });
+        // Promisify the get method
+        const item = await new Promise<{ value: string }>((resolve, reject) => {
+          // eslint-disable-next-line @typescript-eslint/no-explicit-any
+          regKey.get('CursorBaseSize', (err: any, item: any) => {
+            if (err) return reject(err);
+            resolve(item);
+          });
+        });
 
-  const de = getLinuxDE();
-  let command: string;
+        const size = parseInt(item.value, 16); // Value is often a hex string
+        if (!isNaN(size)) {
+          log.info(`[Main] Current Windows cursor base size is ${size}`);
+          // Convert Windows base size to the app's standard sizes
+          if (size >= 48) return 48;
+          if (size >= 32) return 32;
+          return 24;
+        }
+      } catch (error) {
+        log.error('[Main] Failed to get cursor size from Windows Registry:', error);
+      }
+      return 24; // Fallback for Windows
 
-  switch (de) {
-    case 'GNOME':
-      command = 'gsettings get org.gnome.desktop.interface cursor-size';
-      break;
-    case 'KDE':
-      command = 'kreadconfig5 --file kcminputrc --group Mouse --key cursorSize';
-      break;
+    case 'linux': {
+      const de = getLinuxDE();
+      let command: string;
+      switch (de) {
+        case 'GNOME': command = 'gsettings get org.gnome.desktop.interface cursor-size'; break;
+        case 'KDE': command = 'kreadconfig5 --file kcminputrc --group Mouse --key cursorSize'; break;
+        case 'XFCE': command = 'xfconf-query -c xsettings -p /Gtk/CursorThemeSize'; break;
+        default: return 24;
+      }
 
-    case 'XFCE':
-      command = 'xfconf-query -c xsettings -p /Gtk/CursorThemeSize';
-      break;
+      return new Promise((resolve) => {
+        exec(command, (error, stdout) => {
+          if (error) {
+            log.error(`[Main] Failed to get cursor size for ${de}:`, error);
+            return resolve(24);
+          }
+          const size = parseInt(stdout.trim(), 10);
+          if (!isNaN(size)) {
+            log.info(`[Main] Current cursor size for ${de} is ${size}`);
+            resolve(size);
+          } else {
+            log.warn(`[Main] Could not parse cursor size from output: "${stdout.trim()}"`);
+            resolve(24);
+          }
+        });
+      });
+    }
+
     default:
-      return 24; // Default size for unknown DE
+      // Default size for macOS and other platforms
+      return 24;
   }
-
-  return new Promise((resolve) => {
-    exec(command, (error, stdout) => {
-      if (error) {
-        log.error(`[Main] Failed to get cursor size for ${de}:`, error);
-        resolve(24); // Resolve with default on error
-        return;
-      }
-      const size = parseInt(stdout.trim(), 10);
-      if (!isNaN(size)) {
-        log.info(`[Main] Current cursor size for ${de} is ${size}`);
-        resolve(size);
-      } else {
-        log.warn(`[Main] Could not parse cursor size from output: "${stdout.trim()}"`);
-        resolve(24); // Resolve with default if parsing fails
-      }
-    });
-  });
 }
 
 // IPC Handler to set cursor size
 function handleSetCursorSize(_event: IpcMainEvent, size: number) {
-  if (process.platform !== 'linux') {
-    return;
-  }
-  if (![24, 32, 48].includes(size)) {
+  // Validate size input first for all platforms
+  if (![16, 24, 32, 48, 64, 96, 128, 256].includes(size)) {
     log.error(`[Main] Invalid cursor size value received: ${size}`);
     return;
   }
 
-  const de = getLinuxDE();
-  let command: string;
-  log.info(`[Main] Setting cursor size to ${size} for ${de}`);
+  switch (process.platform) {
+    case 'win32':
+      if (!Winreg || !u32) {
+        log.warn('[Main] winreg or win32-api not available. Cannot set cursor size on Windows.');
+        break;
+      }
+      log.info(`[Main] Setting Windows cursor size to match a base of ${size}`);
+      try {
+        const regKey = new Winreg({ hive: Winreg.HKCU, key: '\\Control Panel\\Cursors' });
+        regKey.set('CursorBaseSize', Winreg.REG_DWORD, size.toString(16), (err: Error) => {
+          if (err) {
+            log.error('[Main] Error setting cursor size in Windows Registry:', err);
+            return;
+          }
+          log.info('[Main] Successfully set CursorBaseSize in registry.');
 
-  switch (de) {
-    case 'GNOME':
-      command = `gsettings set org.gnome.desktop.interface cursor-size ${size}`;
+          // Broadcast the change to make it apply immediately
+          const SPI_SETCURSORS = 0x0057;
+          const SPIF_SENDCHANGE = 0x02;
+          u32.SystemParametersInfoW(SPI_SETCURSORS, 0, null, SPIF_SENDCHANGE);
+          log.info('[Main] Broadcasted system parameter change for cursors.');
+        });
+      } catch (error) {
+        log.error('[Main] An error occurred while setting Windows cursor size:', error);
+      }
       break;
-    case 'KDE':
-      command = `kwriteconfig5 --file kcminputrc --group Mouse --key cursorSize ${size}`;
+
+    case 'linux': {
+      const de = getLinuxDE();
+      let command: string;
+      log.info(`[Main] Setting cursor size to ${size} for ${de}`);
+
+      switch (de) {
+        case 'GNOME': command = `gsettings set org.gnome.desktop.interface cursor-size ${size}`; break;
+        case 'KDE': command = `kwriteconfig5 --file kcminputrc --group Mouse --key cursorSize ${size}`; break;
+        case 'XFCE': command = `xfconf-query -c xsettings -p /Gtk/CursorThemeSize -s ${size}`; break;
+        default: log.warn(`[Main] Cannot set cursor size for unknown DE.`); return;
+      }
+
+      log.info(`[Main] Setting cursor size for ${de} with command: ${command}`);
+      exec(command, (error, _stdout, stderr) => {
+        if (error) {
+          log.error(`[Main] Error setting cursor size for ${de}:`, error);
+          log.error(`[Main] Stderr: ${stderr}`);
+          dialog.showErrorBox('Cursor Size Error', `Failed to set cursor size. Please ensure command-line tools for your desktop environment are installed and accessible.\n\nError: ${stderr}`);
+        } else {
+          log.info(`[Main] Successfully set cursor size to ${size}`);
+        }
+      });
       break;
-    case 'XFCE':
-      command = `xfconf-query -c xsettings -p /Gtk/CursorThemeSize -s ${size}`;
-      break;
-    default:
-      log.warn(`[Main] Cannot set cursor size for unknown DE.`);
-      return;
-  }
-  log.info(`[Main] Setting cursor size for ${de} with command: ${command}`);
-  exec(command, (error, _stdout, stderr) => {
-    if (error) {
-      log.error(`[Main] Error setting cursor size for ${de}:`, error);
-      log.error(`[Main] Stderr: ${stderr}`);
-      dialog.showErrorBox('Cursor Size Error', `Failed to set cursor size. Please ensure command-line tools for your desktop environment are installed and accessible.\n\nError: ${stderr}`);
-    } else {
-      log.info(`[Main] Successfully set cursor size to ${size}`);
     }
-  });
+
+    default:
+      log.warn(`[Main] Setting cursor size is not supported on platform: ${process.platform}`);
+      break;
+  }
 }
 
 function restoreOriginalCursorSize() {

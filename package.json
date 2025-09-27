@@ -46,6 +46,8 @@
     "vite-plugin-node-polyfills": "^0.24.0"
   },
   "optionalDependencies": {
+    "win32-api": "^12.0.0",
+    "winreg": "^1.2.4",
     "global-mouse-events": "https://github.com/tamnguyenvan/global-mouse-events",
     "x11": "https://github.com/tamnguyenvan/node-x11"
   },
