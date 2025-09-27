@@ -12,32 +12,68 @@ import { cn } from '../../lib/utils';
 import { Scissors } from 'lucide-react';
 import { TIMELINE } from '../../lib/constants';
 
-const calculateRulerInterval = (duration: number): { major: number; minor: number } => {
-  if (duration <= 0) return { major: 1, minor: 0.5 };
-  const targetMajorTicks = 10;
-  const roughInterval = duration / targetMajorTicks;
-  const niceIntervals = [0.1, 0.2, 0.5, 1, 2, 5, 10, 15, 30, 60, 120, 300, 600];
-  const major = niceIntervals.find(i => i >= roughInterval) || niceIntervals[niceIntervals.length - 1];
-  const minor = major / (major > 1 ? 5 : 2);
-  return { major, minor };
+/**
+ * [REFACTORED] Calculates ruler intervals based on zoom level (pixelsPerSecond).
+ * This ensures the ruler is always readable and dynamically adjusts subdivisions.
+ * @param pixelsPerSecond The current zoom level represented as pixels per second.
+ * @returns An object with major and minor interval times in seconds.
+ */
+const calculateRulerInterval = (pixelsPerSecond: number): { major: number; minor: number } => {
+  // Define "nice" time intervals for the ruler (in seconds)
+  const niceIntervals = [1, 2, 5, 10, 15, 30, 60, 120, 300, 600];
+  const minMajorPixelSpacing = 90; // Target minimum pixel distance between major ticks
+
+  // 1. Find the best major interval
+  const major = niceIntervals.find(interval => interval * pixelsPerSecond > minMajorPixelSpacing) || niceIntervals[niceIntervals.length - 1];
+
+  // 2. Find the best number of subdivisions for minor ticks
+  const minMinorPixelSpacing = 10; // Ticks closer than this are hard to see
+  const possibleSubdivisions = [10, 5, 4, 2]; // In order of preference (most to least dense)
+
+  for (const sub of possibleSubdivisions) {
+    const minor = major / sub;
+    if (minor * pixelsPerSecond > minMinorPixelSpacing) {
+      // This subdivision is readable, so we use it and exit
+      return { major, minor };
+    }
+  }
+
+  // Fallback if no subdivision is readable (very zoomed out)
+  return { major, minor: major / 2 };
 };
 
-// OPTIMIZATION: Memoized Ruler component to prevent re-rendering on every playhead move
+// Helper to format time as MM:SS for the ruler labels
+const formatTime = (seconds: number): string => {
+  if (isNaN(seconds) || seconds < 0) {
+    return '00:00';
+  }
+  const minutes = Math.floor(seconds / 60);
+  const remainingSeconds = Math.floor(seconds % 60);
+  return `${String(minutes).padStart(2, '0')}:${String(remainingSeconds).padStart(2, '0')}`;
+};
+
+// OPTIMIZATION: Memoized Ruler component with visual refinements
 const Ruler = memo(({ ticks, timeToPx, formatTime }: {
   ticks: { time: number; type: string }[];
   timeToPx: (time: number) => number;
   formatTime: (seconds: number) => string;
 }) => (
-  <div className="h-12 sticky overflow-hidden top-0 left-0 right-0 z-10 border-b-2 border-border/60 bg-gradient-to-b from-muted/80 to-muted/40">
+  // pt-2 creates the requested top margin
+  <div className="h-12 sticky overflow-hidden top-0 left-0 right-0 z-10 border-b-2 border-border/60 bg-gradient-to-b from-muted/80 to-muted/40 pt-2">
     {ticks.map(({ time, type }) => (
       <div
-        key={`tick-${time}`}
-        className="absolute top-0 flex flex-col items-center"
-        style={{ left: `${timeToPx(time)}px`, transform: 'translateX(-50%)' }}
+        key={`${type}-${time}`}
+        className="absolute top-2 h-full"
+        style={{ left: `${timeToPx(time)}px` }}
       >
-        <div className={cn("bg-foreground/70 transition-all", type === 'major' ? 'w-0.5 h-6' : 'w-px h-3')} />
+        <div
+          className={cn(
+            "timeline-tick absolute top-0 left-1/2 -translate-x-1/2 w-px",
+            type === 'major' ? 'h-5' : 'h-2.5'
+          )}
+        />
         {type === 'major' && (
-          <span className="text-xs text-foreground/90 font-mono font-medium translate-x-1/2">
+          <span className="absolute top-5 left-0.5 text-xs text-foreground/70 font-mono font-medium">
             {formatTime(time)}
           </span>
         )}
@@ -150,26 +186,29 @@ export function Timeline({ videoRef }: { videoRef: React.RefObject<HTMLVideoElem
     setDraggingRegion({ id: region.id, type, initialX: e.clientX, initialStartTime: region.startTime, initialDuration: region.duration });
   }, [setSelectedRegionId, updateVideoTime]);
 
-  const formatTime = useCallback((seconds: number): string => {
-    const hrs = Math.floor(seconds / 3600);
-    const mins = Math.floor((seconds % 3600) / 60);
-    const secs = Math.floor(seconds % 60);
-    if (hrs > 0) return `${hrs}:${String(mins).padStart(2, '0')}:${String(secs).padStart(2, '0')}`;
-    return `${String(mins).padStart(2, '0')}:${String(secs).padStart(2, '0')}`;
-  }, []);
-
   const rulerTicks = useMemo(() => {
-    if (duration <= 0) return [];
-    const { major, minor } = calculateRulerInterval(duration);
+    if (duration <= 0 || pixelsPerSecond <= 0) return [];
+
+    const { major, minor } = calculateRulerInterval(pixelsPerSecond);
     const ticks = [];
-    for (let time = 0; time <= duration; time += major) ticks.push({ time, type: 'major' });
-    if (timeToPx(minor) > 20) {
-      for (let time = 0; time <= duration; time += minor) {
-        if (time % major !== 0) ticks.push({ time, type: 'minor' });
+
+    // Generate major ticks
+    for (let time = 0; time <= duration; time += major) {
+      ticks.push({ time: parseFloat(time.toPrecision(10)), type: 'major' });
+    }
+
+    // [FIXED] Generate minor ticks, ensuring no overlap with major ticks
+    for (let time = 0; time <= duration; time += minor) {
+      const preciseTime = parseFloat(time.toPrecision(10));
+      // The condition `preciseTime % major !== 0` prevents drawing a minor tick
+      // on top of a major one, fixing the visual glitch.
+      if (preciseTime % major !== 0) {
+        ticks.push({ time: preciseTime, type: 'minor' });
       }
     }
+
     return ticks;
-  }, [duration, timeToPx]);
+  }, [duration, pixelsPerSecond]);
 
   useEffect(() => {
     const handleMouseMove = (e: MouseEvent) => {

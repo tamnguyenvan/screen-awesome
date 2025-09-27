@@ -14,6 +14,12 @@
      @apply focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 ring-offset-background;
   }
 
+  /* Timeline tick colors */
+  .timeline-tick {
+    background-color: var(--muted-foreground) !important;
+    opacity: 1 !important;
+  }
+
   /* macOS Style Color Picker */
   .color-picker-container {
     @apply flex items-center gap-2 w-full;

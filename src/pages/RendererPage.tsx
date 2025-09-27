@@ -164,13 +164,6 @@ export function RendererPage() {
 
         const frameX = (outputWidth - frameWidth) / 2;
         const frameY = (outputHeight - frameHeight) / 2;
-
-        const borderWidth = frameStyles.borderWidth;
-        const innerWidth = frameWidth - (borderWidth * 2);
-        const innerHeight = frameHeight - (borderWidth * 2);
-        const innerX = borderWidth;
-        const innerY = borderWidth;
-        const innerRadius = Math.max(0, frameStyles.borderRadius - borderWidth);
         
         // --- Webcam setup ---
         const { webcamPosition, webcamStyles, isWebcamVisible } = projectState;
@@ -236,72 +229,72 @@ export function RendererPage() {
           // 2. Main video frame transform and drawing
           ctx.save();
           
-          // Get ALL transform properties, including the crucial transformOrigin
           const { scale, translateX, translateY, transformOrigin } = calculateZoomTransform(currentTime);
 
-          // Parse transformOrigin string (e.g., "50% 100%") into multipliers
           const [originXStr, originYStr] = transformOrigin.split(' ');
           const originXMul = parseFloat(originXStr) / 100;
           const originYMul = parseFloat(originYStr) / 100;
 
-          // Calculate the origin point in pixels relative to the frame's top-left corner
           const originPxX = originXMul * frameWidth;
           const originPxY = originYMul * frameHeight;
 
-          // Apply all transforms relative to the frame's position
-          ctx.translate(frameX, frameY); // Move canvas to the top-left corner of the video frame's bounding box
-          ctx.translate(originPxX, originPxY); // Move to the transform origin
+          ctx.translate(frameX, frameY);
+          ctx.translate(originPxX, originPxY);
           ctx.scale(scale, scale);
-          ctx.translate((translateX / 100) * frameWidth, (translateY / 100) * frameHeight); // Apply pan
-          ctx.translate(-originPxX, -originPxY); // Move back from the transform origin
-
-          // The canvas is now transformed. All subsequent drawing happens from (0,0) relative to the transformed frame.
+          ctx.translate((translateX / 100) * frameWidth, (translateY / 100) * frameHeight);
+          ctx.translate(-originPxX, -originPxY);
 
           // 3. Draw dynamic drop-shadow inside the transformed context
-          const { shadow, borderRadius, shadowColor } = frameStyles;
+          const { shadow, borderRadius, shadowColor, borderWidth } = frameStyles;
           ctx.shadowColor = shadowColor;
           ctx.shadowBlur = shadow * 1.5;
           ctx.shadowOffsetY = shadow;
 
-          // Draw a shape to cast the shadow
           const frameOuterPath = new Path2D();
           frameOuterPath.roundRect(0, 0, frameWidth, frameHeight, borderRadius);
-          ctx.fillStyle = 'rgba(0,0,0,0.001)'; // Must fill to cast shadow
+          ctx.fillStyle = 'rgba(0,0,0,0.001)';
           ctx.fill(frameOuterPath);
 
-          // Reset shadow for subsequent drawings
           ctx.shadowColor = 'transparent';
           ctx.shadowBlur = 0;
           ctx.shadowOffsetY = 0;
           
           // 4. Draw the "glassy" frame effects by clipping to the frame's path
+          // This block is the FIX to match Preview.tsx
           ctx.save();
           ctx.clip(frameOuterPath);
 
-          // 4a. Main linear gradient
-          const linearGrad = ctx.createLinearGradient(0, 0, frameWidth, frameHeight); // 135deg is top-left to bottom-right
+          // 4a. Main linear gradient for glass effect
+          const linearGrad = ctx.createLinearGradient(0, 0, frameWidth, frameHeight);
           linearGrad.addColorStop(0, 'rgba(255, 255, 255, 0.25)');
           linearGrad.addColorStop(0.5, 'rgba(255, 255, 255, 0.15)');
           linearGrad.addColorStop(1, 'rgba(255, 255, 255, 0.05)');
           ctx.fillStyle = linearGrad;
           ctx.fillRect(0, 0, frameWidth, frameHeight);
           
-          // 4b. Radial sheen gradient on top
+          // 4b. Radial sheen gradient for highlights
           const radialGrad = ctx.createRadialGradient(0, 0, 0, 0, 0, frameWidth * 0.7);
           radialGrad.addColorStop(0, 'rgba(255, 255, 255, 0.2)');
           radialGrad.addColorStop(0.5, 'transparent');
           ctx.fillStyle = radialGrad;
           ctx.fillRect(0, 0, frameWidth, frameHeight);
 
-          // 5. Draw the video itself, clipped to the inner area
+          // 5. Draw the video itself, clipped to the inner area (respecting borderWidth)
+          const innerX = borderWidth;
+          const innerY = borderWidth;
+          const innerWidth = frameWidth - (borderWidth * 2);
+          const innerHeight = frameHeight - (borderWidth * 2);
+          const innerRadius = Math.max(0, borderRadius - borderWidth);
+          
           const videoClipPath = new Path2D();
           videoClipPath.roundRect(innerX, innerY, innerWidth, innerHeight, innerRadius);
+          
           ctx.save();
           ctx.clip(videoClipPath);
           ctx.drawImage(video, innerX, innerY, innerWidth, innerHeight);
           ctx.restore(); // Restore from video clip
 
-          // 6. Draw the outer 1px border on top
+          // 6. Draw the outer 1px border on top of everything
           ctx.strokeStyle = 'rgba(255, 255, 255, 0.3)';
           ctx.lineWidth = 1; 
           ctx.stroke(frameOuterPath);
@@ -315,21 +308,17 @@ export function RendererPage() {
             const webcamPath = new Path2D();
             webcamPath.roundRect(webcamX, webcamY, webcamWidth, webcamHeight, webcamRadius);
             
-            // Apply webcam shadow
             ctx.shadowColor = webcamStyles.shadowColor;
             ctx.shadowBlur = webcamStyles.shadow * 1.5;
             ctx.shadowOffsetY = webcamStyles.shadow;
             
-            // Need to fill something to cast shadow, then draw image over it
             ctx.fillStyle = 'rgba(0,0,0,0.001)';
             ctx.fill(webcamPath);
             
-            // Reset shadow before drawing video
             ctx.shadowColor = 'transparent';
             ctx.shadowBlur = 0;
             ctx.shadowOffsetY = 0;
 
-            // Clip and draw webcam video
             ctx.clip(webcamPath);
             ctx.drawImage(webcamVideo, webcamX, webcamY, webcamWidth, webcamHeight);
             ctx.restore();
