@@ -50,37 +50,37 @@ export function PreviewControls({ videoRef }: { videoRef: React.RefObject<HTMLVi
 
   return (
     <TooltipProvider delayDuration={300}>
-      <div className="relative h-12 bg-card/90 backdrop-blur-xl border-t border-border/40 flex items-center justify-between px-4 shadow-sm">
+      <div className="relative h-16 bg-card/90 backdrop-blur-xl border-t border-border/40 flex items-center justify-between px-6 shadow-sm">
         {/* Left Controls - Timeline Tools */}
         <div className="flex items-center gap-4">
           <div className="flex items-center gap-2">
             <Tooltip>
               <TooltipTrigger asChild>
-                <Button variant="toolbar" size="sm" onClick={() => addZoomRegion()}>
-                  <Plus className="w-4 h-4 mr-1.5" /> Zoom
+                <Button variant="toolbar" size="default" className="h-10 px-3 text-sm" onClick={() => addZoomRegion()}>
+                  <Plus className="w-5 h-5 mr-2" /> Zoom
                 </Button>
               </TooltipTrigger>
               <TooltipContent><p>Add Zoom Region</p></TooltipContent>
             </Tooltip>
             <Tooltip>
               <TooltipTrigger asChild>
-                <Button variant="toolbar" size="sm" onClick={() => addCutRegion()}>
-                  <Scissors className="w-4 h-4 mr-1.5" /> Cut
+                <Button variant="toolbar" size="default" className="h-10 px-3 text-sm" onClick={() => addCutRegion()}>
+                  <Scissors className="w-5 h-5 mr-2" /> Cut
                 </Button>
               </TooltipTrigger>
               <TooltipContent><p>Add Cut Region</p></TooltipContent>
             </Tooltip>
             <Tooltip>
               <TooltipTrigger asChild>
-                <Button variant="toolbar" size="icon" className="h-8 w-8" onClick={handleDelete} disabled={!selectedRegionId}>
-                  <Trash2 className="w-4 h-4" />
+                <Button variant="toolbar" size="icon" className="h-10 w-10" onClick={handleDelete} disabled={!selectedRegionId}>
+                  <Trash2 className="w-5 h-5" />
                 </Button>
               </TooltipTrigger>
               <TooltipContent><p>Delete Selected Region (Del)</p></TooltipContent>
             </Tooltip>
           </div>
           <div className="flex items-center gap-2">
-            <ZoomIn className="w-4 h-4 text-muted-foreground" />
+            <ZoomIn className="w-5 h-5 text-muted-foreground" />
             <div className="w-24">
               <Slider min={1} max={4} step={0.5} value={timelineZoom} onChange={setTimelineZoom} />
             </div>
@@ -92,16 +92,16 @@ export function PreviewControls({ videoRef }: { videoRef: React.RefObject<HTMLVi
           <div className="flex items-center gap-2">
             <Tooltip>
               <TooltipTrigger asChild>
-                <Button variant="toolbar" size="icon" className="h-8 w-8" onClick={() => undo()} disabled={pastStates.length === 0}>
-                  <Undo className="w-4 h-4" />
+                <Button variant="toolbar" size="icon" className="h-10 w-10" onClick={() => undo()} disabled={pastStates.length === 0}>
+                  <Undo className="w-5 h-5" />
                 </Button>
               </TooltipTrigger>
               <TooltipContent><p>Undo (Ctrl+Z)</p></TooltipContent>
             </Tooltip>
             <Tooltip>
               <TooltipTrigger asChild>
-                <Button variant="toolbar" size="icon" className="h-8 w-8" onClick={() => redo()} disabled={futureStates.length === 0}>
-                  <Redo className="w-4 h-4" />
+                <Button variant="toolbar" size="icon" className="h-10 w-10" onClick={() => redo()} disabled={futureStates.length === 0}>
+                  <Redo className="w-5 h-5" />
                 </Button>
               </TooltipTrigger>
               <TooltipContent><p>Redo (Ctrl+Y)</p></TooltipContent>
@@ -111,8 +111,8 @@ export function PreviewControls({ videoRef }: { videoRef: React.RefObject<HTMLVi
           <div className="flex items-center gap-3">
             <Tooltip>
               <TooltipTrigger asChild>
-                <Button variant="toolbar" size="icon" className="rounded-full h-8 w-8" onClick={handleRewind}>
-                  <Rewind />
+                <Button variant="toolbar" size="icon" className="rounded-full h-10 w-10" onClick={handleRewind}>
+                  <Rewind className="w-5 h-5" />
                 </Button>
               </TooltipTrigger>
               <TooltipContent><p>Rewind to Start</p></TooltipContent>
@@ -120,19 +120,19 @@ export function PreviewControls({ videoRef }: { videoRef: React.RefObject<HTMLVi
             
             <Tooltip>
               <TooltipTrigger asChild>
-                <Button variant="default" size="icon" className="rounded-full !w-10 !h-10 shadow-lg" onClick={togglePlay}>
-                  {isPlaying ? <Pause className="w-5 h-5" /> : <Play className="w-5 h-5 ml-0.5" />}
+                <Button variant="default" size="icon" className="rounded-full !w-12 !h-12 shadow-lg" onClick={togglePlay}>
+                  {isPlaying ? <Pause className="w-6 h-6" /> : <Play className="w-6 h-6 ml-0.5" />}
                 </Button>
               </TooltipTrigger>
               <TooltipContent><p>Play/Pause (Space)</p></TooltipContent>
             </Tooltip>
             
-            <div className="flex items-baseline gap-1 font-mono text-sm">
-              <span className="text-foreground min-w-[3.5rem] text-right font-medium tabular-nums">
+            <div className="flex items-baseline gap-2 font-mono text-base">
+              <span className="text-foreground min-w-[4rem] text-right font-medium tabular-nums">
                 {formatTime(currentTime)}
               </span>
-              <span className="text-muted-foreground text-xs">/</span>
-              <span className="text-muted-foreground min-w-[3.5rem] text-left tabular-nums">
+              <span className="text-muted-foreground text-sm">/</span>
+              <span className="text-muted-foreground min-w-[4rem] text-left tabular-nums">
                 {formatTime(duration)}
               </span>
             </div>
@@ -141,10 +141,10 @@ export function PreviewControls({ videoRef }: { videoRef: React.RefObject<HTMLVi
 
         {/* Right Controls - Aspect Ratio */}
         <div className="flex items-center gap-2">
-          <span className="text-xs text-muted-foreground">Aspect:</span>
-          <div className="w-32">
+          <span className="text-sm text-muted-foreground">Aspect:</span>
+          <div className="w-36">
             <Select value={aspectRatio} onValueChange={(value) => setAspectRatio(value as AspectRatio)}>
-              <SelectTrigger className="h-8 text-xs border-border/60 bg-card/60 shadow-sm">
+              <SelectTrigger className="h-10 text-sm border-border/60 bg-card/60 shadow-sm">
                 <SelectValue />
               </SelectTrigger>
               <SelectContent>
