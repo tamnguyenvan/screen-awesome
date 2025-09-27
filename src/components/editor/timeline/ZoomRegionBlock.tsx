@@ -31,7 +31,7 @@ export const ZoomRegionBlock = memo(({
         'w-full h-full rounded-lg relative cursor-grab border-2',
         !isBeingDragged && 'transition-all duration-200',
         isSelected
-          ? 'bg-accent border-primary transform -translate-y-2 shadow-lg shadow-primary/20'
+          ? 'bg-accent border-primary -translate-y-2 shadow-lg shadow-primary/20'
           : 'bg-secondary border-border hover:border-border/80'
       )}
       style={{ willChange: 'transform, width' }}

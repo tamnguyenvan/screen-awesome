@@ -1,9 +1,11 @@
-import React, { useEffect, useMemo, useRef, memo } from 'react';
+import React, { useEffect, useMemo, useRef, memo, useState } from 'react';
 import { useEditorStore, usePlaybackState } from '../../store/editorStore';
 import { calculateZoomTransform } from '../../lib/transform';
-import { Film } from 'lucide-react';
+import { Film, Play, Pause } from 'lucide-react';
 import { useShallow } from 'zustand/react/shallow';
-import { cn } from '../../lib/utils';
+import { cn, formatTime } from '../../lib/utils';
+import Slider from '../ui/slider';
+import { Button } from '../ui/button';
 
 const generateBackgroundStyle = (backgroundState: ReturnType<typeof useEditorStore.getState>['frameStyles']['background']) => {
   switch (backgroundState.type) {
@@ -32,7 +34,8 @@ const generateBackgroundStyle = (backgroundState: ReturnType<typeof useEditorSto
 
 export const Preview = memo(({ videoRef }: { videoRef: React.RefObject<HTMLVideoElement> }) => {
   const { frameStyles, videoUrl, aspectRatio, videoDimensions, cutRegions,
-    webcamVideoUrl, webcamPosition, isWebcamVisible, webcamStyles
+    webcamVideoUrl, webcamPosition, isWebcamVisible, webcamStyles,
+    duration, currentTime, togglePlay
   } = useEditorStore(
     useShallow(state => ({
       frameStyles: state.frameStyles,
@@ -44,6 +47,9 @@ export const Preview = memo(({ videoRef }: { videoRef: React.RefObject<HTMLVideo
       webcamPosition: state.webcamPosition,
       isWebcamVisible: state.isWebcamVisible,
       webcamStyles: state.webcamStyles,
+      duration: state.duration,
+      currentTime: state.currentTime,
+      togglePlay: state.togglePlay,
     })));
 
   const { setPlaying, setCurrentTime, setDuration, setVideoDimensions } = useEditorStore(
@@ -55,8 +61,24 @@ export const Preview = memo(({ videoRef }: { videoRef: React.RefObject<HTMLVideo
     })));
   const { isPlaying, isCurrentlyCut } = usePlaybackState();
 
+  const [previewWidth, setPreviewWidth] = useState(0);
+  const previewContainerRef = useRef<HTMLDivElement>(null);
   const frameContainerRef = useRef<HTMLDivElement>(null);
   const webcamVideoRef = useRef<HTMLVideoElement>(null);
+
+  useEffect(() => {
+    const observer = new ResizeObserver(entries => {
+      if (entries[0]) {
+        setPreviewWidth(entries[0].contentRect.width);
+      }
+    });
+
+    if (previewContainerRef.current) {
+      observer.observe(previewContainerRef.current);
+    }
+
+    return () => observer.disconnect();
+  }, []);
 
   useEffect(() => {
     const video = videoRef.current;
@@ -77,17 +99,14 @@ export const Preview = memo(({ videoRef }: { videoRef: React.RefObject<HTMLVideo
       if (!frameContainerRef.current || !videoRef.current) return;
       const liveCurrentTime = videoRef.current.currentTime;
       
-      // Use the new transform logic
       const { scale, translateX, translateY, transformOrigin } = calculateZoomTransform(liveCurrentTime);
 
-      // Apply shadow using the new shadowColor and shadow (for blur/offset) properties
-      const shadowBlur = frameStyles.shadow * 1.5; // Example: shadow value maps to blur
-      const shadowOffsetY = frameStyles.shadow; // Example: shadow value maps to offset Y
+      const shadowBlur = frameStyles.shadow * 1.5;
+      const shadowOffsetY = frameStyles.shadow;
       
       const style = frameContainerRef.current.style;
-      style.filter = `drop-shadow(0px ${shadowOffsetY}px ${shadowBlur}px ${frameStyles.shadowColor})`; // Use shadowColor here
+      style.filter = `drop-shadow(0px ${shadowOffsetY}px ${shadowBlur}px ${frameStyles.shadowColor})`;
       
-      // Apply the new transform properties
       style.transformOrigin = transformOrigin;
       style.transform = `scale(${scale}) translate(${translateX}%, ${translateY}%)`;
     };
@@ -102,7 +121,7 @@ export const Preview = memo(({ videoRef }: { videoRef: React.RefObject<HTMLVideo
       updateTransform();
     }
     return () => cancelAnimationFrame(animationFrameId);
-  }, [isPlaying, videoRef, frameStyles.shadow, frameStyles.shadowColor]); // Added frameStyles.shadowColor to dependencies
+  }, [isPlaying, videoRef, frameStyles.shadow, frameStyles.shadowColor]);
 
   useEffect(() => {
     const video = videoRef.current;
@@ -162,7 +181,6 @@ export const Preview = memo(({ videoRef }: { videoRef: React.RefObject<HTMLVideo
     }
   };
 
-  // Enhanced glassy frame styles
   const glassyFrameStyle = useMemo(() => ({
     padding: `${frameStyles.borderWidth}px`,
     borderRadius: `${frameStyles.borderRadius}px`,
@@ -198,11 +216,11 @@ export const Preview = memo(({ videoRef }: { videoRef: React.RefObject<HTMLVideo
   }), [frameStyles.borderRadius, frameStyles.borderWidth]);
 
   const webcamDynamicStyle = useMemo(() => {
-    const shadowBlur = webcamStyles.shadow * 1.5; // Use webcamStyles.shadow for blur
-    const shadowOffsetY = webcamStyles.shadow; // Use webcamStyles.shadow for offset Y
+    const shadowBlur = webcamStyles.shadow * 1.5;
+    const shadowOffsetY = webcamStyles.shadow;
     return {
       height: `${webcamStyles.size}%`,
-      filter: `drop-shadow(0px ${shadowOffsetY}px ${shadowBlur}px ${webcamStyles.shadowColor})`, // Use webcamStyles.shadowColor here
+      filter: `drop-shadow(0px ${shadowOffsetY}px ${shadowBlur}px ${webcamStyles.shadowColor})`,
     };
   }, [webcamStyles]);
 
@@ -218,74 +236,112 @@ export const Preview = memo(({ videoRef }: { videoRef: React.RefObject<HTMLVideo
       'opacity-100 scale-100': isWebcamVisible,
     }
   );
+  
+  const handleScrub = (value: number) => {
+    if (videoRef.current) {
+      videoRef.current.currentTime = value;
+      setCurrentTime(value);
+    }
+  };
 
   return (
-    <div
-      id="preview-container"
-      className="transition-all duration-300 ease-out flex items-center justify-center relative overflow-hidden"
-      style={{ ...backgroundStyle, aspectRatio: cssAspectRatio, maxWidth: '100%', maxHeight: '100%' }}
-    >
-      <div className="w-full h-full flex items-center justify-center relative" style={{ padding: `${frameStyles.padding}%` }}>
-        {videoUrl ? (
-          <>
-            {/* Container receives transform (zoom/pan) and shadow. */}
-            <div
-              ref={frameContainerRef}
-              className="relative"
-              style={{
-                width: videoDisplayWidth,
-                height: videoDisplayHeight,
-                aspectRatio: videoDimensions.width / videoDimensions.height,
-                maxWidth: '100%',
-                maxHeight: '100%',
-                transition: 'transform 50ms linear',
-              }}
-            >
-              {/* Enhanced Glassy Frame with premium glass effect */}
+    <div className="w-full h-full flex flex-col items-center justify-center">
+      <div
+        id="preview-container"
+        ref={previewContainerRef}
+        className="flex-1 w-full transition-all duration-300 ease-out flex items-center justify-center relative overflow-hidden"
+        style={{ ...backgroundStyle, aspectRatio: cssAspectRatio, maxWidth: '100%', maxHeight: '100%' }}
+      >
+        <div className="w-full h-full flex items-center justify-center relative" style={{ padding: `${frameStyles.padding}%` }}>
+          {videoUrl ? (
+            <>
               <div
-                className="w-full h-full transition-all duration-300 ease-out"
-                style={glassyFrameStyle}
+                ref={frameContainerRef}
+                className="relative"
+                style={{
+                  width: videoDisplayWidth,
+                  height: videoDisplayHeight,
+                  aspectRatio: videoDimensions.width / videoDimensions.height,
+                  maxWidth: '100%',
+                  maxHeight: '100%',
+                  transition: 'transform 50ms linear',
+                }}
               >
-                {/* Video Element with enhanced styling */}
-                <video
-                  ref={videoRef}
-                  src={videoUrl}
-                  className="w-full h-full object-cover block relative z-10 transition-all duration-200"
-                  style={videoStyle}
-                  onTimeUpdate={handleTimeUpdate}
-                  onLoadedMetadata={handleLoadedMetadata}
-                  onPlay={() => setPlaying(true)}
-                  onPause={() => setPlaying(false)}
-                  onEnded={() => setPlaying(false)}
-                />
+                <div
+                  className="w-full h-full transition-all duration-300 ease-out"
+                  style={glassyFrameStyle}
+                >
+                  <video
+                    ref={videoRef}
+                    src={videoUrl}
+                    className="w-full h-full object-cover block relative z-10 transition-all duration-200"
+                    style={videoStyle}
+                    onTimeUpdate={handleTimeUpdate}
+                    onLoadedMetadata={handleLoadedMetadata}
+                    onPlay={() => setPlaying(true)}
+                    onPause={() => setPlaying(false)}
+                    onEnded={() => setPlaying(false)}
+                  />
+                </div>
               </div>
-            </div>
 
-            {/* Webcam is now outside of the scaling container */}
-            {webcamVideoUrl && (
-              <div className={webcamWrapperClasses} style={webcamDynamicStyle}>
-                <video
-                  ref={webcamVideoRef}
-                  src={webcamVideoUrl}
-                  muted
-                  playsInline
-                  className="w-full h-full object-cover"
-                />
+              {webcamVideoUrl && (
+                <div className={webcamWrapperClasses} style={webcamDynamicStyle}>
+                  <video
+                    ref={webcamVideoRef}
+                    src={webcamVideoUrl}
+                    muted
+                    playsInline
+                    className="w-full h-full object-cover"
+                  />
+                </div>
+              )}
+            </>
+          ) : (
+            <div className="w-full h-full bg-gradient-to-br from-slate-50/10 to-slate-100/5 border-2 border-dashed border-white/20 rounded-xl flex flex-col items-center justify-center text-white/70 gap-4 backdrop-blur-sm">
+              <div className="w-16 h-16 rounded-full bg-gradient-to-br from-white/20 to-white/5 flex items-center justify-center backdrop-blur-md border border-white/20">
+                <Film className="w-8 h-8 text-white/70" />
               </div>
-            )}
-          </>
-        ) : (
-          <div className="w-full h-full bg-gradient-to-br from-slate-50/10 to-slate-100/5 border-2 border-dashed border-white/20 rounded-xl flex flex-col items-center justify-center text-white/70 gap-4 backdrop-blur-sm">
-            <div className="w-16 h-16 rounded-full bg-gradient-to-br from-white/20 to-white/5 flex items-center justify-center backdrop-blur-md border border-white/20">
-              <Film className="w-8 h-8 text-white/70" />
+              <div className="text-center">
+                <p className="text-lg font-medium mb-1 text-white/80">No project loaded</p>
+                <p className="text-sm text-white/50">Load a project to begin editing</p>
+              </div>
             </div>
-            <div className="text-center">
-              <p className="text-lg font-medium mb-1 text-white/80">No project loaded</p>
-              <p className="text-sm text-white/50">Load a project to begin editing</p>
-            </div>
-          </div>
-        )}
+          )}
+        </div>
       </div>
+
+      {videoUrl && (
+        <div
+          className="w-full"
+          style={{ width: previewWidth > 0 ? previewWidth : 'auto', maxWidth: '100%' }}
+        >
+          <div className="bg-card/80 backdrop-blur-xl border border-border/30 rounded-bl-xl rounded-br-xl px-3 py-1.5 flex items-center gap-3 shadow-xs">
+            <Button
+              variant="ghost"
+              size="icon"
+              onClick={togglePlay}
+              className="flex-shrink-0 text-foreground/70 hover:text-foreground h-8 w-8"
+            >
+              {isPlaying ? <Pause className="w-4 h-4" /> : <Play className="w-4 h-4" />}
+            </Button>
+            <div className="flex items-baseline gap-1.5 text-xs font-mono tabular-nums text-muted-foreground">
+              <span>{formatTime(currentTime, true)}</span>
+              <span>/</span>
+              <span>{formatTime(duration, true)}</span>
+            </div>
+            <Slider
+              min={0}
+              max={duration}
+              step={0.01}
+              value={currentTime}
+              onChange={handleScrub}
+              disabled={duration === 0}
+              className="flex-1"
+            />
+          </div>
+        </div>
+      )}
     </div>
   );
 });

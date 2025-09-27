@@ -10,6 +10,7 @@ import { CutRegionBlock } from './timeline/CutRegionBlock';
 import { Playhead } from './timeline/Playhead';
 import { cn } from '../../lib/utils';
 import { Scissors } from 'lucide-react';
+import { formatTime } from '../../lib/utils';
 import { TIMELINE } from '../../lib/constants';
 
 /**
@@ -40,16 +41,6 @@ const calculateRulerInterval = (pixelsPerSecond: number): { major: number; minor
 
   // Fallback if no subdivision is readable (very zoomed out)
   return { major, minor: major / 2 };
-};
-
-// Helper to format time as MM:SS for the ruler labels
-const formatTime = (seconds: number): string => {
-  if (isNaN(seconds) || seconds < 0) {
-    return '00:00';
-  }
-  const minutes = Math.floor(seconds / 60);
-  const remainingSeconds = Math.floor(seconds % 60);
-  return `${String(minutes).padStart(2, '0')}:${String(remainingSeconds).padStart(2, '0')}`;
 };
 
 // OPTIMIZATION: Memoized Ruler component with visual refinements

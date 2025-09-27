@@ -5,6 +5,32 @@ export function cn(...inputs: ClassValue[]) {
   return twMerge(clsx(inputs))
 }
 
+/**
+ * Formats seconds into a time string.
+ * @param seconds - The total number of seconds.
+ * @param showMilliseconds - Whether to include milliseconds in the output.
+ * @returns A string in MM:SS or MM:SS.ms format.
+ */
+export function formatTime(seconds: number, showMilliseconds = false): string {
+  if (isNaN(seconds) || seconds < 0) {
+    return showMilliseconds ? '00:00.00' : '00:00';
+  }
+
+  const minutes = Math.floor(seconds / 60);
+  const remainingSeconds = seconds % 60;
+  
+  const formattedMinutes = minutes.toString().padStart(2, '0');
+
+  if (showMilliseconds) {
+    // toFixed(2) handles rounding and padding for milliseconds
+    const formattedSecondsWithMs = remainingSeconds.toFixed(2).padStart(5, '0');
+    return `${formattedMinutes}:${formattedSecondsWithMs}`;
+  }
+
+  // Original behavior: round down and pad
+  const formattedSecondsInt = Math.floor(remainingSeconds).toString().padStart(2, '0');
+  return `${formattedMinutes}:${formattedSecondsInt}`;
+}
 
 /**
  * Converts an RGBA string to a HEX color and an alpha value.
