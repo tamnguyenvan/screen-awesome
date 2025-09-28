@@ -184,8 +184,9 @@ export const Preview = memo(({ videoRef }: { videoRef: React.RefObject<HTMLVideo
     }
   };
 
-  const glassyFrameStyle = useMemo(() => ({
-    padding: `${frameStyles.borderWidth}px`,
+  const glassyBorderStyle = useMemo(() => ({
+    // Kích thước lớn hơn video bằng borderWidth
+    inset: `-${frameStyles.borderWidth}px`,
     borderRadius: `${frameStyles.borderRadius}px`,
     background: `
       linear-gradient(135deg, 
@@ -208,15 +209,15 @@ export const Preview = memo(({ videoRef }: { videoRef: React.RefObject<HTMLVideo
       0 2px 10px -2px rgba(0, 0, 0, 0.2),
       0 8px 25px -5px rgba(0, 0, 0, 0.1)
     `,
-    position: 'relative' as const,
-    overflow: 'hidden' as const,
+    position: 'absolute' as const,
   }), [frameStyles.borderWidth, frameStyles.borderRadius]);
 
   const videoStyle = useMemo(() => ({
-    borderRadius: `${Math.max(0, frameStyles.borderRadius - frameStyles.borderWidth)}px`,
+    borderRadius: `${frameStyles.borderRadius}px`,
     position: 'relative' as const,
     zIndex: 1,
-  }), [frameStyles.borderRadius, frameStyles.borderWidth]);
+    overflow: 'hidden' as const,
+  }), [frameStyles.borderRadius]);
 
   const webcamDynamicStyle = useMemo(() => {
     const shadowBlur = webcamStyles.shadow * 1.5;
@@ -270,14 +271,15 @@ export const Preview = memo(({ videoRef }: { videoRef: React.RefObject<HTMLVideo
                   transition: 'transform 50ms linear',
                 }}
               >
-                <div
-                  className="w-full h-full transition-all duration-300 ease-out"
-                  style={glassyFrameStyle}
-                >
+                <div className="relative w-full h-full">
+                  <div
+                    className="transition-all duration-300 ease-out"
+                    style={glassyBorderStyle}
+                  />
                   <video
                     ref={videoRef}
                     src={videoUrl}
-                    className="w-full h-full object-cover block relative z-10 transition-all duration-200"
+                    className="w-full h-full object-cover block transition-all duration-200"
                     style={videoStyle}
                     onTimeUpdate={handleTimeUpdate}
                     onLoadedMetadata={handleLoadedMetadata}

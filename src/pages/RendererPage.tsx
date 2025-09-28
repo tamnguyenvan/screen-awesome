@@ -246,63 +246,66 @@ export function RendererPage() {
 
           // 3. Draw dynamic drop-shadow inside the transformed context
           const { shadow, borderRadius, shadowColor, borderWidth } = frameStyles;
+          
+          // --- Define Geometries ---
+          // Geometries cho viền (lớn hơn video)
+          const borderX = -borderWidth;
+          const borderY = -borderWidth;
+          const borderW = frameWidth + 2 * borderWidth;
+          const borderH = frameHeight + 2 * borderWidth;
+          const borderPath = new Path2D();
+          borderPath.roundRect(borderX, borderY, borderW, borderH, borderRadius);
+          
+          // Geometries cho video (bên trong viền)
+          const videoPath = new Path2D();
+          videoPath.roundRect(0, 0, frameWidth, frameHeight, borderRadius);
+
+
+          // 3. Draw shadow cho viền bên ngoài
           ctx.shadowColor = shadowColor;
           ctx.shadowBlur = shadow * 1.5;
           ctx.shadowOffsetY = shadow;
-
-          const frameOuterPath = new Path2D();
-          frameOuterPath.roundRect(0, 0, frameWidth, frameHeight, borderRadius);
-          ctx.fillStyle = 'rgba(0,0,0,0.001)';
-          ctx.fill(frameOuterPath);
-
+          ctx.fillStyle = 'rgba(0,0,0,0.001)'; // Cần fill để shadow hiện ra
+          ctx.fill(borderPath);
           ctx.shadowColor = 'transparent';
           ctx.shadowBlur = 0;
           ctx.shadowOffsetY = 0;
-          
-          // 4. Draw the "glassy" frame effects by clipping to the frame's path
-          // This block is the FIX to match Preview.tsx
+
+          // 4. Draw the "glassy" frame effects vào khu vực của viền
           ctx.save();
-          ctx.clip(frameOuterPath);
+          ctx.clip(borderPath);
 
           // 4a. Main linear gradient for glass effect
-          const linearGrad = ctx.createLinearGradient(0, 0, frameWidth, frameHeight);
+          const linearGrad = ctx.createLinearGradient(borderX, borderY, borderX + borderW, borderY + borderH);
           linearGrad.addColorStop(0, 'rgba(255, 255, 255, 0.25)');
           linearGrad.addColorStop(0.5, 'rgba(255, 255, 255, 0.15)');
           linearGrad.addColorStop(1, 'rgba(255, 255, 255, 0.05)');
           ctx.fillStyle = linearGrad;
-          ctx.fillRect(0, 0, frameWidth, frameHeight);
+          ctx.fillRect(borderX, borderY, borderW, borderH);
           
           // 4b. Radial sheen gradient for highlights
-          const radialGrad = ctx.createRadialGradient(0, 0, 0, 0, 0, frameWidth * 0.7);
+          const radialGrad = ctx.createRadialGradient(borderX, borderY, 0, borderX, borderY, borderW * 0.7);
           radialGrad.addColorStop(0, 'rgba(255, 255, 255, 0.2)');
           radialGrad.addColorStop(0.5, 'transparent');
           ctx.fillStyle = radialGrad;
-          ctx.fillRect(0, 0, frameWidth, frameHeight);
+          ctx.fillRect(borderX, borderY, borderW, borderH);
 
-          // 5. Draw the video itself, clipped to the inner area (respecting borderWidth)
-          const innerX = borderWidth;
-          const innerY = borderWidth;
-          const innerWidth = frameWidth - (borderWidth * 2);
-          const innerHeight = frameHeight - (borderWidth * 2);
-          const innerRadius = Math.max(0, borderRadius - borderWidth);
-          
-          const videoClipPath = new Path2D();
-          videoClipPath.roundRect(innerX, innerY, innerWidth, innerHeight, innerRadius);
-          
+          // 4c. Draw the outer 1px border
+          ctx.strokeStyle = 'rgba(255, 255, 255, 0.3)';
+          ctx.lineWidth = 1;
+          ctx.stroke(borderPath);
+
+          ctx.restore(); // Restore from border clip
+
+          // 5. Draw the video itself, clipped to its own path
           ctx.save();
-          ctx.clip(videoClipPath);
-          ctx.drawImage(video, innerX, innerY, innerWidth, innerHeight);
+          ctx.clip(videoPath);
+          ctx.drawImage(video, 0, 0, frameWidth, frameHeight);
           ctx.restore(); // Restore from video clip
 
-          // 6. Draw the outer 1px border on top of everything
-          ctx.strokeStyle = 'rgba(255, 255, 255, 0.3)';
-          ctx.lineWidth = 1; 
-          ctx.stroke(frameOuterPath);
-
-          ctx.restore(); // Restore from outer frame clip
           ctx.restore(); // Restore from main transform
 
-          // 7. Draw webcam (outside of main transform)
+          // 6. Draw webcam (outside of main transform)
           if (isWebcamVisible && webcamVideo) {
             ctx.save();
             const webcamPath = new Path2D();
