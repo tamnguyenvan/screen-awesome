@@ -175,7 +175,7 @@ export function RecorderPage() {
   const [selectedWebcamId, setSelectedWebcamId] = useState<string>('none');
   const [mics, setMics] = useState<MicDevice[]>([]);
   const [selectedMicId, setSelectedMicId] = useState<string>('none');
-  const [cursorSize, setCursorSize] = useState<number>(24);
+  const [cursorSize, setCursorSize] = useState<number>(2);
   const webcamPreviewRef = useRef<HTMLVideoElement>(null);
   const webcamStreamRef = useRef<MediaStream | null>(null);
 
@@ -184,7 +184,7 @@ export function RecorderPage() {
     window.electronAPI.getPlatform().then(platform => {
       setPlatform(platform);
       if (platform === 'linux') {
-        // Load persisted size, default to 48 (2x)
+        // Load persisted size, default to 2 (2x)
         const savedSize = localStorage.getItem('screenawesome_cursorSize');
         const initialSize = savedSize ? parseInt(savedSize, 10) : 48;
 
@@ -397,11 +397,9 @@ export function RecorderPage() {
   }
 
   const handleCursorSizeChange = (newSize: number) => {
-    if (platform === 'linux') {
-      setCursorSize(newSize);
-      window.electronAPI.setCursorSize(newSize);
-      localStorage.setItem('screenawesome_cursorSize', newSize.toString());
-    }
+    setCursorSize(newSize);
+    window.electronAPI.setCursorSize(newSize);
+    localStorage.setItem('screenawesome_cursorSize', newSize.toString());
   };
 
   if (recordingState === 'recording') {
@@ -573,7 +571,6 @@ export function RecorderPage() {
                 </Select>
               </div>
 
-              {platform === 'linux' && (
                 <>
                   <div className="flex items-center gap-2" style={{ WebkitAppRegion: 'no-drag' }}>
                     <MousePointer size={18} className="text-muted-foreground" />
@@ -585,14 +582,13 @@ export function RecorderPage() {
                         <SelectValue />
                       </SelectTrigger>
                       <SelectContent>
-                        <SelectItem value="48">2x</SelectItem>
-                        <SelectItem value="32">1.5x</SelectItem>
-                        <SelectItem value="24">1x</SelectItem>
+                        <SelectItem value="2">2x</SelectItem>
+                        <SelectItem value="1.5">1.5x</SelectItem>
+                        <SelectItem value="1">1x</SelectItem>
                       </SelectContent>
                     </Select>
                   </div>
                 </>
-              )}
 
             </div>
           </div>

@@ -52,10 +52,10 @@ if (process.platform === 'linux') {
 }
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
-let GlobalMouseEvents: any;
+let mouseEvents: any;
 if (process.platform === 'win32') {
   try {
-    GlobalMouseEvents = require('global-mouse-events');
+    mouseEvents = require('global-mouse-events');
     log.info('[Main] Successfully loaded global-mouse-events for Windows.');
   } catch (e) {
     log.error('[Main] Failed to load global-mouse-events. Mouse tracking on Windows will be disabled.', e);
@@ -64,9 +64,18 @@ if (process.platform === 'win32') {
 
 // --- Windows Specific Imports ---
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
-let Winreg: any;
+let WinAPI: any | undefined;
+if (process.platform === 'win32') {
+  try {
+    WinAPI = require('ffi-rs');
+    log.info('[Main] Successfully loaded ffi-rs and defined SystemParametersInfoW from user32.dll.');
+  } catch (e) {
+    log.error('[Main] Failed to load ffi-rs or user32.dll. Cursor size management on Windows will be disabled.', e);
+  }
+}
+
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
-let u32: any;
+let Winreg: any;
 
 if (process.platform === 'win32') {
   try {
@@ -74,13 +83,6 @@ if (process.platform === 'win32') {
     log.info('[Main] Successfully loaded winreg module for Windows.');
   } catch (e) {
     log.error('[Main] Failed to load winreg module. Cursor size management on Windows will be disabled.', e);
-  }
-  try {
-    const W32 = require('win32-api');
-    u32 = W32.U.user32;
-    log.info('[Main] Successfully loaded win32-api module for Windows.');
-  } catch (e) {
-    log.error('[Main] Failed to load win32-api module. Cursor size management on Windows will be disabled.', e);
   }
 }
 
@@ -211,7 +213,7 @@ class WindowsMouseTracker extends EventEmitter implements IMouseTracker {
 
   start() {
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    this.mouseEvents = new GlobalMouseEvents();
+    this.mouseEvents = mouseEvents;
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     this.mouseEvents.on('mousemove', (event: any) => {
       this.emit('data', {
@@ -279,7 +281,7 @@ function createMouseTracker(): IMouseTracker | null {
       }
       return new LinuxMouseTracker();
     case 'win32':
-      if (!GlobalMouseEvents) {
+      if (!mouseEvents) {
         log.error('[Main] global-mouse-events module is not available. Cannot track mouse on Windows.');
         dialog.showErrorBox('Dependency Missing', 'Could not load the required module for mouse tracking on Windows. Recording will continue without mouse data.');
         return null;
@@ -462,7 +464,7 @@ async function handleGetCursorSize(): Promise<number> {
     case 'win32':
       if (!Winreg) {
         log.warn('[Main] winreg module not available. Cannot get cursor size on Windows.');
-        return 24;
+        return 32;
       }
       try {
         const regKey = new Winreg({ hive: Winreg.HKCU, key: '\\Control Panel\\Cursors' });
@@ -479,14 +481,15 @@ async function handleGetCursorSize(): Promise<number> {
         if (!isNaN(size)) {
           log.info(`[Main] Current Windows cursor base size is ${size}`);
           // Convert Windows base size to the app's standard sizes
+          if (size >= 64) return 64;
           if (size >= 48) return 48;
           if (size >= 32) return 32;
-          return 24;
+          return 32;
         }
       } catch (error) {
         log.error('[Main] Failed to get cursor size from Windows Registry:', error);
       }
-      return 24; // Fallback for Windows
+      return 32; // Fallback for Windows
 
     case 'linux': {
       const de = getLinuxDE();
@@ -523,41 +526,69 @@ async function handleGetCursorSize(): Promise<number> {
 }
 
 // IPC Handler to set cursor size
-function handleSetCursorSize(_event: IpcMainEvent, size: number) {
-  // Validate size input first for all platforms
-  if (![16, 24, 32, 48, 64, 96, 128, 256].includes(size)) {
-    log.error(`[Main] Invalid cursor size value received: ${size}`);
-    return;
-  }
+function handleSetCursorSize(_event: IpcMainEvent, scale: number) {
+  // // Validate size input first for all platforms
 
   switch (process.platform) {
-    case 'win32':
-      if (!Winreg || !u32) {
-        log.warn('[Main] winreg or win32-api not available. Cannot set cursor size on Windows.');
+    case 'win32': {
+      if (!Winreg || !WinAPI) {
+        log.warn('[Main] winreg or SystemParametersInfoW function not available. Cannot set cursor size on Windows.');
         break;
       }
-      log.info(`[Main] Setting Windows cursor size to match a base of ${size}`);
-      try {
-        const regKey = new Winreg({ hive: Winreg.HKCU, key: '\\Control Panel\\Cursors' });
-        regKey.set('CursorBaseSize', Winreg.REG_DWORD, size.toString(16), (err: Error) => {
-          if (err) {
-            log.error('[Main] Error setting cursor size in Windows Registry:', err);
-            return;
-          }
-          log.info('[Main] Successfully set CursorBaseSize in registry.');
-
-          // Broadcast the change to make it apply immediately
-          const SPI_SETCURSORS = 0x0057;
-          const SPIF_SENDCHANGE = 0x02;
-          u32.SystemParametersInfoW(SPI_SETCURSORS, 0, null, SPIF_SENDCHANGE);
-          log.info('[Main] Broadcasted system parameter change for cursors.');
-        });
-      } catch (error) {
-        log.error('[Main] An error occurred while setting Windows cursor size:', error);
+      const baseSize = 32;
+      const size = Math.floor(scale * baseSize)
+      if (![16, 24, 32, 48, 64, 96, 128, 256].includes(size)) {
+        log.error(`[Main] Invalid cursor size value received: ${size}`);
+        return;
       }
+
+      // Open dll
+      WinAPI.open({
+        library: 'user32',
+        path: 'user32.dll'
+      })
+
+      // Constants
+      const SPI_SETCURSORS = 0x57
+      const SPIF_UPDATEINIFILE = 0x01
+      const SPIF_SENDCHANGE = 0x02
+
+      // Invoke functions
+      const nullPointer = WinAPI.createPointer({
+        paramsType: [WinAPI.DataType.I32],
+        paramsValue: [0]
+      })
+      WinAPI.load({
+        library: 'user32',
+        funcName: 'SystemParametersInfoW',
+        retType: WinAPI.DataType.Boolean,
+        paramsType: [WinAPI.DataType.U64, WinAPI.DataType.U64, WinAPI.DataType.External, WinAPI.DataType.U64],
+        paramsValue: [SPI_SETCURSORS, 0, WinAPI.unwrapPointer(nullPointer)[0], SPIF_UPDATEINIFILE | SPIF_SENDCHANGE]
+      })
+
+      const sizePointer = WinAPI.createPointer({
+        paramsType: [WinAPI.DataType.I32],
+        paramsValue: [size]
+      })
+
+      WinAPI.load({
+        library: 'user32',
+        funcName: 'SystemParametersInfoW',
+        retType: WinAPI.DataType.Boolean,
+        paramsType: [WinAPI.DataType.U64, WinAPI.DataType.U64, WinAPI.DataType.External, WinAPI.DataType.U64],
+        paramsValue: [0x2029, 0, WinAPI.unwrapPointer(sizePointer)[0], SPIF_UPDATEINIFILE]
+      })
       break;
+    }
 
     case 'linux': {
+      const baseSize = 24;
+      const size = Math.floor(scale * baseSize)
+      if (![16, 24, 32, 48, 64, 96, 128, 256].includes(size)) {
+        log.error(`[Main] Invalid cursor size value received: ${size}`);
+        return;
+      }
+
       const de = getLinuxDE();
       let command: string;
       log.info(`[Main] Setting cursor size to ${size} for ${de}`);
@@ -589,7 +620,7 @@ function handleSetCursorSize(_event: IpcMainEvent, size: number) {
 }
 
 function restoreOriginalCursorSize() {
-  if (process.platform === 'linux' && originalCursorSize !== null) {
+  if (originalCursorSize !== null) {
     log.info(`[Main] Restoring original cursor size to: ${originalCursorSize}`);
     handleSetCursorSize({} as IpcMainEvent, originalCursorSize);
     originalCursorSize = null; // Reset for the next recording
@@ -597,11 +628,9 @@ function restoreOriginalCursorSize() {
 }
 
 function resetCursorSize() {
-  if (process.platform === 'linux') {
-    log.info('[Main] Resetting cursor size to 24')
-    handleSetCursorSize({} as IpcMainEvent, 24);
-    originalCursorSize = null; // Reset for the next recording
-  }
+  log.info('[Main] Resetting cursor size')
+  handleSetCursorSize({} as IpcMainEvent, 32);
+  originalCursorSize = null; // Reset for the next recording
 }
 
 async function handleSavePresets(_event: IpcMainInvokeEvent, presets: unknown) {
@@ -660,25 +689,16 @@ async function handleGetVideoFrame(_event: IpcMainInvokeEvent, { videoPath, time
 }
 
 function getFFmpegPath(): string {
+  const platform = process.platform === 'win32' ? 'windows' : 'linux';
+  const executableName = platform === 'windows' ? 'ffmpeg.exe' : 'ffmpeg';
+
   // path to ffmpeg in production
   if (app.isPackaged) {
-    const platform = process.platform;
-    let executableName = 'ffmpeg';
-    if (platform === 'win32') {
-      executableName += '.exe';
-    }
-
     // path to ffmpeg in production
     const ffmpegPath = path.join(process.resourcesPath, 'app.asar.unpacked', 'binaries', platform, executableName);
     log.info(`[Production] Using bundled FFmpeg at: ${ffmpegPath}`);
     return ffmpegPath;
-  }
-
-  // path to ffmpeg in development
-  else {
-    const platform = process.platform === 'win32' ? 'win' : 'linux';
-    const executableName = platform === 'win' ? 'ffmpeg.exe' : 'ffmpeg';
-
+  } else {
     // path to ffmpeg in development
     const ffmpegPath = path.join(process.env.APP_ROOT, 'binaries', platform, executableName);
     log.info(`[Development] Using local FFmpeg at: ${ffmpegPath}`);
@@ -834,7 +854,11 @@ function cleanupAndSave(): Promise<void> {
       });
 
       log.info('Sending SIGINT to FFmpeg to gracefully terminate recording...');
-      ffmpeg.kill('SIGINT');
+      // ffmpeg.kill('SIGINT');
+      ffmpeg.stdin.write('q');
+
+      // Đóng stdin để báo hiệu không còn lệnh nào nữa
+      ffmpeg.stdin.end();
 
     } else {
       // If there's no ffmpeg process, resolve immediately
