@@ -13,23 +13,27 @@ import {
 
 // --- Constants ---
 const DEFAULT_PRESET_STYLES: FrameStyles = {
-  padding: 5,
+  padding: 4,
   background: {
     type: 'wallpaper',
     thumbnailUrl: WALLPAPERS[0].thumbnailUrl,
     imageUrl: WALLPAPERS[0].imageUrl,
   },
-  borderRadius: 16,
-  shadow: 5,
-  shadowColor: 'rgba(0, 0, 0, 0.4)',
-  borderWidth: 6,
+  borderRadius: 8,
+  shadow: 30,
+  shadowColor: 'rgba(0, 0, 0, 0.5)',
+  borderWidth: 4,
 };
 
 const DEFAULT_PRESET: Omit<Preset, 'id' | 'name'> = {
   styles: DEFAULT_PRESET_STYLES,
   aspectRatio: '16:9',
   isDefault: true,
-  webcamStyles: { size: 30, shadow: 15, shadowColor: 'rgba(0, 0, 0, 0.4)' },
+  webcamStyles: {
+    size: 30,  // percent
+    shadow: 30,
+    shadowColor: 'rgba(0, 0, 0, 0.5)',
+  },
   webcamPosition: { pos: 'bottom-right' },
   isWebcamVisible: false,
 };

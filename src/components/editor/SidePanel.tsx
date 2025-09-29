@@ -1,6 +1,6 @@
 import { useEditorStore } from '../../store/editorStore';
 import { RegionSettingsPanel } from './RegionSettingsPanel';
-import { Palette, AudioLines, Webcam } from 'lucide-react';
+import { AudioLines, Webcam, PanelsTopLeft } from 'lucide-react';
 import { BackgroundSettings } from './sidepanel/BackgroundSettings';
 import { FrameEffectsSettings } from './sidepanel/FrameEffectsSettings';
 import { CameraSettings } from './sidepanel/CameraSettings';
@@ -61,7 +61,7 @@ function FrameSettingsPanel() {
       <div className="p-6 border-b border-sidebar-border">
         <div className="flex items-center gap-3">
           <div className="w-10 h-10 rounded-lg bg-primary/10 flex items-center justify-center">
-            <Palette className="w-5 h-5 text-primary" />
+            <PanelsTopLeft className="w-5 h-5 text-primary" />
           </div>
           <div>
             <h2 className="text-lg font-semibold text-sidebar-foreground">General Settings</h2>
@@ -167,7 +167,7 @@ export function SidePanel() {
         <div className="flex flex-col items-center space-y-2">
           <TabButton
             label="General"
-            icon={<Palette className="w-5 h-5" />}
+            icon={<PanelsTopLeft className="w-5 h-5" />}
             isActive={activeTab === 'general'}
             onClick={() => setActiveTab('general')}
           />
