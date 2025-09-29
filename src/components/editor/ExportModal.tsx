@@ -239,7 +239,7 @@ export function ExportModal({ isOpen, onClose, onStartExport, onCancelExport, is
       onClick={onClose}
     >
       <div
-        className="card-clean w-full max-w-lg m-4 flex flex-col"
+        className="card-clean w-full max-w-2xl m-4 flex flex-col"
         onClick={(e) => e.stopPropagation()}
       >
         {renderContent()}
