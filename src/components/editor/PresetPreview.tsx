@@ -103,7 +103,7 @@ export function PresetPreview({ styles, aspectRatio, isWebcamVisible, webcamPosi
   return (
     <div
       ref={previewRef}
-      className="w-full rounded-lg flex items-center justify-center transition-all duration-300 ease-out"
+      className="w-full rounded-lg flex items-center justify-center transition-all duration-300 ease-out max-w-full max-h-full"
       style={{ ...backgroundStyle, aspectRatio: cssAspectRatio }}
     >
       <div className="w-full h-full" style={{ padding: `${styles.padding}%`, position: 'relative' }}>

@@ -6,7 +6,11 @@ import { Input } from '../ui/input';
 import { PresetPreview } from './PresetPreview';
 import { Preset } from '../../types/store';
 import { cn } from '../../lib/utils';
-import { Plus, Trash2, Check, Lock } from 'lucide-react';
+import {
+  Plus, Trash2, Check, Lock,
+  RectangleHorizontal
+} from 'lucide-react';
+import { PaddingIcon, BorderThicknessIcon, ShadowIcon, CornerRadiusIcon } from '../ui/icons';
 
 
 interface PresetModalProps {
@@ -167,10 +171,10 @@ export function PresetModal({ isOpen, onClose }: PresetModalProps) {
           </div>
 
           {/* Right Column: Preview */}
-          <div className="w-2/3 p-6 bg-muted/30 flex flex-col items-center justify-center">
+          <div className="w-2/3 p-6 bg-muted/30 flex flex-col">
             {previewPreset ? (
-              <div className="w-full">
-                <div className="flex items-center justify-between mb-4">
+              <div className="w-full flex flex-col h-full">
+                <div className="flex items-center justify-between mb-4 flex-shrink-0">
                   <h3 className="text-lg text-foreground font-semibold flex items-center gap-2">
                     {previewPreset.name}
                     {previewPreset.isDefault && <Lock className="w-4 h-4 text-muted-foreground" />}
@@ -185,16 +189,44 @@ export function PresetModal({ isOpen, onClose }: PresetModalProps) {
                     </Button>
                   )}
                 </div>
-                <PresetPreview 
-                  styles={previewPreset.styles}
-                  aspectRatio={previewPreset.aspectRatio}
-                  isWebcamVisible={previewPreset.isWebcamVisible}
-                  webcamPosition={previewPreset.webcamPosition}
-                  webcamStyles={previewPreset.webcamStyles}
-                />
+                
+                <div className="flex-1 flex items-center justify-center min-h-0">
+                  <PresetPreview 
+                    styles={previewPreset.styles}
+                    aspectRatio={previewPreset.aspectRatio}
+                    isWebcamVisible={previewPreset.isWebcamVisible}
+                    webcamPosition={previewPreset.webcamPosition}
+                    webcamStyles={previewPreset.webcamStyles}
+                  />
+                </div>
+
+                <div className="flex-shrink-0 flex items-center justify-center flex-wrap gap-x-4 gap-y-2 mt-4 pt-4 border-t border-border/30">
+                  <div className="flex items-center gap-1.5 text-xs text-muted-foreground">
+                    <RectangleHorizontal className="w-3.5 h-3.5" />
+                    <span>{previewPreset.aspectRatio}</span>
+                  </div>
+                   <div className="flex items-center gap-1.5 text-xs text-muted-foreground">
+                    <PaddingIcon className="w-3.5 h-3.5" />
+                    <span>{previewPreset.styles.padding}%</span>
+                  </div>
+                   <div className="flex items-center gap-1.5 text-xs text-muted-foreground">
+                    <CornerRadiusIcon className="w-3.5 h-3.5" />
+                    <span>{previewPreset.styles.borderRadius}px</span>
+                  </div>
+                   <div className="flex items-center gap-1.5 text-xs text-muted-foreground">
+                    <ShadowIcon className="w-3.5 h-3.5" />
+                    <span>{previewPreset.styles.shadow}px</span>
+                  </div>
+                  <div className="flex items-center gap-1.5 text-xs text-muted-foreground">
+                    <BorderThicknessIcon className="w-3.5 h-3.5" />
+                    <span>{previewPreset.styles.borderWidth}px</span>
+                  </div>
+                </div>
               </div>
             ) : (
-              <p className="text-muted-foreground">Select a preset to preview</p>
+              <div className="flex-1 flex items-center justify-center">
+                <p className="text-muted-foreground">Select a preset to preview</p>
+              </div>
             )}
           </div>
         </div>
