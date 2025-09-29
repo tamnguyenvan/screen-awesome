@@ -21,7 +21,7 @@ const drawBackground = async (
   width: number,
   height: number,
   backgroundState: EditorState['frameStyles']['background'],
-  preloadedImage: HTMLImageElement | null // [OPTIMIZATION]
+  preloadedImage: HTMLImageElement | null
 ): Promise<void> => {
   ctx.clearRect(0, 0, width, height);
 
@@ -31,7 +31,6 @@ const drawBackground = async (
       ctx.fillRect(0, 0, width, height);
       break;
     case 'gradient': {
-      // ... (logic gradient không đổi) ...
       const start = backgroundState.gradientStart || '#000000';
       const end = backgroundState.gradientEnd || '#ffffff';
       const direction = backgroundState.gradientDirection || 'to right';
@@ -65,7 +64,7 @@ const drawBackground = async (
     }
     case 'image':
     case 'wallpaper': {
-      // [OPTIMIZATION] Use the pre-loaded image if available
+      // Use the pre-loaded image if available
       if (preloadedImage && preloadedImage.complete) {
         const img = preloadedImage;
         const imgRatio = img.width / img.height;
@@ -108,7 +107,7 @@ export const drawScene = async (
   currentTime: number,
   outputWidth: number,
   outputHeight: number,
-  preloadedBgImage: HTMLImageElement | null // [OPTIMIZATION]
+  preloadedBgImage: HTMLImageElement | null
 ): Promise<void> => {
   if (!state.videoDimensions.width || !state.videoDimensions.height) return;
 
@@ -121,14 +120,14 @@ export const drawScene = async (
   const availableWidth = outputWidth * (1 - 2 * paddingPercent);
   const availableHeight = outputHeight * (1 - 2 * paddingPercent);
   const videoAspectRatio = videoDimensions.width / videoDimensions.height;
-  
+
   let frameContentWidth, frameContentHeight;
   if (availableWidth / availableHeight > videoAspectRatio) {
-      frameContentHeight = availableHeight;
-      frameContentWidth = frameContentHeight * videoAspectRatio;
+    frameContentHeight = availableHeight;
+    frameContentWidth = frameContentHeight * videoAspectRatio;
   } else {
-      frameContentWidth = availableWidth;
-      frameContentHeight = frameContentWidth / videoAspectRatio;
+    frameContentWidth = availableWidth;
+    frameContentHeight = frameContentWidth / videoAspectRatio;
   }
 
   const frameX = (outputWidth - frameContentWidth) / 2;
@@ -136,14 +135,14 @@ export const drawScene = async (
 
   // --- 3. Main video frame transform and drawing ---
   ctx.save();
-  
+
   const { scale, translateX, translateY, transformOrigin } = calculateZoomTransform(currentTime);
   const [originXStr, originYStr] = transformOrigin.split(' ');
   const originXMul = parseFloat(originXStr) / 100;
   const originYMul = parseFloat(originYStr) / 100;
   const originPxX = originXMul * frameContentWidth;
   const originPxY = originYMul * frameContentHeight;
-  
+
   ctx.translate(frameX, frameY);
   ctx.translate(originPxX, originPxY);
   ctx.scale(scale, scale);
@@ -157,7 +156,7 @@ export const drawScene = async (
   const videoPath = new Path2D();
   const videoRadius = Math.max(0, borderRadius - borderWidth);
   videoPath.roundRect(borderWidth, borderWidth, frameContentWidth - 2 * borderWidth, frameContentHeight - 2 * borderWidth, videoRadius);
-  
+
   ctx.save();
   ctx.shadowColor = shadowColor;
   ctx.shadowBlur = shadow * 1.5;
@@ -173,13 +172,13 @@ export const drawScene = async (
   linearGrad.addColorStop(1, 'rgba(255, 255, 255, 0.05)');
   ctx.fillStyle = linearGrad;
   ctx.fillRect(0, 0, frameContentWidth, frameContentHeight);
-  
+
   const radialGrad = ctx.createRadialGradient(0, 0, 0, 0, 0, frameContentWidth * 0.7);
   radialGrad.addColorStop(0, 'rgba(255, 255, 255, 0.2)');
   radialGrad.addColorStop(0.5, 'transparent');
   ctx.fillStyle = radialGrad;
   ctx.fillRect(0, 0, frameContentWidth, frameContentHeight);
-  
+
   ctx.strokeStyle = 'rgba(255, 255, 255, 0.3)';
   ctx.lineWidth = 1;
   ctx.stroke(framePath);
@@ -195,33 +194,35 @@ export const drawScene = async (
   // --- 4. Draw Webcam ---
   const { webcamPosition, webcamStyles, isWebcamVisible } = state;
   if (isWebcamVisible && webcamVideoElement) {
-    // [FIX] Webcam positioning is now relative to the entire canvas, not the inner video frame.
-    const baseSize = Math.min(outputWidth, outputHeight); // More robust for different aspect ratios
+    const baseSize = Math.min(outputWidth, outputHeight);
     const webcamHeight = baseSize * (webcamStyles.size / 100);
     const webcamWidth = webcamHeight;
     const webcamSquircleRadius = webcamHeight * 0.35;
-    const webcamEdgePadding = baseSize * 0.02; // Padding from the edge of the canvas
+    const webcamEdgePadding = baseSize * 0.02;
     let webcamX, webcamY;
-    
+
     switch (webcamPosition.pos) {
-      case 'top-left':    webcamX = webcamEdgePadding; webcamY = webcamEdgePadding; break;
-      case 'top-right':   webcamX = outputWidth - webcamWidth - webcamEdgePadding; webcamY = webcamEdgePadding; break;
+      case 'top-left': webcamX = webcamEdgePadding; webcamY = webcamEdgePadding; break;
+      case 'top-right': webcamX = outputWidth - webcamWidth - webcamEdgePadding; webcamY = webcamEdgePadding; break;
       case 'bottom-left': webcamX = webcamEdgePadding; webcamY = outputHeight - webcamHeight - webcamEdgePadding; break;
-      default:            webcamX = outputWidth - webcamWidth - webcamEdgePadding; webcamY = outputHeight - webcamHeight - webcamEdgePadding; break;
+      default: webcamX = outputWidth - webcamWidth - webcamEdgePadding; webcamY = outputHeight - webcamHeight - webcamEdgePadding; break;
     }
 
-    ctx.save();
+    // Separate the shadow drawing logic from the webcam image drawing
     const webcamPath = new Path2D();
     webcamPath.roundRect(webcamX, webcamY, webcamWidth, webcamHeight, webcamSquircleRadius);
-    
+
+    // Step 1: Draw shadow
+    ctx.save();
     ctx.shadowColor = webcamStyles.shadowColor;
     ctx.shadowBlur = webcamStyles.shadow * 1.5;
+    // Use a very transparent fill color to only draw the shadow
     ctx.fillStyle = 'rgba(0,0,0,0.001)';
     ctx.fill(webcamPath);
-    
-    ctx.shadowColor = 'transparent';
-    ctx.shadowBlur = 0;
+    ctx.restore();
 
+    // Step 2: Draw the webcam image
+    ctx.save();
     ctx.clip(webcamPath);
     ctx.drawImage(webcamVideoElement, webcamX, webcamY, webcamWidth, webcamHeight);
     ctx.restore();

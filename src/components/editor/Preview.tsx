@@ -11,7 +11,8 @@ export const Preview = memo(({ videoRef }: { videoRef: React.RefObject<HTMLVideo
   const {
     videoUrl, aspectRatio, cutRegions,
     webcamVideoUrl, duration, currentTime, togglePlay,
-    isPreviewFullScreen, togglePreviewFullScreen, frameStyles
+    isPreviewFullScreen, togglePreviewFullScreen, frameStyles,
+    isWebcamVisible, webcamPosition, webcamStyles
   } = useEditorStore(
     useShallow(state => ({
       videoUrl: state.videoUrl,
@@ -23,7 +24,10 @@ export const Preview = memo(({ videoRef }: { videoRef: React.RefObject<HTMLVideo
       togglePlay: state.togglePlay,
       isPreviewFullScreen: state.isPreviewFullScreen,
       togglePreviewFullScreen: state.togglePreviewFullScreen,
-      frameStyles: state.frameStyles, // Depend on frameStyles to trigger image reload
+      frameStyles: state.frameStyles,
+      isWebcamVisible: state.isWebcamVisible,
+      webcamPosition: state.webcamPosition,
+      webcamStyles: state.webcamStyles,
     })));
 
   const { setPlaying, setCurrentTime, setDuration, setVideoDimensions } = useEditorStore.getState();
@@ -91,7 +95,6 @@ export const Preview = memo(({ videoRef }: { videoRef: React.RefObject<HTMLVideo
     const canvas = canvasRef.current;
     const video = videoRef.current;
     const webcamVideo = webcamVideoRef.current;
-    // [FIX] Get fresh state on every frame to ensure reactivity
     const state = useEditorStore.getState();
     const ctx = canvas?.getContext('2d');
 
@@ -114,27 +117,27 @@ export const Preview = memo(({ videoRef }: { videoRef: React.RefObject<HTMLVideo
     if (state.isPlaying) {
       animationFrameId.current = requestAnimationFrame(renderCanvas);
     }
-  }, [videoRef, bgImage]); // bgImage is a dependency to re-trigger rendering when image is loaded
+  }, [videoRef, bgImage]);
 
   // Manage animation frame loop
   useEffect(() => {
-    // Nếu đang phát, bắt đầu vòng lặp animation
+    // If playing, start the animation loop
     if (isPlaying) {
       animationFrameId.current = requestAnimationFrame(renderCanvas);
     } else {
-      // Nếu đang dừng, chỉ cần render một lần.
-      // Effect này sẽ được kích hoạt lại bởi các dependency (currentTime, canvasDimensions, renderCanvas)
-      // và vẽ lại khi cần thiết.
+      // If paused, just render once.
+      // This effect will be re-triggered by dependencies (currentTime, canvasDimensions, renderCanvas)
+      // and redraw when needed.
       renderCanvas();
     }
     
-    // Cleanup function để dừng vòng lặp khi component unmount hoặc effect chạy lại
+    // Cleanup function to stop the animation loop when component unmounts or effect runs again
     return () => {
       if (animationFrameId.current) {
         cancelAnimationFrame(animationFrameId.current);
       }
     };
-  }, [isPlaying, currentTime, renderCanvas, canvasDimensions]);
+  }, [isPlaying, currentTime, renderCanvas, canvasDimensions, frameStyles,  isWebcamVisible, webcamPosition, webcamStyles]);
 
   // Control video playback
   useEffect(() => {
