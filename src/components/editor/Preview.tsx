@@ -236,15 +236,14 @@ export const Preview = memo(({ videoRef }: { videoRef: React.RefObject<HTMLVideo
 
   const webcamDynamicStyle = useMemo(() => {
     const shadowBlur = webcamStyles.shadow * 1.5;
-    const shadowOffsetY = webcamStyles.shadow;
     return {
       height: `${webcamStyles.size}%`,
-      filter: `drop-shadow(0px ${shadowOffsetY}px ${shadowBlur}px ${webcamStyles.shadowColor})`,
+      filter: `drop-shadow(0px 0px ${shadowBlur}px ${webcamStyles.shadowColor})`,
     };
   }, [webcamStyles]);
 
   const webcamWrapperClasses = cn(
-    'absolute z-20 aspect-square overflow-hidden rounded-[35%]',
+    'absolute z-20 aspect-square',
     'transition-all duration-300 ease-in-out',
     {
       'top-4 left-4': webcamPosition.pos === 'top-left',
@@ -296,13 +295,15 @@ export const Preview = memo(({ videoRef }: { videoRef: React.RefObject<HTMLVideo
 
               {webcamVideoUrl && (
                 <div className={webcamWrapperClasses} style={webcamDynamicStyle}>
-                  <video
-                    ref={webcamVideoRef}
-                    src={webcamVideoUrl}
-                    muted
-                    playsInline
-                    className="w-full h-full object-cover"
-                  />
+                  <div className="w-full h-full rounded-[35%] overflow-hidden">
+                    <video
+                      ref={webcamVideoRef}
+                      src={webcamVideoUrl}
+                      muted
+                      playsInline
+                      className="w-full h-full object-cover"
+                    />
+                  </div>
                 </div>
               )}
             </>

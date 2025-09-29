@@ -78,10 +78,9 @@ export function PresetPreview({ styles, aspectRatio, isWebcamVisible, webcamPosi
   const fakeWebcamStyle = useMemo(() => {
     if (!webcamStyles) return {};
     const shadowBlur = webcamStyles.shadow * 1.5;
-    const shadowOffsetY = webcamStyles.shadow;
     return {
       height: `${webcamStyles.size}%`,
-      filter: `drop-shadow(0px ${shadowOffsetY}px ${shadowBlur}px ${webcamStyles.shadowColor})`,
+      filter: `drop-shadow(0px 0px ${shadowBlur}px ${webcamStyles.shadowColor})`,
     };
   }, [webcamStyles]);
 
