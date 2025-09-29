@@ -153,30 +153,49 @@ export function RendererPage() {
         const availableHeight = outputHeight * (1 - 2 * paddingPercent);
 
         const videoAspectRatio = videoDimensions.width / videoDimensions.height;
-        let frameWidth, frameHeight;
+        let frameContentWidth, frameContentHeight;
         if (availableWidth / availableHeight > videoAspectRatio) {
-            frameHeight = availableHeight;
-            frameWidth = frameHeight * videoAspectRatio;
+            frameContentHeight = availableHeight;
+            frameContentWidth = frameContentHeight * videoAspectRatio;
         } else {
-            frameWidth = availableWidth;
-            frameHeight = frameWidth / videoAspectRatio;
+            frameContentWidth = availableWidth;
+            frameContentHeight = frameContentWidth / videoAspectRatio;
         }
 
-        const frameX = (outputWidth - frameWidth) / 2;
-        const frameY = (outputHeight - frameHeight) / 2;
+        const frameX = (outputWidth - frameContentWidth) / 2;
+        const frameY = (outputHeight - frameContentHeight) / 2;
         
         // --- Webcam setup ---
         const { webcamPosition, webcamStyles, isWebcamVisible } = projectState;
-        const webcamHeight = outputHeight * (webcamStyles.size / 100);
+
+        // [FIXED] Webcam size is a percentage of the AVAILABLE height (inside the padding), not the total output height.
+        // This makes it match the Preview.tsx logic.
+        const webcamHeight = availableHeight * (webcamStyles.size / 100);
         const webcamWidth = webcamHeight; // Assuming square webcam aspect ratio for circle
-        const webcamRadius = webcamHeight * 0.35; // Matches rounded-[35%]
-        const webcamPadding = outputHeight * 0.02;
+        const webcamSquircleRadius = webcamHeight * 0.35; // Matches rounded-[35%]
+        
+        // [FIXED] Webcam padding should also be relative to the available space to match the preview's visual feel.
+        const webcamEdgePadding = availableHeight * 0.02;
+
         let webcamX, webcamY;
+        // [FIXED] Calculate webcam position relative to the main video frame's bounding box, not the whole canvas.
         switch (webcamPosition.pos) {
-          case 'top-left': webcamX = webcamPadding; webcamY = webcamPadding; break;
-          case 'top-right': webcamX = outputWidth - webcamWidth - webcamPadding; webcamY = webcamPadding; break;
-          case 'bottom-left': webcamX = webcamPadding; webcamY = outputHeight - webcamHeight - webcamPadding; break;
-          default: /* bottom-right */ webcamX = outputWidth - webcamWidth - webcamPadding; webcamY = outputHeight - webcamHeight - webcamPadding; break;
+          case 'top-left': 
+            webcamX = frameX + webcamEdgePadding; 
+            webcamY = frameY + webcamEdgePadding; 
+            break;
+          case 'top-right': 
+            webcamX = frameX + frameContentWidth - webcamWidth - webcamEdgePadding; 
+            webcamY = frameY + webcamEdgePadding; 
+            break;
+          case 'bottom-left': 
+            webcamX = frameX + webcamEdgePadding; 
+            webcamY = frameY + frameContentHeight - webcamHeight - webcamEdgePadding; 
+            break;
+          default: /* bottom-right */ 
+            webcamX = frameX + frameContentWidth - webcamWidth - webcamEdgePadding; 
+            webcamY = frameY + frameContentHeight - webcamHeight - webcamEdgePadding; 
+            break;
         }
 
 
@@ -235,72 +254,69 @@ export function RendererPage() {
           const originXMul = parseFloat(originXStr) / 100;
           const originYMul = parseFloat(originYStr) / 100;
 
-          const originPxX = originXMul * frameWidth;
-          const originPxY = originYMul * frameHeight;
+          const originPxX = originXMul * frameContentWidth;
+          const originPxY = originYMul * frameContentHeight;
 
-          ctx.translate(frameX, frameY);
+          // Move canvas origin to the top-left of the untransformed video frame
+          ctx.translate(frameX, frameY); 
+          
+          // Apply zoom/pan transformations relative to the frame's content box
           ctx.translate(originPxX, originPxY);
           ctx.scale(scale, scale);
-          ctx.translate((translateX / 100) * frameWidth, (translateY / 100) * frameHeight);
+          ctx.translate((translateX / 100) * frameContentWidth, (translateY / 100) * frameContentHeight);
           ctx.translate(-originPxX, -originPxY);
 
-          // 3. Draw dynamic drop-shadow inside the transformed context
           const { shadow, borderRadius, shadowColor, borderWidth } = frameStyles;
           
           // --- Define Geometries ---
-          // Geometries cho viền (lớn hơn video)
-          const borderX = -borderWidth;
-          const borderY = -borderWidth;
-          const borderW = frameWidth + 2 * borderWidth;
-          const borderH = frameHeight + 2 * borderWidth;
-          const borderPath = new Path2D();
-          borderPath.roundRect(borderX, borderY, borderW, borderH, borderRadius);
+          // Path for the outer frame/border area
+          const framePath = new Path2D();
+          framePath.roundRect(0, 0, frameContentWidth, frameContentHeight, borderRadius);
           
-          // Geometries cho video (bên trong viền)
+          // Path for the inner video area (inside the border)
           const videoPath = new Path2D();
-          videoPath.roundRect(0, 0, frameWidth, frameHeight, borderRadius);
+          const videoRadius = Math.max(0, borderRadius - borderWidth);
+          videoPath.roundRect(borderWidth, borderWidth, frameContentWidth - 2 * borderWidth, frameContentHeight - 2 * borderWidth, videoRadius);
 
-
-          // 3. Draw shadow cho viền bên ngoài
+          // 3. Draw shadow for the entire frame
+          ctx.save();
           ctx.shadowColor = shadowColor;
           ctx.shadowBlur = shadow * 1.5;
-          ctx.shadowOffsetY = shadow;
-          ctx.fillStyle = 'rgba(0,0,0,0.001)'; // Cần fill để shadow hiện ra
-          ctx.fill(borderPath);
-          ctx.shadowColor = 'transparent';
-          ctx.shadowBlur = 0;
-          ctx.shadowOffsetY = 0;
+          ctx.shadowOffsetY = 0; // The preview shadow has no offset
+          ctx.fillStyle = 'rgba(0,0,0,0.001)'; // Must fill to cast shadow
+          ctx.fill(framePath);
+          ctx.restore(); // Restore from shadow settings
 
-          // 4. Draw the "glassy" frame effects vào khu vực của viền
+          // 4. Draw the "glassy" frame effects
           ctx.save();
-          ctx.clip(borderPath);
+          ctx.clip(framePath); // Clip all drawing to the outer frame shape
 
           // 4a. Main linear gradient for glass effect
-          const linearGrad = ctx.createLinearGradient(borderX, borderY, borderX + borderW, borderY + borderH);
+          const linearGrad = ctx.createLinearGradient(0, 0, frameContentWidth, frameContentHeight);
           linearGrad.addColorStop(0, 'rgba(255, 255, 255, 0.25)');
           linearGrad.addColorStop(0.5, 'rgba(255, 255, 255, 0.15)');
           linearGrad.addColorStop(1, 'rgba(255, 255, 255, 0.05)');
           ctx.fillStyle = linearGrad;
-          ctx.fillRect(borderX, borderY, borderW, borderH);
+          ctx.fillRect(0, 0, frameContentWidth, frameContentHeight);
           
           // 4b. Radial sheen gradient for highlights
-          const radialGrad = ctx.createRadialGradient(borderX, borderY, 0, borderX, borderY, borderW * 0.7);
+          const radialGrad = ctx.createRadialGradient(0, 0, 0, 0, 0, frameContentWidth * 0.7);
           radialGrad.addColorStop(0, 'rgba(255, 255, 255, 0.2)');
           radialGrad.addColorStop(0.5, 'transparent');
           ctx.fillStyle = radialGrad;
-          ctx.fillRect(borderX, borderY, borderW, borderH);
+          ctx.fillRect(0, 0, frameContentWidth, frameContentHeight);
 
           // 4c. Draw the outer 1px border
           ctx.strokeStyle = 'rgba(255, 255, 255, 0.3)';
           ctx.lineWidth = 1;
-          ctx.stroke(borderPath);
+          ctx.stroke(framePath);
 
-          ctx.restore(); // Restore from border clip
+          ctx.restore(); // Restore from frame clip
 
-          // 5. Draw the video itself, clipped to its own path
+          // 5. Draw the video itself, clipped to its own inner path
           ctx.save();
           ctx.clip(videoPath);
-          ctx.drawImage(video, 0, 0, frameWidth, frameHeight);
+          ctx.drawImage(video, borderWidth, borderWidth, frameContentWidth - 2 * borderWidth, frameContentHeight - 2 * borderWidth);
           ctx.restore(); // Restore from video clip
 
           ctx.restore(); // Restore from main transform
@@ -309,15 +325,17 @@ export function RendererPage() {
           if (isWebcamVisible && webcamVideo) {
             ctx.save();
             const webcamPath = new Path2D();
-            webcamPath.roundRect(webcamX, webcamY, webcamWidth, webcamHeight, webcamRadius);
+            webcamPath.roundRect(webcamX, webcamY, webcamWidth, webcamHeight, webcamSquircleRadius);
             
+            // Apply webcam shadow
             ctx.shadowColor = webcamStyles.shadowColor;
             ctx.shadowBlur = webcamStyles.shadow * 1.5;
-            ctx.shadowOffsetY = webcamStyles.shadow;
+            ctx.shadowOffsetY = 0;
             
             ctx.fillStyle = 'rgba(0,0,0,0.001)';
             ctx.fill(webcamPath);
             
+            // Reset shadow and draw webcam video
             ctx.shadowColor = 'transparent';
             ctx.shadowBlur = 0;
             ctx.shadowOffsetY = 0;
