@@ -1,4 +1,4 @@
-import { useMemo, useRef, useState, useEffect } from 'react';
+import { useMemo, useRef } from 'react';
 import { WALLPAPERS } from '../../lib/constants';
 import { FrameStyles, AspectRatio, WebcamStyles, WebcamPosition } from '../../types/store';
 import { Video } from 'lucide-react';
@@ -11,8 +11,6 @@ interface PresetPreviewProps {
   webcamPosition?: WebcamPosition;
   webcamStyles?: WebcamStyles;
 }
-
-const REFERENCE_WIDTH = 1280;
 
 // Helper function to create styles for the background
 const generateBackgroundStyle = (backgroundState: FrameStyles['background']) => {
@@ -44,36 +42,38 @@ const generateBackgroundStyle = (backgroundState: FrameStyles['background']) => 
 
 export function PresetPreview({ styles, aspectRatio, isWebcamVisible, webcamPosition, webcamStyles }: PresetPreviewProps) {
   const previewRef = useRef<HTMLDivElement>(null);
-  const [previewWidth, setPreviewWidth] = useState(0);
 
-  // Measure the actual width of the component when it is rendered
-  useEffect(() => {
-    if (previewRef.current) {
-      setPreviewWidth(previewRef.current.offsetWidth);
-    }
-    // ResizeObserver can be added here to handle layout changes,
-    // but in a fixed modal, useEffect is sufficient.
-  }, []);
+  const cssAspectRatio = useMemo(() => aspectRatio.replace(':', ' / '), [aspectRatio]);
 
-  const { scaledStyles, cssAspectRatio } = useMemo(() => {
-    // Calculate scale factor
-    const scaleFactor = previewWidth > 0 ? previewWidth / REFERENCE_WIDTH : 0;
-
-    const scaledShadowBlur = styles.shadow * 1.5 * scaleFactor;
-    const scaledShadowY = styles.shadow * scaleFactor;
+  // Style for the frame element (border, shadow, glass effect).
+  const frameStyle = useMemo(() => {
+    const shadowBlur = styles.shadow * 1.5;
+    const shadowString = styles.shadow > 0
+      ? `0px 0px ${shadowBlur}px ${styles.shadowColor}`
+      : 'none';
 
     return {
-      cssAspectRatio: aspectRatio.replace(':', ' / '),
-      scaledStyles: {
-        padding: `${styles.padding}%`, // Padding is % so no scaling is needed
-        borderRadius: `${styles.borderRadius * scaleFactor}px`,
-        borderWidth: `${styles.borderWidth * scaleFactor}px`,
-        filter: `drop-shadow(0px ${scaledShadowY}px ${scaledShadowBlur}px ${styles.shadowColor})`,
-        borderStyle: 'solid',
-        borderColor: 'rgba(255, 255, 255, 0.3)',
-      }
+      width: '100%',
+      height: '100%',
+      padding: `${styles.borderWidth}px`,
+      borderRadius: `${styles.borderRadius}px`,
+      boxShadow: shadowString,
+      background: `
+              linear-gradient(135deg, 
+                  rgba(255, 255, 255, 0.25) 0%, 
+                  rgba(255, 255, 255, 0.15) 50%, 
+                  rgba(255, 255, 255, 0.05) 100%
+              ),
+              radial-gradient(ellipse at top left, 
+                  rgba(255, 255, 255, 0.2) 0%, 
+                  transparent 50%
+              )
+          `,
+      backdropFilter: 'blur(20px) saturate(180%)',
+      WebkitBackdropFilter: 'blur(20px) saturate(180%)',
+      border: '1px solid rgba(255, 255, 255, 0.3)',
     };
-  }, [styles, aspectRatio, previewWidth]);
+  }, [styles]);
 
   const fakeWebcamStyle = useMemo(() => {
     if (!webcamStyles) return {};
@@ -106,23 +106,19 @@ export function PresetPreview({ styles, aspectRatio, isWebcamVisible, webcamPosi
       className="w-full rounded-lg flex items-center justify-center transition-all duration-300 ease-out"
       style={{ ...backgroundStyle, aspectRatio: cssAspectRatio }}
     >
-      <div className="w-full h-full" style={{ padding: scaledStyles.padding, position: 'relative' }}>
+      <div className="w-full h-full" style={{ padding: `${styles.padding}%`, position: 'relative' }}>
         <div
-          className="w-full h-full bg-card/50 backdrop-blur-sm p-1"
-          style={{
-            borderRadius: scaledStyles.borderRadius,
-            border: `${scaledStyles.borderWidth} solid ${scaledStyles.borderColor}`,
-            filter: scaledStyles.filter,
-          }}
+          className="w-full h-full"
+          style={frameStyle}
         >
           <div
             className="w-full h-full bg-muted/30"
             style={{
-              borderRadius: `max(0px, calc(${scaledStyles.borderRadius} - ${scaledStyles.borderWidth}))`
+              borderRadius: `${Math.max(0, styles.borderRadius - styles.borderWidth)}px`
             }}
           >
             {/* Fake content */}
-            <div className="p-3">
+            <div className="p-3 opacity-50">
               <div className="w-1/2 h-2 bg-foreground/20 rounded-full mb-2"></div>
               <div className="w-3/4 h-2 bg-foreground/20 rounded-full"></div>
             </div>

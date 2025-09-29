@@ -6,8 +6,7 @@ import { Input } from '../ui/input';
 import { PresetPreview } from './PresetPreview';
 import { Preset } from '../../types/store';
 import { cn } from '../../lib/utils';
-import { Plus, Trash2, Check, Lock, RefreshCw } from 'lucide-react';
-import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '../ui/tooltip';
+import { Plus, Trash2, Check, Lock } from 'lucide-react';
 
 
 interface PresetModalProps {
@@ -16,14 +15,15 @@ interface PresetModalProps {
 }
 
 export function PresetModal({ isOpen, onClose }: PresetModalProps) {
-  const { presets, activePresetId, applyPreset, saveCurrentStyleAsPreset, deletePreset, resetPreset, updatePresetName } = useEditorStore(
+  const {
+    presets, activePresetId,
+    applyPreset, saveCurrentStyleAsPreset, deletePreset, updatePresetName } = useEditorStore(
     useShallow(state => ({
       presets: state.presets,
       activePresetId: state.activePresetId,
       applyPreset: state.applyPreset,
       saveCurrentStyleAsPreset: state.saveCurrentStyleAsPreset,
       deletePreset: state.deletePreset,
-      resetPreset: state.resetPreset,
       updatePresetName: state.updatePresetName,
     }))
   );
@@ -175,24 +175,7 @@ export function PresetModal({ isOpen, onClose }: PresetModalProps) {
                     {previewPreset.name}
                     {previewPreset.isDefault && <Lock className="w-4 h-4 text-muted-foreground" />}
                   </h3>
-                  {previewPreset.isDefault ? (
-                    <TooltipProvider>
-                      <Tooltip>
-                        <TooltipTrigger asChild>
-                          <Button
-                            variant="outline"
-                            size="sm"
-                            onClick={() => resetPreset(previewPreset.id)}
-                          >
-                            <RefreshCw className="w-4 h-4 mr-2"/> Reset
-                          </Button>
-                        </TooltipTrigger>
-                        <TooltipContent>
-                          <p>Restore this preset to its original settings.</p>
-                        </TooltipContent>
-                      </Tooltip>
-                    </TooltipProvider>
-                  ) : (
+                  {!previewPreset.isDefault && (
                     <Button
                       variant="destructive"
                       size="sm"

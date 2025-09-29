@@ -38,9 +38,8 @@ const DEFAULT_PRESET: Omit<Preset, 'id' | 'name'> = {
   isWebcamVisible: false,
 };
 
+const DEFAULT_PRESET_ID = 'default-preset-v1';
 
-// --- Types ---
-let debounceTimer: NodeJS.Timeout;
 
 // --- Actions ---
 export interface EditorActions {
@@ -62,7 +61,7 @@ export interface EditorActions {
   toggleTheme: () => void;
   setTimelineZoom: (zoom: number) => void;
   reset: () => void;
-  _debouncedUpdatePreset: () => void;
+  _ensureActivePresetIsWritable: () => void;
   initializeSettings: () => Promise<void>;
   initializePresets: () => Promise<void>;
   applyPreset: (id: string) => void;
@@ -182,9 +181,18 @@ const _calculateAnchors = (
 // Helper function to persist presets to the main process
 const _persistPresets = async (presets: Record<string, Preset>) => {
   try {
-    await window.electronAPI.savePresets(presets);
+    // Temporarily clear the preset save status to avoid race conditions
+    useEditorStore.setState({ presetSaveStatus: 'saving' });
+    await window.electronAPI.setSetting('presets', presets);
+    useEditorStore.setState({ presetSaveStatus: 'saved' });
+    setTimeout(() => {
+      if (useEditorStore.getState().presetSaveStatus === 'saved') {
+        useEditorStore.setState({ presetSaveStatus: 'idle' });
+      }
+    }, 1500);
   } catch (error) {
     console.error("Failed to save presets:", error);
+    useEditorStore.setState({ presetSaveStatus: 'idle' });
   }
 };
 
@@ -359,48 +367,18 @@ export const useEditorStore = create(
         set(state => {
           Object.assign(state.frameStyles, style);
         });
-        get()._debouncedUpdatePreset();
+        get()._ensureActivePresetIsWritable();
       },
 
       updateBackground: (bg) => set((state) => {
-        const currentBg = state.frameStyles.background;
-
-        // If type is changing, create a new default state for that type first
-        if (bg.type && bg.type !== currentBg.type) {
-          let newBackgroundState: Background = { type: bg.type };
-          switch (bg.type) {
-            case 'color':
-              newBackgroundState = { type: 'color', color: '#ffffff' };
-              break;
-            case 'gradient':
-              newBackgroundState = {
-                type: 'gradient',
-                gradientStart: '#6366f1',
-                gradientEnd: '#9ca9ff',
-                gradientDirection: 'to bottom right',
-              };
-              break;
-            case 'image':
-            case 'wallpaper':
-              newBackgroundState = {
-                type: bg.type,
-                imageUrl: WALLPAPERS[0].imageUrl,
-                thumbnailUrl: WALLPAPERS[0].thumbnailUrl,
-              };
-              break;
-          }
-          // IMPORTANT: Merge the incoming changes (bg) over the new default state
-          // This ensures the selected wallpaper/color is applied immediately, not the default.
-          state.frameStyles.background = { ...newBackgroundState, ...bg };
-        } else {
-          // If type is not changing, just merge the properties
-          Object.assign(state.frameStyles.background, bg);
-        }
-
-        get()._debouncedUpdatePreset();
+        Object.assign(state.frameStyles.background, bg);
+        get()._ensureActivePresetIsWritable();
       }),
 
-      setAspectRatio: (ratio) => set(state => { state.aspectRatio = ratio; }),
+      setAspectRatio: (ratio) => {
+        set(state => { state.aspectRatio = ratio; });
+        get()._ensureActivePresetIsWritable();
+      },
 
       addZoomRegion: () => {
         const { metadata, currentTime, videoDimensions, duration } = get();
@@ -519,34 +497,6 @@ export const useEditorStore = create(
       setPreviewCutRegion: (region) => set(state => { state.previewCutRegion = region; }),
       setTimelineZoom: (zoom) => set(state => { state.timelineZoom = zoom; }),
 
-      _debouncedUpdatePreset: () => {
-        clearTimeout(debounceTimer);
-        debounceTimer = setTimeout(() => {
-          const { activePresetId, presets, frameStyles, aspectRatio } = get();
-          
-          const defaultPresetId = Object.values(presets).find(p => p.isDefault)?.id;
-          const idToUpdate = activePresetId ?? defaultPresetId;
-
-          if (idToUpdate && presets[idToUpdate]) {
-            set({ presetSaveStatus: 'saving' });
-            set(state => {
-              state.presets[idToUpdate].styles = JSON.parse(JSON.stringify(frameStyles));
-              state.presets[idToUpdate].aspectRatio = aspectRatio;
-            });
-
-            window.electronAPI.setSetting('presets', get().presets);
-
-            console.log(`Auto-saved preset: "${presets[idToUpdate].name}"`);
-            set({ presetSaveStatus: 'saved' });
-            setTimeout(() => {
-              if (get().presetSaveStatus === 'saved') {
-                set({ presetSaveStatus: 'idle' });
-              }
-            }, 1500);
-          }
-        }, 1500);
-      },
-
       initializeSettings: async () => {
         try {
           const appearance = await window.electronAPI.getSetting<{ theme: 'light' | 'dark' }>('appearance');
@@ -562,38 +512,33 @@ export const useEditorStore = create(
         try {
           const loadedPresets = await window.electronAPI.getSetting<Record<string, Preset>>('presets') || {};
 
-          let defaultPreset = Object.values(loadedPresets).find(p => p.isDefault);
-          let presetsModified = false;
-
-          // If no default preset exists, create or designate one.
-          if (!defaultPreset) {
-            presetsModified = true;
-            if (Object.keys(loadedPresets).length === 0) {
-              // Case 1: No presets exist at all. Create a new default.
-              const defaultId = `preset-default-${Date.now()}`;
-              loadedPresets[defaultId] = JSON.parse(JSON.stringify({
-                id: defaultId,
-                name: 'Default',
-                ...DEFAULT_PRESET
-              }));
-
-              defaultPreset = loadedPresets[defaultId];
-            } else {
-              // Case 2: Presets exist but none are marked as default (migration).
-              const firstPreset = Object.values(loadedPresets)[0];
-              firstPreset.isDefault = true;
-              defaultPreset = firstPreset;
-            }
-          }
+          // Always ensure the default preset exists and is up-to-date. It's the source of truth.
+          loadedPresets[DEFAULT_PRESET_ID] = {
+            id: DEFAULT_PRESET_ID,
+            name: 'Default',
+            ...JSON.parse(JSON.stringify(DEFAULT_PRESET))
+          };
           
           // Ensure `shadowColor` property exists in old presets for backward compatibility
+          let presetsModified = false;
           Object.values(loadedPresets).forEach(preset => {
+            if (preset.id !== DEFAULT_PRESET_ID && preset.isDefault) {
+              delete preset.isDefault; // Clean up old default flags
+              presetsModified = true;
+            }
             if (preset.styles && preset.styles.shadowColor === undefined) {
               preset.styles.shadowColor = initialFrameStyles.shadowColor;
               presetsModified = true;
             }
             if (preset.webcamStyles && preset.webcamStyles.shadowColor === undefined) {
               preset.webcamStyles.shadowColor = initialProjectState.webcamStyles.shadowColor;
+              presetsModified = true;
+            }
+            // Ensure all presets have webcam settings
+            if (!preset.webcamStyles || !preset.webcamPosition || preset.isWebcamVisible === undefined) {
+              preset.webcamStyles = JSON.parse(JSON.stringify(DEFAULT_PRESET.webcamStyles));
+              preset.webcamPosition = JSON.parse(JSON.stringify(DEFAULT_PRESET.webcamPosition));
+              preset.isWebcamVisible = DEFAULT_PRESET.isWebcamVisible;
               presetsModified = true;
             }
           });
@@ -604,7 +549,7 @@ export const useEditorStore = create(
           }
 
           const lastUsedId = localStorage.getItem(APP.LAST_PRESET_ID_KEY);
-          const activeId = (lastUsedId && loadedPresets[lastUsedId]) ? lastUsedId : defaultPreset!.id;
+          const activeId = (lastUsedId && loadedPresets[lastUsedId]) ? lastUsedId : DEFAULT_PRESET_ID;
           
           set(state => {
             state.presets = loadedPresets;
@@ -660,6 +605,29 @@ export const useEditorStore = create(
         });
         _persistPresets(get().presets);
       },
+
+      _ensureActivePresetIsWritable: () => {
+        const { activePresetId, presets } = get();
+        if (activePresetId && presets[activePresetId]?.isDefault) {
+          // Currently on the default preset, so we need to create a copy.
+          const newId = `preset-${Date.now()}`;
+          const newPreset: Preset = {
+            ...JSON.parse(JSON.stringify(presets[activePresetId])), // Deep copy
+            id: newId,
+            name: 'Custom Preset',
+            isDefault: false,
+          };
+
+          set(state => {
+            state.presets[newId] = newPreset;
+            state.activePresetId = newId; // Switch to the new preset
+          });
+          localStorage.setItem(APP.LAST_PRESET_ID_KEY, newId);
+        }
+        // Now that the active preset is guaranteed to be writable, save all changes.
+        get().updateActivePreset();
+      },
+
       updatePresetName: (id, name) => {
         set(state => {
           const preset = state.presets[id];
@@ -667,7 +635,7 @@ export const useEditorStore = create(
             preset.name = name;
           }
         });
-        _persistPresets(get().presets);
+        _persistPresets(get().presets)
       },
       saveCurrentStyleAsPreset: (name) => {
         const id = `preset-${Date.now()}`;
@@ -707,7 +675,7 @@ export const useEditorStore = create(
 
       deletePreset: (id) => {
         const state = get();
-        if (state.presets[id]?.isDefault) {
+        if (state.presets[id]?.isDefault || id === DEFAULT_PRESET_ID) {
           console.warn("Cannot delete the default preset.");
           return;
         }
@@ -715,18 +683,10 @@ export const useEditorStore = create(
         set(state => {
           delete state.presets[id];
           if (state.activePresetId === id) {
-            // Fallback to the default preset if the active one is deleted
-            const defaultPreset = Object.values(state.presets).find(p => p.isDefault);
-            if (defaultPreset) {
-              get().applyPreset(defaultPreset.id);
-            } else {
-              // This should theoretically never happen due to initializePresets
-              state.activePresetId = null;
-              localStorage.removeItem(APP.LAST_PRESET_ID_KEY);
-            }
+            get().applyPreset(DEFAULT_PRESET_ID);
           }
         });
-        window.electronAPI.setSetting('presets', get().presets);
+        _persistPresets(get().presets);
       },
 
       reset: () => set(state => {
@@ -737,11 +697,20 @@ export const useEditorStore = create(
 
       togglePreviewFullScreen: () => set(state => { state.isPreviewFullScreen = !state.isPreviewFullScreen }),
 
-      setWebcamPosition: (position) => set({ webcamPosition: position }),
-      setWebcamVisibility: (isVisible) => set({ isWebcamVisible: isVisible }),
-      updateWebcamStyle: (style) => set(state => {
-        Object.assign(state.webcamStyles, style);
-      }),
+      setWebcamPosition: (position) => {
+        set({ webcamPosition: position });
+        get()._ensureActivePresetIsWritable();
+      },
+      setWebcamVisibility: (isVisible) => {
+        set({ isWebcamVisible: isVisible });
+        get()._ensureActivePresetIsWritable();
+      },
+      updateWebcamStyle: (style) => {
+        set(state => {
+          Object.assign(state.webcamStyles, style);
+        });
+        get()._ensureActivePresetIsWritable();
+      },
     })),
     {
       // Configuration for Zundo (undo/redo)
