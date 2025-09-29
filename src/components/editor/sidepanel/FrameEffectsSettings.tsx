@@ -1,7 +1,7 @@
 import { useMemo } from 'react';
 import { useEditorStore } from '../../../store/editorStore';
 import { ColorPicker } from '../../ui/color-picker';
-import Slider from '../../ui/slider';
+import { Slider } from '../../ui/slider';
 import { ControlGroup } from './ControlGroup';
 import { rgbaToHexAlpha, hexToRgb } from '../../../lib/utils';
 import { BorderThicknessIcon, CornerRadiusIcon, PaddingIcon, ShadowIcon } from '../../ui/icons';

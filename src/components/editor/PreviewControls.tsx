@@ -4,7 +4,7 @@ import { useEditorStore } from '../../store/editorStore';
 import { AspectRatio } from '../../types/store';
 import { Button } from '../ui/button';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '../ui/select';
-import Slider from '../ui/slider';
+import { Slider } from '../ui/slider';
 
 
 const Rewind = (props: React.SVGProps<SVGSVGElement>) => (

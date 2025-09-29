@@ -3,7 +3,7 @@ import { useEditorStore, usePlaybackState } from '../../store/editorStore';
 import { Film, Play, Pause, Fullscreen, Shrink } from 'lucide-react';
 import { useShallow } from 'zustand/react/shallow';
 import { formatTime } from '../../lib/utils';
-import Slider from '../ui/slider';
+import { Slider } from '../ui/slider';
 import { Button } from '../ui/button';
 import { drawScene } from '../../lib/renderer';
 

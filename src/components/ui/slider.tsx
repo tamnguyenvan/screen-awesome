@@ -12,7 +12,7 @@ export interface SliderProps {
   className?: string;
 }
 
-const Slider: React.FC<SliderProps> = ({
+export const Slider: React.FC<SliderProps> = ({
   min = 0,
   max = 100,
   step = 1,
@@ -106,5 +106,3 @@ const Slider: React.FC<SliderProps> = ({
     </div>
   );
 };
-
-export default Slider;
