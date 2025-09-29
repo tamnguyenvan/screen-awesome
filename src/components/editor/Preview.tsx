@@ -66,7 +66,7 @@ export const Preview = memo(({ videoRef }: { videoRef: React.RefObject<HTMLVideo
 
   const [previewWidth, setPreviewWidth] = useState(0);
   const previewContainerRef = useRef<HTMLDivElement>(null);
-  const frameContainerRef = useRef<HTMLDivElement>(null);
+  const transformContainerRef = useRef<HTMLDivElement>(null);
   const webcamVideoRef = useRef<HTMLVideoElement>(null);
 
   useEffect(() => {
@@ -97,34 +97,34 @@ export const Preview = memo(({ videoRef }: { videoRef: React.RefObject<HTMLVideo
   }, [isPlaying, videoRef]);
 
   useEffect(() => {
-    let animationFrameId: number;
-    const updateTransform = () => {
-      if (!frameContainerRef.current || !videoRef.current) return;
-      const liveCurrentTime = videoRef.current.currentTime;
-      
-      const { scale, translateX, translateY, transformOrigin } = calculateZoomTransform(liveCurrentTime);
-
-      const shadowBlur = frameStyles.shadow * 1.5;
-      const shadowOffsetY = frameStyles.shadow;
-      
-      const style = frameContainerRef.current.style;
-      style.filter = `drop-shadow(0px ${shadowOffsetY}px ${shadowBlur}px ${frameStyles.shadowColor})`;
-      
+    const updateTransform = (time: number) => {
+      if (!transformContainerRef.current) return;
+      const { scale, translateX, translateY, transformOrigin } = calculateZoomTransform(time);
+      const style = transformContainerRef.current.style;
       style.transformOrigin = transformOrigin;
       style.transform = `scale(${scale}) translate(${translateX}%, ${translateY}%)`;
     };
-    updateTransform();
+
+    let animationFrameId: number;
     const animate = () => {
-      updateTransform();
+      if (videoRef.current) {
+        updateTransform(videoRef.current.currentTime);
+      }
       animationFrameId = requestAnimationFrame(animate);
     };
+
     if (isPlaying) {
       animate();
     } else {
-      updateTransform();
+      updateTransform(currentTime); // Use store's currentTime when paused/scrubbing
     }
-    return () => cancelAnimationFrame(animationFrameId);
-  }, [isPlaying, videoRef, frameStyles.shadow, frameStyles.shadowColor]);
+
+    return () => {
+      if (animationFrameId) {
+        cancelAnimationFrame(animationFrameId);
+      }
+    };
+  }, [isPlaying, currentTime, videoRef]);
 
   useEffect(() => {
     const video = videoRef.current;
@@ -164,6 +164,56 @@ export const Preview = memo(({ videoRef }: { videoRef: React.RefObject<HTMLVideo
     }
   }, [aspectRatio, videoDimensions]);
 
+  // Style for the outer container responsible ONLY for transformations.
+  const transformContainerStyle = useMemo(() => ({
+    width: videoDisplayWidth,
+    height: videoDisplayHeight,
+    aspectRatio: videoDimensions.width / videoDimensions.height,
+    maxWidth: '100%',
+    maxHeight: '100%',
+    transition: 'transform 50ms linear',
+  }), [videoDisplayWidth, videoDisplayHeight, videoDimensions]);
+
+  // Style for the frame element (border, shadow, glass effect).
+  const frameStyle = useMemo(() => {
+    const shadowBlur = frameStyles.shadow * 1.5;
+    const shadowString = frameStyles.shadow > 0
+      ? `0px 0px ${shadowBlur}px ${frameStyles.shadowColor}`
+      : 'none';
+
+    return {
+      width: '100%',
+      height: '100%',
+      padding: `${frameStyles.borderWidth}px`,
+      borderRadius: `${frameStyles.borderRadius}px`,
+      boxShadow: shadowString,
+      background: `
+              linear-gradient(135deg, 
+                  rgba(255, 255, 255, 0.25) 0%, 
+                  rgba(255, 255, 255, 0.15) 50%, 
+                  rgba(255, 255, 255, 0.05) 100%
+              ),
+              radial-gradient(ellipse at top left, 
+                  rgba(255, 255, 255, 0.2) 0%, 
+                  transparent 50%
+              )
+          `,
+      backdropFilter: 'blur(20px) saturate(180%)',
+      WebkitBackdropFilter: 'blur(20px) saturate(180%)',
+      border: '1px solid rgba(255, 255, 255, 0.3)',
+    };
+  }, [frameStyles]);
+
+  // Style for the inner video element.
+  const videoStyle = useMemo(() => ({
+    width: '100%',
+    height: '100%',
+    objectFit: 'cover' as const,
+    display: 'block',
+    borderRadius: `${Math.max(0, frameStyles.borderRadius - frameStyles.borderWidth)}px`,
+  }), [frameStyles.borderRadius, frameStyles.borderWidth]);
+
+
   const handleTimeUpdate = () => {
     if (!videoRef.current) return;
     const endTrimRegion = Object.values(cutRegions).find(r => r.trimType === 'end');
@@ -183,41 +233,6 @@ export const Preview = memo(({ videoRef }: { videoRef: React.RefObject<HTMLVideo
       setVideoDimensions({ width: videoRef.current.videoWidth, height: videoRef.current.videoHeight });
     }
   };
-
-  const glassyBorderStyle = useMemo(() => ({
-    // Kích thước lớn hơn video bằng borderWidth
-    inset: `-${frameStyles.borderWidth}px`,
-    borderRadius: `${frameStyles.borderRadius}px`,
-    background: `
-      linear-gradient(135deg, 
-        rgba(255, 255, 255, 0.25) 0%, 
-        rgba(255, 255, 255, 0.15) 50%, 
-        rgba(255, 255, 255, 0.05) 100%
-      ),
-      radial-gradient(ellipse at top left, 
-        rgba(255, 255, 255, 0.2) 0%, 
-        transparent 50%
-      )
-    `,
-    backdropFilter: 'blur(20px) saturate(180%)',
-    WebkitBackdropFilter: 'blur(20px) saturate(180%)',
-    border: `1px solid rgba(255, 255, 255, 0.3)`,
-    boxShadow: `
-      inset 0 1px 0 0 rgba(255, 255, 255, 0.4),
-      inset 0 -1px 0 0 rgba(255, 255, 255, 0.1),
-      0 0 0 1px rgba(0, 0, 0, 0.1),
-      0 2px 10px -2px rgba(0, 0, 0, 0.2),
-      0 8px 25px -5px rgba(0, 0, 0, 0.1)
-    `,
-    position: 'absolute' as const,
-  }), [frameStyles.borderWidth, frameStyles.borderRadius]);
-
-  const videoStyle = useMemo(() => ({
-    borderRadius: `${frameStyles.borderRadius}px`,
-    position: 'relative' as const,
-    zIndex: 1,
-    overflow: 'hidden' as const,
-  }), [frameStyles.borderRadius]);
 
   const webcamDynamicStyle = useMemo(() => {
     const shadowBlur = webcamStyles.shadow * 1.5;
@@ -240,7 +255,7 @@ export const Preview = memo(({ videoRef }: { videoRef: React.RefObject<HTMLVideo
       'opacity-100 scale-100': isWebcamVisible,
     }
   );
-  
+
   const handleScrub = (value: number) => {
     if (videoRef.current) {
       videoRef.current.currentTime = value;
@@ -259,27 +274,16 @@ export const Preview = memo(({ videoRef }: { videoRef: React.RefObject<HTMLVideo
         <div className="w-full h-full flex items-center justify-center relative" style={{ padding: `${frameStyles.padding}%` }}>
           {videoUrl ? (
             <>
+              {/* This is the container that gets transformed (zoomed/panned) */}
               <div
-                ref={frameContainerRef}
-                className="relative"
-                style={{
-                  width: videoDisplayWidth,
-                  height: videoDisplayHeight,
-                  aspectRatio: videoDimensions.width / videoDimensions.height,
-                  maxWidth: '100%',
-                  maxHeight: '100%',
-                  transition: 'transform 50ms linear',
-                }}
+                ref={transformContainerRef}
+                className="relative" style={transformContainerStyle}
               >
-                <div className="relative w-full h-full">
-                  <div
-                    className="transition-all duration-300 ease-out"
-                    style={glassyBorderStyle}
-                  />
+                {/* This new container handles the frame's appearance (border, shadow, etc.) */}
+                <div className="w-full h-full" style={frameStyle}>
                   <video
                     ref={videoRef}
                     src={videoUrl}
-                    className="w-full h-full object-cover block transition-all duration-200"
                     style={videoStyle}
                     onTimeUpdate={handleTimeUpdate}
                     onLoadedMetadata={handleLoadedMetadata}

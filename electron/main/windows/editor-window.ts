@@ -49,6 +49,10 @@ export function createEditorWindow(videoPath: string, metadataPath: string, webc
   appState.editorWin.on('move', debouncedSaveBounds);
   appState.editorWin.on('close', saveBounds);
 
+  // if (process.env.NODE_ENV === 'development') {
+  //   editorWin.webContents.openDevTools();
+  // }
+
   appState.editorWin.on('closed', () => {
     if (appState.currentEditorSessionFiles) {
       cleanupEditorFiles(appState.currentEditorSessionFiles);
