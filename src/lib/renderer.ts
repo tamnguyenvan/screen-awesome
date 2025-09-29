@@ -158,13 +158,11 @@ export const drawScene = async (
   videoPath.roundRect(borderWidth, borderWidth, frameContentWidth - 2 * borderWidth, frameContentHeight - 2 * borderWidth, videoRadius);
 
   ctx.save();
+  // Áp dụng shadow
   ctx.shadowColor = shadowColor;
   ctx.shadowBlur = shadow * 1.5;
-  ctx.fillStyle = 'rgba(0,0,0,0.001)';
-  ctx.fill(framePath);
-  ctx.restore();
 
-  ctx.save();
+  // Vẽ các hiệu ứng của frame (gradient, border), các hiệu ứng này sẽ tự động có shadow
   ctx.clip(framePath);
   const linearGrad = ctx.createLinearGradient(0, 0, frameContentWidth, frameContentHeight);
   linearGrad.addColorStop(0, 'rgba(255, 255, 255, 0.25)');
@@ -181,9 +179,10 @@ export const drawScene = async (
 
   ctx.strokeStyle = 'rgba(255, 255, 255, 0.3)';
   ctx.lineWidth = 1;
-  ctx.stroke(framePath);
-  ctx.restore();
+  ctx.stroke(framePath); // Dùng lại framePath để vẽ viền
+  ctx.restore(); // Restore sau khi đã vẽ xong frame và bóng của nó
 
+  // Code vẽ video bên trong không đổi
   ctx.save();
   ctx.clip(videoPath);
   ctx.drawImage(videoElement, borderWidth, borderWidth, frameContentWidth - 2 * borderWidth, frameContentHeight - 2 * borderWidth);
@@ -212,16 +211,15 @@ export const drawScene = async (
     const webcamPath = new Path2D();
     webcamPath.roundRect(webcamX, webcamY, webcamWidth, webcamHeight, webcamSquircleRadius);
 
-    // Step 1: Draw shadow
     ctx.save();
     ctx.shadowColor = webcamStyles.shadowColor;
     ctx.shadowBlur = webcamStyles.shadow * 1.5;
-    // Use a very transparent fill color to only draw the shadow
-    ctx.fillStyle = 'rgba(0,0,0,0.001)';
+    // Chúng ta fill một màu bất kỳ để tạo bóng, màu này sẽ bị video che đi
+    ctx.fillStyle = '#000';
     ctx.fill(webcamPath);
-    ctx.restore();
+    ctx.restore(); // Restore để các lệnh vẽ sau không bị ảnh hưởng bởi shadow
 
-    // Step 2: Draw the webcam image
+    // Step 2: Vẽ video webcam, clip theo đúng hình dạng đã vẽ bóng
     ctx.save();
     ctx.clip(webcamPath);
     ctx.drawImage(webcamVideoElement, webcamX, webcamY, webcamWidth, webcamHeight);
