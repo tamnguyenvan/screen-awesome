@@ -7,14 +7,6 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '.
 import Slider from '../ui/slider';
 import { Tooltip, TooltipProvider, TooltipTrigger, TooltipContent } from '../ui/tooltip';
 
-function formatTime(seconds: number): string {
-  if (isNaN(seconds) || seconds < 0) {
-    return '00:00';
-  }
-  const minutes = Math.floor(seconds / 60);
-  const remainingSeconds = Math.floor(seconds % 60);
-  return `${minutes.toString().padStart(2, '0')}:${remainingSeconds.toString().padStart(2, '0')}`;
-}
 
 const Rewind = (props: React.SVGProps<SVGSVGElement>) => (
   <svg xmlns="http://www.w3.org/2000/svg" width={20} height={20} viewBox="0 0 256 256" fill="currentColor" {...props}>
@@ -24,7 +16,7 @@ const Rewind = (props: React.SVGProps<SVGSVGElement>) => (
 
 export function PreviewControls({ videoRef }: { videoRef: React.RefObject<HTMLVideoElement> }) {
   const {
-    isPlaying, togglePlay, currentTime, duration, setCurrentTime,
+    isPlaying, togglePlay, setCurrentTime,
     aspectRatio, setAspectRatio, addZoomRegion, addCutRegion,
     timelineZoom, setTimelineZoom,
     selectedRegionId, deleteRegion
@@ -126,16 +118,6 @@ export function PreviewControls({ videoRef }: { videoRef: React.RefObject<HTMLVi
               </TooltipTrigger>
               <TooltipContent><p>Play/Pause (Space)</p></TooltipContent>
             </Tooltip>
-            
-            <div className="flex items-baseline gap-2 font-mono text-base">
-              <span className="text-foreground min-w-[4rem] text-right font-medium tabular-nums">
-                {formatTime(currentTime)}
-              </span>
-              <span className="text-muted-foreground text-sm">/</span>
-              <span className="text-muted-foreground min-w-[4rem] text-left tabular-nums">
-                {formatTime(duration)}
-              </span>
-            </div>
           </div>
         </div>
 
