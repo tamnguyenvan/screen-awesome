@@ -14,6 +14,8 @@ export const buttonVariants = cva(
           "bg-secondary text-secondary-foreground hover:bg-secondary/80",
         ghost: "hover:bg-accent hover:text-accent-foreground",
         link: "text-primary underline-offset-4 hover:underline",
+        toolbar:
+          "bg-card/60 hover:bg-accent/70 shadow-sm hover:shadow active:shadow-inner active:bg-black/5 dark:active:bg-white/5 active:scale-[0.97] border border-white/5 dark:border-white/10 text-muted-foreground hover:text-foreground",
       },
       size: {
         default: "h-9 px-4 py-2",
@@ -28,5 +30,3 @@ export const buttonVariants = cva(
     },
   }
 )
-
-export type ButtonVariants = typeof buttonVariants

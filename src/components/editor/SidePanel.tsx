@@ -1,6 +1,6 @@
 import { useEditorStore } from '../../store/editorStore';
 import { RegionSettingsPanel } from './RegionSettingsPanel';
-import { Palette, Video, AudioLines, Settings } from 'lucide-react';
+import { AudioLines, Webcam, PanelsTopLeft } from 'lucide-react';
 import { BackgroundSettings } from './sidepanel/BackgroundSettings';
 import { FrameEffectsSettings } from './sidepanel/FrameEffectsSettings';
 import { CameraSettings } from './sidepanel/CameraSettings';
@@ -61,7 +61,7 @@ function FrameSettingsPanel() {
       <div className="p-6 border-b border-sidebar-border">
         <div className="flex items-center gap-3">
           <div className="w-10 h-10 rounded-lg bg-primary/10 flex items-center justify-center">
-            <Palette className="w-5 h-5 text-primary" />
+            <PanelsTopLeft className="w-5 h-5 text-primary" />
           </div>
           <div>
             <h2 className="text-lg font-semibold text-sidebar-foreground">General Settings</h2>
@@ -96,27 +96,6 @@ function AudioSettingsPanel() {
       </div>
       <div className="flex-1 p-6 flex items-center justify-center">
         <p className="text-muted-foreground text-sm">Audio controls coming soon.</p>
-      </div>
-    </div>
-  );
-}
-
-function AppSettingsPanel() {
-  return (
-    <div className="h-full flex flex-col">
-      <div className="p-6 border-b border-sidebar-border">
-        <div className="flex items-center gap-3">
-          <div className="w-10 h-10 rounded-lg bg-primary/10 flex items-center justify-center">
-            <Settings className="w-5 h-5 text-primary" />
-          </div>
-          <div>
-            <h2 className="text-lg font-semibold text-sidebar-foreground">App Settings</h2>
-            <p className="text-sm text-muted-foreground">Configure the application</p>
-          </div>
-        </div>
-      </div>
-      <div className="flex-1 p-6 flex items-center justify-center">
-        <p className="text-muted-foreground text-sm">Application settings coming soon.</p>
       </div>
     </div>
   );
@@ -171,8 +150,6 @@ export function SidePanel() {
         return <CameraSettings />;
       case 'audio':
         return <AudioSettingsPanel />;
-      case 'settings':
-        return <AppSettingsPanel />;
       default:
         return <FrameSettingsPanel />;
     }
@@ -190,13 +167,13 @@ export function SidePanel() {
         <div className="flex flex-col items-center space-y-2">
           <TabButton
             label="General"
-            icon={<Palette className="w-5 h-5" />}
+            icon={<PanelsTopLeft className="w-5 h-5" />}
             isActive={activeTab === 'general'}
             onClick={() => setActiveTab('general')}
           />
           <TabButton
             label="Camera"
-            icon={<Video className="w-5 h-5" />}
+            icon={<Webcam className="w-5 h-5" />}
             isActive={activeTab === 'camera'}
             onClick={() => setActiveTab('camera')}
             disabled={!webcamVideoUrl}
@@ -206,13 +183,6 @@ export function SidePanel() {
             icon={<AudioLines className="w-5 h-5" />}
             isActive={activeTab === 'audio'}
             onClick={() => setActiveTab('audio')}
-          />
-          <div className="flex-1"></div> {/* Spacer */}
-          <TabButton
-            label="Settings"
-            icon={<Settings className="w-5 h-5" />}
-            isActive={activeTab === 'settings'}
-            onClick={() => setActiveTab('settings')}
           />
         </div>
       </div>

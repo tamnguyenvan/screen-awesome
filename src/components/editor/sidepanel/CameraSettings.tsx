@@ -6,7 +6,8 @@ import {
   Video, Eye, EyeOff, Image, Maximize
 } from 'lucide-react';
 import { Button } from '../../ui/button';
-import Slider from '../../ui/slider';
+import { Switch } from '../../ui/switch';
+import { Slider } from '../../ui/slider';
 import { useShallow } from 'zustand/react/shallow';
 import { ColorPicker } from '../../ui/color-picker';
 import { rgbaToHexAlpha, hexToRgb } from '../../../lib/utils';
@@ -73,21 +74,21 @@ export function CameraSettings() {
           icon={<Eye className="w-4 h-4 text-primary" />}
           description="Show or hide the webcam overlay"
         >
-          <div className="grid grid-cols-2 gap-2 p-1 bg-muted/50 rounded-lg">
-            <Button
-              variant={isWebcamVisible ? 'secondary' : 'ghost'}
-              onClick={() => setWebcamVisibility(true)}
-              className="h-auto py-2 flex items-center gap-2"
+          <div className="flex items-center gap-2">
+            <Switch
+              checked={isWebcamVisible}
+              onCheckedChange={setWebcamVisibility}
+              className="data-[state=on]:bg-primary"
             >
-              <Eye className="w-4 h-4" /> Show
-            </Button>
-            <Button
-              variant={!isWebcamVisible ? 'secondary' : 'ghost'}
-              onClick={() => setWebcamVisibility(false)}
-              className="h-auto py-2 flex items-center gap-2"
-            >
-              <EyeOff className="w-4 h-4" /> Hide
-            </Button>
+              {isWebcamVisible ? (
+                <Eye className="h-4 w-4" />
+              ) : (
+                <EyeOff className="h-4 w-4" />
+              )}
+            </Switch>
+            <span className="text-sm text-muted-foreground">
+              {isWebcamVisible ? 'Visible' : 'Hidden'}
+            </span>
           </div>
         </ControlGroup>
 

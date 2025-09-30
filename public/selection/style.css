@@ -22,7 +22,7 @@ body, html {
 
 #selection-box {
     position: absolute;
-    border: 2px solid #7c3aed;
+    border: 2px solid #3b82f6;
     box-sizing: border-box;
     cursor: move;
     z-index: 2;
@@ -35,7 +35,7 @@ body, html {
     width: 10px;
     height: 10px;
     background-color: #fff;
-    border: 1px solid #7c3aed;
+    border: 1px solid #3b82f6;
     border-radius: 50%;
     box-sizing: border-box;
     z-index: 3;

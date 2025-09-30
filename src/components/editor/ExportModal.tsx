@@ -22,9 +22,13 @@ interface ExportModalProps {
   result: { success: boolean; outputPath?: string; error?: string } | null;
 }
 
-const generateOutputPath = (format: 'mp4' | 'gif') => {
-  const filename = `ScreenAwesome-Export.${format}`;
-  return filename;
+const generateFilename = (format: 'mp4' | 'gif') => {
+  const now = new Date();
+  const timestamp = now.toISOString()
+    .replace(/[:.]/g, '-')  // Replace colons and dots with dashes
+    .replace('T', '-')      // Replace T with dash
+    .slice(0, 19);          // Keep only YYYY-MM-DD-HH-MM-SS
+  return `ScreenAwesome-${timestamp}.${format}`;
 };
 
 // --- Sub-components for different views ---
@@ -35,18 +39,17 @@ const SettingsView = ({ onStartExport, onClose }: { onStartExport: (settings: Ex
     fps: 30,
     quality: 'medium',
   });
-  const defaultOutputPath = generateOutputPath(settings.format);
-  const [outputPath, setOutputPath] = useState(defaultOutputPath);
+  const [outputPath, setOutputPath] = useState('');
 
   const handleValueChange = (key: keyof ExportSettings, value: string) => {
     setSettings(prev => ({ ...prev, [key]: value }));
   };
 
   const handleBrowse = async () => {
-    const defaultPath = defaultOutputPath;
+    // Use the current outputPath as the default value for the save file dialog
     const result = await window.electronAPI.showSaveDialog({
       title: 'Save Video',
-      defaultPath,
+      defaultPath: outputPath,
       filters: settings.format === 'mp4'
         ? [{ name: 'MP4 Video', extensions: ['mp4'] }]
         : [{ name: 'GIF Animation', extensions: ['gif'] }],
@@ -58,75 +61,95 @@ const SettingsView = ({ onStartExport, onClose }: { onStartExport: (settings: Ex
   };
 
   useEffect(() => {
-    setOutputPath(generateOutputPath(settings.format));
+    const setDefaultPath = async () => {
+      try {
+        const homePath = await window.electronAPI.getPath('home');
+        const filename = generateFilename(settings.format);
+        setOutputPath(`${homePath}/${filename}`);
+      } catch (error) {
+        console.error("Failed to get home path, falling back to relative path.", error);
+        setOutputPath(generateFilename(settings.format));
+      }
+    };
+
+    setDefaultPath();
   }, [settings.format]);
 
   return (
     <>
-      <div className="flex items-center gap-3 mb-6">
-        <div className="w-10 h-10 rounded-lg bg-primary/10 flex items-center justify-center">
-          <Upload className="w-5 h-5 text-primary" />
-        </div>
-        <div>
-          <h2 className="text-lg font-semibold text-foreground">Export Settings</h2>
-          <p className="text-sm text-muted-foreground">Configure your export options</p>
-        </div>
-      </div>
-      <div className="space-y-5">
-        <SettingRow label="Format">
-          <Select value={settings.format} onValueChange={(value) => handleValueChange('format', value)}>
-            <SelectTrigger><SelectValue /></SelectTrigger>
-            <SelectContent>
-              <SelectItem value="mp4">MP4 (Video)</SelectItem>
-              <SelectItem value="gif">GIF (Animation)</SelectItem>
-            </SelectContent>
-          </Select>
-        </SettingRow>
-        <SettingRow label="Resolution">
-          <Select value={settings.resolution} onValueChange={(value) => handleValueChange('resolution', value)}>
-            <SelectTrigger><SelectValue /></SelectTrigger>
-            <SelectContent>
-              <SelectItem value="720p">HD (720p)</SelectItem>
-              <SelectItem value="1080p">Full HD (1080p)</SelectItem>
-              <SelectItem value="2k">2K (1440p)</SelectItem>
-            </SelectContent>
-          </Select>
-        </SettingRow>
-        <SettingRow label="Quality">
-          <Select value={settings.quality} onValueChange={(value) => handleValueChange('quality', value)}>
-            <SelectTrigger><SelectValue /></SelectTrigger>
-            <SelectContent>
-              <SelectItem value="low">Low</SelectItem>
-              <SelectItem value="medium">Medium</SelectItem>
-              <SelectItem value="high">High</SelectItem>
-            </SelectContent>
-          </Select>
-        </SettingRow>
-        <SettingRow label="FPS">
-          <Select value={String(settings.fps)} disabled>
-            <SelectTrigger><SelectValue /></SelectTrigger>
-            <SelectContent><SelectItem value="30">30 FPS</SelectItem></SelectContent>
-          </Select>
-        </SettingRow>
-        <SettingRow label="Output File">
-          <div className="w-full flex items-center gap-2">
-            <div className="flex-1 min-w-0">
-              <Input
-                value={outputPath}
-                onChange={(e) => setOutputPath(e.target.value)}
-                placeholder={defaultOutputPath}
-                className="w-full h-9 bg-background text-foreground"
-              />
-            </div>
-            <Button variant="secondary" size="sm" onClick={handleBrowse} className="btn-clean h-9 whitespace-nowrap">
-              Browse
-            </Button>
+      {/* Header */}
+      <div className="p-6 border-b border-border flex-shrink-0">
+        <div className="flex items-center gap-3">
+          <div className="w-10 h-10 rounded-lg bg-primary/10 flex items-center justify-center">
+            <Upload className="w-5 h-5 text-primary" />
           </div>
-        </SettingRow>
+          <div>
+            <h2 className="text-lg font-semibold text-foreground">Export Settings</h2>
+            <p className="text-sm text-muted-foreground">Configure your export options</p>
+          </div>
+        </div>
       </div>
-      <div className="mt-8 flex justify-end gap-3">
-        <Button variant="secondary" onClick={onClose} className="btn-clean">Cancel</Button>
-        <Button onClick={() => onStartExport(settings, outputPath)} className="btn-clean" disabled={!outputPath}>Start Export</Button>
+
+      {/* Body */}
+      <div className="flex-1 p-6 overflow-y-auto">
+        <div className="space-y-5">
+          <SettingRow label="Format">
+            <Select value={settings.format} onValueChange={(value) => handleValueChange('format', value)}>
+              <SelectTrigger><SelectValue /></SelectTrigger>
+              <SelectContent>
+                <SelectItem value="mp4">MP4 (Video)</SelectItem>
+                <SelectItem value="gif">GIF (Animation)</SelectItem>
+              </SelectContent>
+            </Select>
+          </SettingRow>
+          <SettingRow label="Resolution">
+            <Select value={settings.resolution} onValueChange={(value) => handleValueChange('resolution', value)}>
+              <SelectTrigger><SelectValue /></SelectTrigger>
+              <SelectContent>
+                <SelectItem value="720p">HD (720p)</SelectItem>
+                <SelectItem value="1080p">Full HD (1080p)</SelectItem>
+                <SelectItem value="2k">2K (1440p)</SelectItem>
+              </SelectContent>
+            </Select>
+          </SettingRow>
+          <SettingRow label="Quality">
+            <Select value={settings.quality} onValueChange={(value) => handleValueChange('quality', value)}>
+              <SelectTrigger><SelectValue /></SelectTrigger>
+              <SelectContent>
+                <SelectItem value="low">Low</SelectItem>
+                <SelectItem value="medium">Medium</SelectItem>
+                <SelectItem value="high">High</SelectItem>
+              </SelectContent>
+            </Select>
+          </SettingRow>
+          <SettingRow label="FPS">
+            <Select value={String(settings.fps)} disabled>
+              <SelectTrigger><SelectValue /></SelectTrigger>
+              <SelectContent><SelectItem value="30">30 FPS</SelectItem></SelectContent>
+            </Select>
+          </SettingRow>
+          <SettingRow label="Output File">
+            <div className="w-full flex items-center gap-2">
+              <div className="flex-1 min-w-0">
+                <Input
+                  value={outputPath}
+                  onChange={(e) => setOutputPath(e.target.value)}
+                  placeholder="Loading default path..."
+                  className="w-full h-9 bg-background text-foreground"
+                />
+              </div>
+              <Button variant="secondary" size="sm" onClick={handleBrowse} className="h-9 whitespace-nowrap">
+                Browse
+              </Button>
+            </div>
+          </SettingRow>
+        </div>
+      </div>
+
+      {/* Footer */}
+      <div className="p-4 border-t border-border flex justify-end gap-3 flex-shrink-0">
+        <Button variant="secondary" onClick={onClose}>Cancel</Button>
+        <Button onClick={() => onStartExport(settings, outputPath)} disabled={!outputPath}>Start Export</Button>
       </div>
     </>
   );
@@ -146,7 +169,7 @@ const ProgressView = ({ progress, onCancel }: { progress: number, onCancel: () =
       />
     </div>
     <p className="text-sm font-medium text-primary mt-3">{Math.round(progress)}%</p>
-    <Button variant="secondary" onClick={onCancel} className="btn-clean mt-6 w-full">
+    <Button variant="secondary" onClick={onCancel} className="mt-6 w-full">
       Cancel
     </Button>
   </div>
@@ -181,13 +204,19 @@ const ResultView = ({ result, onClose }: { result: NonNullable<ExportModalProps[
         }
       </p>
       <div className="flex w-full gap-3">
-        {result.success && (
-          <Button onClick={handleOpenFolder} variant="secondary" className="btn-clean flex-1">
-            <Folder className="w-4 h-4 mr-2" />
-            Open Folder
-          </Button>
+        {result.success ? (
+          <>
+            <Button onClick={onClose} variant="secondary" className="flex-1">
+              Close
+            </Button>
+            <Button onClick={handleOpenFolder} className="flex-1">
+              <Folder className="w-4 h-4 mr-2" />
+              Open Folder
+            </Button>
+          </>
+        ) : (
+          <Button onClick={onClose} className="flex-1">Close</Button>
         )}
-        <Button onClick={onClose} className="btn-clean flex-1">Close</Button>
       </div>
     </div>
   );
@@ -200,10 +229,10 @@ export function ExportModal({ isOpen, onClose, onStartExport, onCancelExport, is
 
   const renderContent = () => {
     if (result) {
-      return <ResultView result={result} onClose={onClose} />;
+      return <div className="p-8"><ResultView result={result} onClose={onClose} /></div>;
     }
     if (isExporting) {
-      return <ProgressView progress={progress} onCancel={onCancelExport} />;
+      return <div className="p-8"><ProgressView progress={progress} onCancel={onCancelExport} /></div>;
     }
     return <SettingsView onStartExport={onStartExport} onClose={onClose} />;
   };
@@ -214,7 +243,7 @@ export function ExportModal({ isOpen, onClose, onStartExport, onCancelExport, is
       onClick={onClose}
     >
       <div
-        className="card-clean p-8 w-full max-w-2xl m-4"
+        className="card-clean w-full max-w-2xl m-4 flex flex-col"
         onClick={(e) => e.stopPropagation()}
       >
         {renderContent()}

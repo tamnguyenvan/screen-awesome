@@ -175,7 +175,7 @@ export function RecorderPage() {
   const [selectedWebcamId, setSelectedWebcamId] = useState<string>('none');
   const [mics, setMics] = useState<MicDevice[]>([]);
   const [selectedMicId, setSelectedMicId] = useState<string>('none');
-  const [cursorSize, setCursorSize] = useState<number>(24);
+  const [cursorSize, setCursorSize] = useState<number>(2);
   const webcamPreviewRef = useRef<HTMLVideoElement>(null);
   const webcamStreamRef = useRef<MediaStream | null>(null);
 
@@ -184,9 +184,9 @@ export function RecorderPage() {
     window.electronAPI.getPlatform().then(platform => {
       setPlatform(platform);
       if (platform === 'linux') {
-        // Load persisted size, default to 48 (2x)
+        // Load persisted size, default to 2 (2x)
         const savedSize = localStorage.getItem('screenawesome_cursorSize');
-        const initialSize = savedSize ? parseInt(savedSize, 10) : 48;
+        const initialSize = savedSize ? parseInt(savedSize, 10) : 2;
 
         setCursorSize(initialSize);
         window.electronAPI.setCursorSize(initialSize); // Apply on startup
@@ -241,7 +241,7 @@ export function RecorderPage() {
 
   const fetchMics = async () => {
     try {
-      // Yêu cầu quyền truy cập audio
+      // Request audio access permission
       await navigator.mediaDevices.getUserMedia({ audio: true, video: false });
     } catch (err) { console.warn("Could not get microphone permission:", err); }
 
@@ -397,11 +397,9 @@ export function RecorderPage() {
   }
 
   const handleCursorSizeChange = (newSize: number) => {
-    if (platform === 'linux') {
-      setCursorSize(newSize);
-      window.electronAPI.setCursorSize(newSize);
-      localStorage.setItem('screenawesome_cursorSize', newSize.toString());
-    }
+    setCursorSize(newSize);
+    window.electronAPI.setCursorSize(newSize);
+    localStorage.setItem('screenawesome_cursorSize', newSize.toString());
   };
 
   if (recordingState === 'recording') {
@@ -435,21 +433,7 @@ export function RecorderPage() {
             "relative flex items-stretch gap-4 p-2 rounded-2xl",
             "bg-transparent text-card-foreground",
           )}
-          style={{ WebkitAppRegion: 'drag' }}
         >
-          {/* Close Button */}
-          <button
-            onClick={() => window.electronAPI.closeWindow()}
-            style={{ WebkitAppRegion: 'no-drag' }}
-            className={cn(
-              "absolute -top-1 -right-1 z-20 flex items-center justify-center w-6 h-6 rounded-full",
-              "bg-card border border-border hover:bg-destructive text-muted-foreground hover:text-white shadow-lg"
-            )}
-            aria-label="Close Recorder"
-          >
-            <X className="w-4 h-4" />
-          </button>
-
           <div
             className={cn(
               "flex items-stretch gap-4 p-2 rounded-2xl",
@@ -458,6 +442,21 @@ export function RecorderPage() {
             )}
             style={{ WebkitAppRegion: 'drag' }}
           >
+
+            {/* Close Button */}
+            <button
+              onClick={() => window.electronAPI.closeWindow()}
+              style={{ WebkitAppRegion: 'no-drag' }}
+              className={cn(
+                "absolute -top-3 -left-3 z-20 flex items-center justify-center w-6 h-6 rounded-full",
+                "bg-card border border-border hover:bg-destructive text-muted-foreground hover:text-white shadow-lg"
+              )}
+              aria-label="Close Recorder"
+            >
+              <X className="w-4 h-4" />
+            </button>
+
+
             {/* Drag Handle */}
             <div className="flex items-center justify-center pl-2 pr-1 cursor-grab" style={{ WebkitAppRegion: 'drag' }}>
               <GripVertical className="w-5 h-5 text-muted-foreground/50" />
@@ -573,26 +572,24 @@ export function RecorderPage() {
                 </Select>
               </div>
 
-              {platform === 'linux' && (
-                <>
-                  <div className="flex items-center gap-2" style={{ WebkitAppRegion: 'no-drag' }}>
-                    <MousePointer size={18} className="text-muted-foreground" />
-                    <Select
-                      value={String(cursorSize)}
-                      onValueChange={(value) => handleCursorSizeChange(Number(value))}
-                    >
-                      <SelectTrigger className="w-12 h-10 border-border/50 bg-background/60">
-                        <SelectValue />
-                      </SelectTrigger>
-                      <SelectContent>
-                        <SelectItem value="48">2x</SelectItem>
-                        <SelectItem value="32">1.5x</SelectItem>
-                        <SelectItem value="24">1x</SelectItem>
-                      </SelectContent>
-                    </Select>
-                  </div>
-                </>
-              )}
+              <>
+                <div className="flex items-center gap-2" style={{ WebkitAppRegion: 'no-drag' }}>
+                  <MousePointer size={18} className="text-muted-foreground" />
+                  <Select
+                    value={String(cursorSize)}
+                    onValueChange={(value) => handleCursorSizeChange(Number(value))}
+                  >
+                    <SelectTrigger className="w-12 h-10 border-border/50 bg-background/60">
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="2">2x</SelectItem>
+                      <SelectItem value="1.5">1.5x</SelectItem>
+                      <SelectItem value="1">1x</SelectItem>
+                    </SelectContent>
+                  </Select>
+                </div>
+              </>
 
             </div>
           </div>

@@ -6,6 +6,7 @@ import { Search } from 'lucide-react';
 interface ZoomRegionBlockProps {
   region: ZoomRegion;
   isSelected: boolean;
+  isBeingDragged: boolean;
   onMouseDown: (e: React.MouseEvent<HTMLDivElement>, region: TimelineRegion, type: 'move' | 'resize-left' | 'resize-right') => void;
   setRef: (el: HTMLDivElement | null) => void;
 }
@@ -13,6 +14,7 @@ interface ZoomRegionBlockProps {
 export const ZoomRegionBlock = memo(({
   region,
   isSelected,
+  isBeingDragged,
   onMouseDown,
   setRef
 }: ZoomRegionBlockProps) => {
@@ -26,10 +28,10 @@ export const ZoomRegionBlock = memo(({
       ref={setRef}
       data-region-id={region.id}
       className={cn(
-        'w-full h-full rounded-lg relative transition-all duration-200',
-        'cursor-grab border-2',
+        'w-full h-full rounded-lg relative cursor-grab border-2',
+        !isBeingDragged && 'transition-all duration-200',
         isSelected
-          ? 'bg-accent border-primary transform -translate-y-2'
+          ? 'bg-accent border-primary -translate-y-2 shadow-lg shadow-primary/20'
           : 'bg-secondary border-border hover:border-border/80'
       )}
       style={{ willChange: 'transform, width' }}

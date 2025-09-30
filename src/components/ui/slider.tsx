@@ -12,7 +12,7 @@ export interface SliderProps {
   className?: string;
 }
 
-const Slider: React.FC<SliderProps> = ({
+export const Slider: React.FC<SliderProps> = ({
   min = 0,
   max = 100,
   step = 1,
@@ -83,7 +83,7 @@ const Slider: React.FC<SliderProps> = ({
       <div className="relative flex items-center h-5">
         <div
           ref={sliderRef}
-          className={`relative w-full h-1 bg-muted-foreground/30 rounded-full cursor-pointer group ${
+          className={`relative w-full h-2 bg-muted rounded-full cursor-pointer group ${
             disabled ? 'opacity-50 cursor-not-allowed' : ''
           }`}
           onMouseDown={handleMouseDown}
@@ -95,7 +95,7 @@ const Slider: React.FC<SliderProps> = ({
           />
           {/* Handle */}
           <div
-            className={`absolute top-1/2 w-4 h-4 bg-card border border-border rounded-full transform -translate-y-1/2 -translate-x-1/2 transition-transform duration-100 ease-out shadow
+            className={`absolute top-1/2 w-5 h-5 bg-card rounded-full transform -translate-y-1/2 -translate-x-1/2 transition-transform duration-100 ease-out shadow-md
               ${isDragging ? 'scale-110 ring-4 ring-primary/20' : 'group-hover:ring-4 group-hover:ring-primary/20'}
               ${disabled ? 'cursor-not-allowed' : 'cursor-pointer'}
             `}
@@ -106,5 +106,3 @@ const Slider: React.FC<SliderProps> = ({
     </div>
   );
 };
-
-export default Slider;

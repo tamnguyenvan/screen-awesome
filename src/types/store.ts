@@ -34,8 +34,8 @@ export interface Preset {
 
 export interface AnchorPoint {
   time: number;
-  x: number; // Tọa độ chuẩn hóa [-0.5, 0.5]
-  y: number; // Tọa độ chuẩn hóa [-0.5, 0.5]
+  x: number; // Normalized coordinates [-0.5, 0.5]
+  y: number; // Normalized coordinates [-0.5, 0.5]
 }
 
 export interface ZoomRegion {
@@ -106,6 +106,7 @@ export interface EditorState {
   presets: Record<string, Preset>;
   activePresetId: string | null;
   presetSaveStatus: 'idle' | 'saving' | 'saved';
+  isPreviewFullScreen: boolean;
 
   // webcam
   webcamVideoPath: string | null;

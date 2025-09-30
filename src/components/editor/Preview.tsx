@@ -1,115 +1,161 @@
-import React, { useEffect, useMemo, useRef, memo } from 'react';
+import React, { useEffect, useRef, memo, useState, useCallback } from 'react';
 import { useEditorStore, usePlaybackState } from '../../store/editorStore';
-import { calculateZoomTransform } from '../../lib/transform';
-import { Film } from 'lucide-react';
+import { Film, Play, Pause, Fullscreen, Shrink } from 'lucide-react';
 import { useShallow } from 'zustand/react/shallow';
-import { cn } from '../../lib/utils';
-
-const generateBackgroundStyle = (backgroundState: ReturnType<typeof useEditorStore.getState>['frameStyles']['background']) => {
-  switch (backgroundState.type) {
-    case 'color':
-      return { background: backgroundState.color || '#ffffff' };
-    case 'gradient': {
-      const start = backgroundState.gradientStart || '#000000';
-      const end = backgroundState.gradientEnd || '#ffffff';
-      const direction = backgroundState.gradientDirection || 'to right';
-      const gradient = direction.includes('circle')
-        ? `radial-gradient(${direction}, ${start}, ${end})`
-        : `linear-gradient(${direction}, ${start}, ${end})`;
-      return { background: gradient };
-    }
-    case 'image':
-    case 'wallpaper':
-      return {
-        backgroundImage: `url(${backgroundState.imageUrl})`,
-        backgroundSize: 'cover',
-        backgroundPosition: 'center'
-      };
-    default:
-      return { background: 'oklch(0.2077 0.0398 265.7549)' };
-  }
-};
+import { formatTime } from '../../lib/utils';
+import { Slider } from '../ui/slider';
+import { Button } from '../ui/button';
+import { drawScene } from '../../lib/renderer';
 
 export const Preview = memo(({ videoRef }: { videoRef: React.RefObject<HTMLVideoElement> }) => {
-  const { frameStyles, videoUrl, aspectRatio, videoDimensions, cutRegions,
-    webcamVideoUrl, webcamPosition, isWebcamVisible, webcamStyles
+  const {
+    videoUrl, aspectRatio, cutRegions,
+    webcamVideoUrl, duration, currentTime, togglePlay,
+    isPreviewFullScreen, togglePreviewFullScreen, frameStyles,
+    isWebcamVisible, webcamPosition, webcamStyles, videoDimensions
   } = useEditorStore(
     useShallow(state => ({
-      frameStyles: state.frameStyles,
       videoUrl: state.videoUrl,
       aspectRatio: state.aspectRatio,
-      videoDimensions: state.videoDimensions,
       cutRegions: state.cutRegions,
       webcamVideoUrl: state.webcamVideoUrl,
-      webcamPosition: state.webcamPosition,
+      duration: state.duration,
+      currentTime: state.currentTime,
+      togglePlay: state.togglePlay,
+      isPreviewFullScreen: state.isPreviewFullScreen,
+      togglePreviewFullScreen: state.togglePreviewFullScreen,
+      frameStyles: state.frameStyles,
       isWebcamVisible: state.isWebcamVisible,
+      webcamPosition: state.webcamPosition,
       webcamStyles: state.webcamStyles,
+      videoDimensions: state.videoDimensions,
     })));
 
-  const { setPlaying, setCurrentTime, setDuration, setVideoDimensions } = useEditorStore(
-    useShallow(state => ({
-      setPlaying: state.setPlaying,
-      setCurrentTime: state.setCurrentTime,
-      setDuration: state.setDuration,
-      setVideoDimensions: state.setVideoDimensions,
-    })));
+  const { setPlaying, setCurrentTime, setDuration, setVideoDimensions } = useEditorStore.getState();
   const { isPlaying, isCurrentlyCut } = usePlaybackState();
 
-  const frameContainerRef = useRef<HTMLDivElement>(null);
+  const [previewContainerSize, setPreviewContainerSize] = useState({ width: 0, height: 0 });
+  const [bgImage, setBgImage] = useState<HTMLImageElement | null>(null); // [OPTIMIZATION] State for pre-loaded image
+  const previewContainerRef = useRef<HTMLDivElement>(null);
+  const canvasRef = useRef<HTMLCanvasElement>(null);
   const webcamVideoRef = useRef<HTMLVideoElement>(null);
+  const animationFrameId = useRef<number>();
 
+  // Calculate canvas dimensions to fit container while maintaining aspect ratio
+  const canvasDimensions = (() => {
+    if (previewContainerSize.width === 0 || previewContainerSize.height === 0) {
+      return { width: 0, height: 0 };
+    }
+    const [ratioW, ratioH] = aspectRatio.split(':').map(Number);
+    const containerRatio = previewContainerSize.width / previewContainerSize.height;
+    const targetRatio = ratioW / ratioH;
+
+    if (containerRatio > targetRatio) {
+      const height = previewContainerSize.height;
+      const width = height * targetRatio;
+      return { width, height };
+    } else {
+      const width = previewContainerSize.width;
+      const height = width / targetRatio;
+      return { width, height };
+    }
+  })();
+
+  // [OPTIMIZATION] Effect to pre-load background images
+  useEffect(() => {
+    const background = frameStyles.background;
+    if ((background.type === 'image' || background.type === 'wallpaper') && background.imageUrl) {
+      const img = new Image();
+      img.onload = () => {
+        setBgImage(img);
+      };
+      const finalUrl = background.imageUrl.startsWith('blob:')
+        ? background.imageUrl
+        : `media://${background.imageUrl}`;
+      img.src = finalUrl;
+    } else {
+      setBgImage(null); // Clear image for color/gradient backgrounds
+    }
+  }, [frameStyles.background]);
+
+  // Observe container size to resize canvas correctly
+  useEffect(() => {
+    const observer = new ResizeObserver(entries => {
+      if (entries[0]) {
+        const { width, height } = entries[0].contentRect;
+        setPreviewContainerSize({ width, height });
+      }
+    });
+    const container = previewContainerRef.current;
+    if (container) observer.observe(container);
+    return () => { if (container) observer.disconnect() };
+  }, []);
+
+  // Main render loop
+  const renderCanvas = useCallback(async () => {
+    const canvas = canvasRef.current;
+    const video = videoRef.current;
+    const webcamVideo = webcamVideoRef.current;
+    const state = useEditorStore.getState();
+    const ctx = canvas?.getContext('2d');
+
+    if (!canvas || !video || !ctx || !state.videoDimensions.width) {
+      if (state.isPlaying) animationFrameId.current = requestAnimationFrame(renderCanvas);
+      return;
+    }
+
+    await drawScene(
+      ctx,
+      state,
+      video,
+      webcamVideo,
+      video.currentTime,
+      canvas.width,
+      canvas.height,
+      bgImage
+    );
+
+    if (state.isPlaying) {
+      animationFrameId.current = requestAnimationFrame(renderCanvas);
+    }
+  }, [videoRef, bgImage]);
+
+  // Manage animation frame loop
+  useEffect(() => {
+    // If playing, start the animation loop
+    if (isPlaying) {
+      animationFrameId.current = requestAnimationFrame(renderCanvas);
+    } else {
+      // If paused, just render once.
+      // This effect will be re-triggered by dependencies (currentTime, canvasDimensions, renderCanvas)
+      // and redraw when needed.
+      renderCanvas();
+    }
+
+    // Cleanup function to stop the animation loop when component unmounts or effect runs again
+    return () => {
+      if (animationFrameId.current) {
+        cancelAnimationFrame(animationFrameId.current);
+      }
+    };
+  }, [isPlaying, currentTime, renderCanvas, canvasDimensions, frameStyles,
+    isWebcamVisible, webcamPosition, webcamStyles, videoDimensions]);
+
+  // Control video playback
   useEffect(() => {
     const video = videoRef.current;
     if (!video) return;
     const webcamVideo = webcamVideoRef.current;
     if (isPlaying) {
-      video.play();
-      webcamVideo?.play();
+      video.play().catch(console.error);
+      webcamVideo?.play().catch(console.error);
     } else {
       video.pause();
       webcamVideo?.pause();
     }
   }, [isPlaying, videoRef]);
 
-  useEffect(() => {
-    let animationFrameId: number;
-    const updateTransform = () => {
-      if (!frameContainerRef.current || !videoRef.current) return;
-      const liveCurrentTime = videoRef.current.currentTime;
-      
-      // Use the new transform logic
-      const { scale, translateX, translateY, transformOrigin } = calculateZoomTransform(liveCurrentTime);
-
-      // Apply shadow using the new shadowColor and shadow (for blur/offset) properties
-      const shadowBlur = frameStyles.shadow * 1.5; // Example: shadow value maps to blur
-      const shadowOffsetY = frameStyles.shadow; // Example: shadow value maps to offset Y
-      
-      const style = frameContainerRef.current.style;
-      style.filter = `drop-shadow(0px ${shadowOffsetY}px ${shadowBlur}px ${frameStyles.shadowColor})`; // Use shadowColor here
-      
-      // Apply the new transform properties
-      style.transformOrigin = transformOrigin;
-      style.transform = `scale(${scale}) translate(${translateX}%, ${translateY}%)`;
-    };
-    updateTransform();
-    const animate = () => {
-      updateTransform();
-      animationFrameId = requestAnimationFrame(animate);
-    };
-    if (isPlaying) {
-      animate();
-    } else {
-      updateTransform();
-    }
-    return () => cancelAnimationFrame(animationFrameId);
-  }, [isPlaying, videoRef, frameStyles.shadow, frameStyles.shadowColor]); // Added frameStyles.shadowColor to dependencies
-
-  useEffect(() => {
-    const video = videoRef.current;
-    if (!video) return;
-    isPlaying ? video.play() : video.pause();
-  }, [isPlaying, videoRef]);
-
+  // Handle seeking when in a cut region
   useEffect(() => {
     const video = videoRef.current;
     if (!video) return;
@@ -125,23 +171,6 @@ export const Preview = memo(({ videoRef }: { videoRef: React.RefObject<HTMLVideo
     }
   }, [isCurrentlyCut, isPlaying, videoRef, setCurrentTime]);
 
-  const backgroundStyle = useMemo(() => generateBackgroundStyle(frameStyles.background), [frameStyles.background]);
-  const cssAspectRatio = useMemo(() => aspectRatio.replace(':', ' / '), [aspectRatio]);
-
-  const { videoDisplayWidth, videoDisplayHeight } = useMemo(() => {
-    if (!videoDimensions.width || !videoDimensions.height) {
-      return { videoDisplayWidth: '100%', videoDisplayHeight: '100%' };
-    }
-    const [vpWidth, vpHeight] = aspectRatio.split(':').map(Number);
-    const viewportAspectRatio = vpWidth / vpHeight;
-    const nativeVideoAspectRatio = videoDimensions.width / videoDimensions.height;
-    if (nativeVideoAspectRatio > viewportAspectRatio) {
-      return { videoDisplayWidth: '100%', videoDisplayHeight: 'auto' };
-    } else {
-      return { videoDisplayWidth: 'auto', videoDisplayHeight: '100%' };
-    }
-  }, [aspectRatio, videoDimensions]);
-
   const handleTimeUpdate = () => {
     if (!videoRef.current) return;
     const endTrimRegion = Object.values(cutRegions).find(r => r.trimType === 'end');
@@ -156,123 +185,57 @@ export const Preview = memo(({ videoRef }: { videoRef: React.RefObject<HTMLVideo
   };
 
   const handleLoadedMetadata = () => {
-    if (videoRef.current) {
-      setDuration(videoRef.current.duration);
-      setVideoDimensions({ width: videoRef.current.videoWidth, height: videoRef.current.videoHeight });
+    const video = videoRef.current;
+    if (video) {
+      setDuration(video.duration);
+      setVideoDimensions({ width: video.videoWidth, height: video.videoHeight });
+
+      const onInitialSeekComplete = () => {
+        renderCanvas();
+        video.removeEventListener('seeked', onInitialSeekComplete);
+      };
+
+      video.addEventListener('seeked', onInitialSeekComplete);
+
+      video.currentTime = 0;
     }
   };
 
-  // Enhanced glassy frame styles
-  const glassyFrameStyle = useMemo(() => ({
-    padding: `${frameStyles.borderWidth}px`,
-    borderRadius: `${frameStyles.borderRadius}px`,
-    background: `
-      linear-gradient(135deg, 
-        rgba(255, 255, 255, 0.25) 0%, 
-        rgba(255, 255, 255, 0.15) 50%, 
-        rgba(255, 255, 255, 0.05) 100%
-      ),
-      radial-gradient(ellipse at top left, 
-        rgba(255, 255, 255, 0.2) 0%, 
-        transparent 50%
-      )
-    `,
-    backdropFilter: 'blur(20px) saturate(180%)',
-    WebkitBackdropFilter: 'blur(20px) saturate(180%)',
-    border: `1px solid rgba(255, 255, 255, 0.3)`,
-    boxShadow: `
-      inset 0 1px 0 0 rgba(255, 255, 255, 0.4),
-      inset 0 -1px 0 0 rgba(255, 255, 255, 0.1),
-      0 0 0 1px rgba(0, 0, 0, 0.1),
-      0 2px 10px -2px rgba(0, 0, 0, 0.2),
-      0 8px 25px -5px rgba(0, 0, 0, 0.1)
-    `,
-    position: 'relative' as const,
-    overflow: 'hidden' as const,
-  }), [frameStyles.borderWidth, frameStyles.borderRadius]);
-
-  const videoStyle = useMemo(() => ({
-    borderRadius: `${Math.max(0, frameStyles.borderRadius - frameStyles.borderWidth)}px`,
-    position: 'relative' as const,
-    zIndex: 1,
-  }), [frameStyles.borderRadius, frameStyles.borderWidth]);
-
-  const webcamDynamicStyle = useMemo(() => {
-    const shadowBlur = webcamStyles.shadow * 1.5; // Use webcamStyles.shadow for blur
-    const shadowOffsetY = webcamStyles.shadow; // Use webcamStyles.shadow for offset Y
-    return {
-      height: `${webcamStyles.size}%`,
-      filter: `drop-shadow(0px ${shadowOffsetY}px ${shadowBlur}px ${webcamStyles.shadowColor})`, // Use webcamStyles.shadowColor here
-    };
-  }, [webcamStyles]);
-
-  const webcamWrapperClasses = cn(
-    'absolute z-20 aspect-square overflow-hidden rounded-[35%]',
-    'transition-all duration-300 ease-in-out',
-    {
-      'top-4 left-4': webcamPosition.pos === 'top-left',
-      'top-4 right-4': webcamPosition.pos === 'top-right',
-      'bottom-4 left-4': webcamPosition.pos === 'bottom-left',
-      'bottom-4 right-4': webcamPosition.pos === 'bottom-right',
-      'opacity-0 scale-95': !isWebcamVisible,
-      'opacity-100 scale-100': isWebcamVisible,
+  const handleWebcamLoadedMetadata = useCallback(() => {
+    const mainVideo = videoRef.current;
+    const webcamVideo = webcamVideoRef.current;
+    if (mainVideo && webcamVideo) {
+      // Sync the initial state of the webcam video to the main video
+      webcamVideo.currentTime = mainVideo.currentTime;
+      if (mainVideo.paused) {
+        webcamVideo.pause();
+      } else {
+        webcamVideo.play().catch(console.error);
+      }
     }
-  );
+  }, [videoRef]);
+
+  const handleScrub = (value: number) => {
+    if (videoRef.current) {
+      videoRef.current.currentTime = value;
+      setCurrentTime(value);
+    }
+  };
 
   return (
-    <div
-      className="transition-all duration-300 ease-out flex items-center justify-center relative overflow-hidden"
-      style={{ ...backgroundStyle, aspectRatio: cssAspectRatio, maxWidth: '100%', maxHeight: '100%' }}
-    >
-      <div className="w-full h-full flex items-center justify-center relative" style={{ padding: `${frameStyles.padding}%` }}>
+    <div className="w-full h-full flex flex-col items-center justify-center">
+      <div
+        id="preview-container"
+        ref={previewContainerRef}
+        className="transition-all duration-300 ease-out flex items-center justify-center w-full h-full"
+      >
         {videoUrl ? (
-          <>
-            {/* Container receives transform (zoom/pan) and shadow. */}
-            <div
-              ref={frameContainerRef}
-              className="relative"
-              style={{
-                width: videoDisplayWidth,
-                height: videoDisplayHeight,
-                aspectRatio: videoDimensions.width / videoDimensions.height,
-                maxWidth: '100%',
-                maxHeight: '100%',
-                transition: 'transform 50ms linear',
-              }}
-            >
-              {/* Enhanced Glassy Frame with premium glass effect */}
-              <div
-                className="w-full h-full transition-all duration-300 ease-out"
-                style={glassyFrameStyle}
-              >
-                {/* Video Element with enhanced styling */}
-                <video
-                  ref={videoRef}
-                  src={videoUrl}
-                  className="w-full h-full object-cover block relative z-10 transition-all duration-200"
-                  style={videoStyle}
-                  onTimeUpdate={handleTimeUpdate}
-                  onLoadedMetadata={handleLoadedMetadata}
-                  onPlay={() => setPlaying(true)}
-                  onPause={() => setPlaying(false)}
-                  onEnded={() => setPlaying(false)}
-                />
-              </div>
-            </div>
-
-            {/* Webcam is now outside of the scaling container */}
-            {webcamVideoUrl && (
-              <div className={webcamWrapperClasses} style={webcamDynamicStyle}>
-                <video
-                  ref={webcamVideoRef}
-                  src={webcamVideoUrl}
-                  muted
-                  playsInline
-                  className="w-full h-full object-cover"
-                />
-              </div>
-            )}
-          </>
+          <canvas
+            ref={canvasRef}
+            width={canvasDimensions.width}
+            height={canvasDimensions.height}
+            style={{ maxWidth: '100%', maxHeight: '100%' }}
+          />
         ) : (
           <div className="w-full h-full bg-gradient-to-br from-slate-50/10 to-slate-100/5 border-2 border-dashed border-white/20 rounded-xl flex flex-col items-center justify-center text-white/70 gap-4 backdrop-blur-sm">
             <div className="w-16 h-16 rounded-full bg-gradient-to-br from-white/20 to-white/5 flex items-center justify-center backdrop-blur-md border border-white/20">
@@ -285,6 +248,52 @@ export const Preview = memo(({ videoRef }: { videoRef: React.RefObject<HTMLVideo
           </div>
         )}
       </div>
+
+      <video
+        ref={videoRef}
+        src={videoUrl || undefined}
+        onTimeUpdate={handleTimeUpdate}
+        onLoadedMetadata={handleLoadedMetadata}
+        onPlay={() => setPlaying(true)}
+        onPause={() => setPlaying(false)}
+        onEnded={() => setPlaying(false)}
+        style={{ display: 'none' }}
+      />
+      {webcamVideoUrl && (
+        <video
+          ref={webcamVideoRef}
+          src={webcamVideoUrl}
+          muted
+          playsInline
+          onLoadedMetadata={handleWebcamLoadedMetadata}
+          style={{ display: 'none' }}
+        />
+      )}
+
+      {videoUrl && (
+        <div
+          className="w-full"
+          style={{ width: canvasDimensions.width > 0 ? canvasDimensions.width : 'auto', maxWidth: '100%' }}
+        >
+          <div className="bg-card/80 backdrop-blur-xl border border-border/30 rounded-bl-xl rounded-br-xl px-3 py-1.5 flex items-center gap-3 shadow-xs">
+            <Button variant="ghost" size="icon" onClick={togglePlay} className="flex-shrink-0 text-foreground/70 hover:text-foreground h-8 w-8">
+              {isPlaying ? <Pause className="w-4 h-4" /> : <Play className="w-4 h-4" />}
+            </Button>
+            <div className="flex items-baseline gap-1.5 text-xs font-mono tabular-nums text-muted-foreground">
+              <span>{formatTime(currentTime, true)}</span>
+              <span>/</span>
+              <span>{formatTime(duration, true)}</span>
+            </div>
+            <Slider
+              min={0} max={duration} step={0.01} value={currentTime}
+              onChange={handleScrub} disabled={duration === 0} className="flex-1"
+            />
+            <Button variant="ghost" size="icon" onClick={togglePreviewFullScreen} className="flex-shrink-0 text-foreground/70 hover:text-foreground h-8 w-8">
+              {isPreviewFullScreen ? <Shrink className="w-4 h-4" /> : <Fullscreen className="w-4 h-4" />}
+            </Button>
+          </div>
+        </div>
+      )}
     </div>
   );
 });

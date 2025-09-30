@@ -10,16 +10,19 @@
     "clean": "rimraf dist dist-electron build",
     "build": "npm run clean && tsc && vite build && electron-builder -l --publish always",
     "lint": "eslint . --ext ts,tsx --report-unused-disable-directives --max-warnings 0",
-    "preview": "vite preview"
+    "preview": "vite preview",
+    "postinstall": "electron-rebuild"
   },
   "dependencies": {
     "@radix-ui/react-select": "^2.2.6",
+    "@radix-ui/react-switch": "^1.2.6",
     "@radix-ui/react-tooltip": "^1.2.8",
     "@tailwindcss/vite": "^4.1.13",
     "class-variance-authority": "^0.7.1",
     "clsx": "^2.1.1",
     "electron-log": "^5.4.3",
     "electron-store": "^10.1.0",
+    "ffi-rs": "^1.3.0",
     "immer": "^10.1.3",
     "lucide-react": "^0.544.0",
     "react": "^18.2.0",
@@ -27,9 +30,10 @@
     "tailwind-merge": "^3.3.1",
     "tailwindcss": "^4.1.13",
     "zundo": "^2.0.0-beta.24",
-    "zustand": "^5.0.8"
+    "zustand": "^4.3.0"
   },
   "devDependencies": {
+    "@electron/rebuild": "^3.2.9",
     "@types/react": "^18.2.64",
     "@types/react-dom": "^18.2.21",
     "@typescript-eslint/eslint-plugin": "^7.1.1",
@@ -44,6 +48,11 @@
     "vite": "^5.1.6",
     "vite-plugin-electron": "^0.28.6",
     "vite-plugin-node-polyfills": "^0.24.0"
+  },
+  "optionalDependencies": {
+    "global-mouse-events": "github:tamnguyenvan/global-mouse-events",
+    "winreg": "^1.2.4",
+    "x11": "https://github.com/tamnguyenvan/node-x11"
   },
   "main": "dist-electron/main.js",
   "build": {
@@ -79,7 +88,7 @@
       ],
       "icon": "public/screenawesome-appicon.png",
       "category": "Utility",
-        "artifactName": "ScreenAwesome-${version}-linux-x64.${ext}"
+      "artifactName": "ScreenAwesome-${version}-linux-x64.${ext}"
     },
     "nsis": {
       "oneClick": false,

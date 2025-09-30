@@ -1,6 +1,6 @@
 import React, { useRef, useState, useEffect, useCallback } from 'react';
 import { useEditorStore } from '../../../store/editorStore';
-import { Loader2 } from 'lucide-react'; // Import a loading icon
+import { Loader2 } from 'lucide-react';
 
 interface FocusPointPickerProps {
   regionId: string;

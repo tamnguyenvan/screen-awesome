@@ -4,7 +4,7 @@ import { TimelineRegion, ZoomRegion } from '../../types/store';
 import { cn } from '../../lib/utils';
 import { Button } from '../ui/button';
 import { Camera, Scissors, MousePointer, Video, Trash2 } from 'lucide-react';
-import Slider from '../ui/slider';
+import { Slider } from '../ui/slider';
 import { FocusPointPicker } from './sidepanel/FocusPointPicker';
 
 interface RegionSettingsPanelProps {
