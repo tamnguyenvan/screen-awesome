@@ -67,3 +67,32 @@ export const hexToRgb = (hex: string): { r: number; g: number; b: number } | nul
     : null;
 };
 
+/**
+ * Calculates ruler intervals based on zoom level (pixelsPerSecond).
+ * This ensures the ruler is always readable and dynamically adjusts subdivisions.
+ * @param pixelsPerSecond The current zoom level represented as pixels per second.
+ * @returns An object with major and minor interval times in seconds.
+ */
+export const calculateRulerInterval = (pixelsPerSecond: number): { major: number; minor: number } => {
+  // Define "nice" time intervals for the ruler (in seconds)
+  const niceIntervals = [1, 2, 5, 10, 15, 30, 60, 120, 300, 600];
+  const minMajorPixelSpacing = 90; // Target minimum pixel distance between major ticks
+
+  // 1. Find the best major interval
+  const major = niceIntervals.find(interval => interval * pixelsPerSecond > minMajorPixelSpacing) || niceIntervals[niceIntervals.length - 1];
+
+  // 2. Find the best number of subdivisions for minor ticks
+  const minMinorPixelSpacing = 10; // Ticks closer than this are hard to see
+  const possibleSubdivisions = [10, 5, 4, 2]; // In order of preference (most to least dense)
+
+  for (const sub of possibleSubdivisions) {
+    const minor = major / sub;
+    if (minor * pixelsPerSecond > minMinorPixelSpacing) {
+      // This subdivision is readable, so we use it and exit
+      return { major, minor };
+    }
+  }
+
+  // Fallback if no subdivision is readable (very zoomed out)
+  return { major, minor: major / 2 };
+};

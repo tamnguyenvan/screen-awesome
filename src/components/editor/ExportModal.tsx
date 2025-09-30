@@ -23,8 +23,12 @@ interface ExportModalProps {
 }
 
 const generateFilename = (format: 'mp4' | 'gif') => {
-  const filename = `ScreenAwesome-Export.${format}`;
-  return filename;
+  const now = new Date();
+  const timestamp = now.toISOString()
+    .replace(/[:.]/g, '-')  // Replace colons and dots with dashes
+    .replace('T', '-')      // Replace T with dash
+    .slice(0, 19);          // Keep only YYYY-MM-DD-HH-MM-SS
+  return `ScreenAwesome-${timestamp}.${format}`;
 };
 
 // --- Sub-components for different views ---

@@ -6,12 +6,13 @@ import { Timeline } from '../components/editor/Timeline';
 import { PreviewControls } from '../components/editor/PreviewControls';
 import { UpdateNotification } from '../components/editor/UpdateNotification';
 import { ExportButton } from '../components/editor/ExportButton';
-import { ExportModal, ExportSettings } from '../components/editor/ExportModal';
+import { ExportModal } from '../components/editor/ExportModal';
 import { WindowControls } from '../components/editor/WindowControls';
 import { PresetModal } from '../components/editor/PresetModal';
 import { Layers3, Moon, Sun, Loader2, Check } from 'lucide-react';
 import { cn } from '../lib/utils';
 import { useKeyboardShortcuts } from '../hooks/useKeyboardShortcuts';
+import { useExportProcess } from '../hooks/useExportProcess';
 import { Button } from '../components/ui/button';
 import { useShallow } from 'zustand/react/shallow';
 
@@ -26,11 +27,18 @@ export function EditorPage() {
     }))
   );
   const { undo, redo } = useEditorStore.temporal.getState();
+  const {
+    isModalOpen: isExportModalOpen,
+    isExporting,
+    progress: exportProgress,
+    result: exportResult,
+    openExportModal,
+    closeExportModal,
+    startExport,
+    cancelExport,
+  } = useExportProcess();
+
   const videoRef = useRef<HTMLVideoElement>(null);
-  const [isExportModalOpen, setExportModalOpen] = useState(false);
-  const [isExporting, setIsExporting] = useState(false);
-  const [exportProgress, setExportProgress] = useState(0);
-  const [exportResult, setExportResult] = useState<{ success: boolean; outputPath?: string; error?: string } | null>(null);
   const [isPresetModalOpen, setPresetModalOpen] = useState(false);
   const [updateInfo, setUpdateInfo] = useState<{ version: string; url: string } | null>(null);
   const [platform, setPlatform] = useState<NodeJS.Platform | null>(null);
@@ -49,12 +57,11 @@ export function EditorPage() {
       ' ': (e) => { e.preventDefault(); togglePlay(); },
       'ctrl+z': (e) => { e.preventDefault(); undo(); },
       'ctrl+y': (e) => { e.preventDefault(); redo(); },
-      'ctrl+shift+z': (e) => { e.preventDefault(); redo(); }, // Common alternative for redo
+      'ctrl+shift+z': (e) => { e.preventDefault(); redo(); },
     },
     [handleDeleteSelectedRegion, undo, redo, togglePlay]
   );
-  
-  // NEW: Add effect to handle Escape key for exiting fullscreen
+
   useEffect(() => {
     const handleKeyDown = (event: KeyboardEvent) => {
       if (event.key === 'Escape' && isPreviewFullScreen) {
@@ -68,9 +75,7 @@ export function EditorPage() {
   }, [isPreviewFullScreen, togglePreviewFullScreen]);
 
   useEffect(() => {
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    const cleanup = window.electronAPI.onUpdateAvailable((info: any) => {
-      console.log('Update available:', info);
+    const cleanup = window.electronAPI.onUpdateAvailable((info: { version: string; url: string }) => {
       setUpdateInfo(info);
     });
     return () => cleanup();
@@ -78,79 +83,14 @@ export function EditorPage() {
 
   useEffect(() => {
     window.electronAPI.getPlatform().then(setPlatform);
-
     initializeSettings();
-
     const cleanup = window.electronAPI.onProjectOpen(async (payload) => {
-      console.log('Received project to open:', payload);
       await initializePresets();
       await loadProject(payload);
-      // This sets the loaded state as the new "initial state".
       useEditorStore.temporal.getState().clear();
     });
-
-    const cleanProgressListener = window.electronAPI.onExportProgress(({ progress }) => {
-      setExportProgress(progress);
-    });
-
-    const cleanCompleteListener = window.electronAPI.onExportComplete(({ success, outputPath, error }) => {
-      setIsExporting(false);
-      setExportProgress(100);
-      setExportResult({ success, outputPath, error });
-    });
-
-    return () => {
-      cleanup();
-      cleanProgressListener();
-      cleanCompleteListener();
-    };
+    return () => cleanup();
   }, [loadProject, initializePresets, initializeSettings]);
-
-  const handleStartExport = useCallback(async (settings: ExportSettings, outputPath: string) => {
-    const fullState = useEditorStore.getState();
-
-    const plainState = {
-      videoPath: fullState.videoPath,
-      metadata: fullState.metadata,
-      videoDimensions: fullState.videoDimensions,
-      duration: fullState.duration,
-      frameStyles: fullState.frameStyles,
-      aspectRatio: fullState.aspectRatio,
-      zoomRegions: fullState.zoomRegions,
-      cutRegions: fullState.cutRegions,
-      webcamVideoPath: fullState.webcamVideoPath,
-      webcamPosition: fullState.webcamPosition,
-      webcamStyles: fullState.webcamStyles,
-      isWebcamVisible: fullState.isWebcamVisible,
-    };
-
-    setExportResult(null);
-    setIsExporting(true);
-    setExportProgress(0);
-
-    try {
-      await window.electronAPI.startExport({
-        projectState: plainState,
-        exportSettings: settings,
-        outputPath: outputPath,
-      });
-    } catch (e) {
-      console.error("Export invocation failed", e);
-      setExportResult({ success: false, error: `An error occurred while starting the export: ${e}` });
-      setIsExporting(false);
-    }
-  }, []);
-
-  const handleCancelExport = () => {
-    window.electronAPI.cancelExport();
-  };
-
-  const handleCloseExportModal = () => {
-    if (exportResult) {
-      setExportResult(null);
-    }
-    setExportModalOpen(false);
-  };
 
   const getPresetButtonContent = () => {
     switch (presetSaveStatus) {
@@ -165,14 +105,12 @@ export function EditorPage() {
 
   return (
     <main className="h-screen w-screen bg-background flex flex-col overflow-hidden select-none">
-      {/* NEW: Conditional layout for fullscreen mode */}
       {isPreviewFullScreen ? (
         <div className="w-full h-full flex items-center justify-center bg-black">
           <Preview videoRef={videoRef} />
         </div>
       ) : (
         <>
-          {/* Header */}
           <header
             className="relative h-12 flex-shrink-0 border-b border-border bg-card/60 backdrop-blur-xl flex items-center justify-center"
             style={{ WebkitAppRegion: 'drag' }}
@@ -180,19 +118,10 @@ export function EditorPage() {
             <div className="absolute left-3 top-1/2 -translate-y-1/2">
               {platform !== 'darwin' && <WindowControls />}
             </div>
-
             <h1 className="text-sm font-semibold text-foreground pointer-events-none">ScreenAwesome</h1>
-
             <div className="absolute right-3 top-1/2 -translate-y-1/2 flex items-center gap-2" style={{ WebkitAppRegion: 'no-drag' }}>
               {updateInfo && <UpdateNotification info={updateInfo} />}
-
-              <Button
-                variant="ghost"
-                size="icon"
-                onClick={toggleTheme}
-                aria-label="Toggle theme"
-                className={cn('h-8 w-8 text-muted-foreground hover:text-foreground')}
-              >
+              <Button variant="ghost" size="icon" onClick={toggleTheme} aria-label="Toggle theme" className={cn('h-8 w-8 text-muted-foreground hover:text-foreground')}>
                 {currentTheme === 'dark' ? <Sun className="w-4 h-4" /> : <Moon className="w-4 h-4" />}
               </Button>
               <Button
@@ -200,22 +129,13 @@ export function EditorPage() {
                 size="sm"
                 onClick={() => setPresetModalOpen(true)}
                 disabled={presetSaveStatus === 'saving'}
-                className={cn(
-                  "transition-all duration-300 w-[110px]",
-                  presetSaveStatus === 'saved' && "bg-green-500/10 border border-green-500/30 text-green-600 dark:text-green-400"
-                )}
+                className={cn("transition-all duration-300 w-[110px]", presetSaveStatus === 'saved' && "bg-green-500/10 border border-green-500/30 text-green-600 dark:text-green-400")}
               >
                 {getPresetButtonContent()}
               </Button>
-              <ExportButton
-                isExporting={isExporting}
-                onClick={() => setExportModalOpen(true)}
-                disabled={duration <= 0}
-              />
+              <ExportButton isExporting={isExporting} onClick={openExportModal} disabled={duration <= 0} />
             </div>
           </header>
-
-          {/* Main Layout */}
           <div className="flex flex-1 overflow-hidden">
             <div className="w-[28rem] flex-shrink-0 bg-sidebar border-r border-sidebar-border overflow-hidden">
               <SidePanel />
@@ -236,22 +156,16 @@ export function EditorPage() {
           </div>
         </>
       )}
-
-
-      {/* Modals (remain outside the conditional layout) */}
       <ExportModal
         isOpen={isExportModalOpen}
-        onClose={handleCloseExportModal}
-        onStartExport={handleStartExport}
-        onCancelExport={handleCancelExport}
+        onClose={closeExportModal}
+        onStartExport={startExport}
+        onCancelExport={cancelExport}
         isExporting={isExporting}
         progress={exportProgress}
         result={exportResult}
       />
-      <PresetModal
-        isOpen={isPresetModalOpen}
-        onClose={() => setPresetModalOpen(false)}
-      />
+      <PresetModal isOpen={isPresetModalOpen} onClose={() => setPresetModalOpen(false)} />
     </main>
   );
 }
