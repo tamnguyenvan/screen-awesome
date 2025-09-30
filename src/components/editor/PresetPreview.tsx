@@ -103,7 +103,7 @@ export function PresetPreview({ styles, aspectRatio, isWebcamVisible, webcamPosi
   return (
     <div
       ref={previewRef}
-      className="w-full rounded-lg flex items-center justify-center transition-all duration-300 ease-out max-w-full max-h-full"
+      className="h-full rounded-lg flex items-center justify-center transition-all duration-300 ease-out max-w-full max-h-full"
       style={{ ...backgroundStyle, aspectRatio: cssAspectRatio }}
     >
       <div className="w-full h-full" style={{ padding: `${styles.padding}%`, position: 'relative' }}>
@@ -124,15 +124,16 @@ export function PresetPreview({ styles, aspectRatio, isWebcamVisible, webcamPosi
             </div>
 
           </div>
-          {/* Fake Webcam Preview */}
-          {isWebcamVisible && webcamStyles && webcamPosition && (
-            <div className={fakeWebcamClasses} style={fakeWebcamStyle}>
-              <div className="w-full h-full bg-card/60 flex items-center justify-center">
-                <Video className="w-1/2 h-1/2 text-foreground/40" />
-              </div>
-            </div>
-          )}
         </div>
+
+        {/* Fake Webcam Preview */}
+        {isWebcamVisible && webcamStyles && webcamPosition && (
+          <div className={fakeWebcamClasses} style={fakeWebcamStyle}>
+            <div className="w-full h-full bg-card flex items-center justify-center">
+              <Video className="w-1/2 h-1/2 text-foreground/40" />
+            </div>
+          </div>
+        )}
       </div>
     </div>
   );
