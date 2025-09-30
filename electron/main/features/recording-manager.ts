@@ -156,6 +156,8 @@ export async function stopRecording() {
   createSavingWindow();
   await cleanupAndSave();
   log.info('Files saved successfully.');
+
+  await new Promise(resolve => setTimeout(resolve, 500));
   appState.savingWin?.close();
   resetCursorSize();
   

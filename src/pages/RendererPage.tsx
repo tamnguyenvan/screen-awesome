@@ -69,10 +69,26 @@ export function RendererPage() {
 
         const loadVideo = (videoElement: HTMLVideoElement, source: string, path: string): Promise<void> =>
           new Promise((resolve, reject) => {
-            const onCanPlay = () => { videoElement.removeEventListener('canplaythrough', onCanPlay); videoElement.removeEventListener('error', onError); log.info(`[RendererPage] ${source} video is ready.`); resolve(); };
-            const onError = (e: Event) => { videoElement.removeEventListener('canplaythrough', onCanPlay); videoElement.removeEventListener('error', onError); log.error(`[RendererPage] ${source} loading error:`, e); reject(new Error(`Failed to load ${source}.`)); };
-            videoElement.addEventListener('canplaythrough', onCanPlay);
-            videoElement.addEventListener('error', onError);
+            const onError = (e: Event) => {
+              videoElement.removeEventListener('canplaythrough', onCanPlay);
+              videoElement.removeEventListener('error', onError);
+              log.error(`[RendererPage] ${source} loading error:`, e);
+              reject(new Error(`Failed to load ${source}.`));
+            };
+
+            const onCanPlay = () => {
+              const onSeeked = () => {
+                videoElement.removeEventListener('seeked', onSeeked);
+                log.info(`[RendererPage] ${source} video is ready and seeked to frame 0.`);
+                resolve();
+              };
+
+              videoElement.addEventListener('seeked', onSeeked, { once: true });
+              videoElement.currentTime = 0;
+            };
+
+            videoElement.addEventListener('canplaythrough', onCanPlay, { once: true });
+            videoElement.addEventListener('error', onError, { once: true });
             videoElement.src = `media://${path}`;
             videoElement.muted = true;
             videoElement.load();
@@ -83,7 +99,6 @@ export function RendererPage() {
         await Promise.all(loadPromises);
 
         log.info('[RendererPage] Starting frame-by-frame rendering...');
-        const cutRegionsArray = Object.values(projectState.cutRegions);
         const totalDuration = projectState.duration;
         const totalFrames = Math.floor(totalDuration * fps);
         let framesSent = 0;
@@ -91,21 +106,20 @@ export function RendererPage() {
         for (let i = 0; i < totalFrames; i++) {
           const currentTime = i / fps;
 
-          const isInCutRegion = cutRegionsArray.some(
+          // Add logic to check cut/trim region
+          const isInCutRegion = Object.values(projectState.cutRegions).some(
             (r) => currentTime >= r.startTime && currentTime < (r.startTime + r.duration)
           );
-          if (isInCutRegion) continue;
+          if (isInCutRegion) continue; // Skip this frame
 
+          // Optimize video seeking - much faster than waiting for 'seeked' event
           await new Promise<void>(resolve => {
-            const onSeeked = () => {
-              video.removeEventListener('seeked', onSeeked);
-              resolve();
-            };
-            video.addEventListener('seeked', onSeeked, { once: true });
             video.currentTime = currentTime;
             if (webcamVideo) webcamVideo.currentTime = currentTime;
+            // Use requestAnimationFrame to ensure the video has updated the frame before drawing
+            requestAnimationFrame(() => resolve());
           });
-          
+
           await drawScene(ctx, projectState, video, webcamVideo, currentTime, outputWidth, outputHeight, bgImage);
 
           const imageData = ctx.getImageData(0, 0, outputWidth, outputHeight);

@@ -12,7 +12,7 @@ export const Preview = memo(({ videoRef }: { videoRef: React.RefObject<HTMLVideo
     videoUrl, aspectRatio, cutRegions,
     webcamVideoUrl, duration, currentTime, togglePlay,
     isPreviewFullScreen, togglePreviewFullScreen, frameStyles,
-    isWebcamVisible, webcamPosition, webcamStyles
+    isWebcamVisible, webcamPosition, webcamStyles, videoDimensions
   } = useEditorStore(
     useShallow(state => ({
       videoUrl: state.videoUrl,
@@ -28,6 +28,7 @@ export const Preview = memo(({ videoRef }: { videoRef: React.RefObject<HTMLVideo
       isWebcamVisible: state.isWebcamVisible,
       webcamPosition: state.webcamPosition,
       webcamStyles: state.webcamStyles,
+      videoDimensions: state.videoDimensions,
     })));
 
   const { setPlaying, setCurrentTime, setDuration, setVideoDimensions } = useEditorStore.getState();
@@ -130,14 +131,15 @@ export const Preview = memo(({ videoRef }: { videoRef: React.RefObject<HTMLVideo
       // and redraw when needed.
       renderCanvas();
     }
-    
+
     // Cleanup function to stop the animation loop when component unmounts or effect runs again
     return () => {
       if (animationFrameId.current) {
         cancelAnimationFrame(animationFrameId.current);
       }
     };
-  }, [isPlaying, currentTime, renderCanvas, canvasDimensions, frameStyles,  isWebcamVisible, webcamPosition, webcamStyles]);
+  }, [isPlaying, currentTime, renderCanvas, canvasDimensions, frameStyles,
+    isWebcamVisible, webcamPosition, webcamStyles, videoDimensions]);
 
   // Control video playback
   useEffect(() => {
@@ -183,11 +185,35 @@ export const Preview = memo(({ videoRef }: { videoRef: React.RefObject<HTMLVideo
   };
 
   const handleLoadedMetadata = () => {
-    if (videoRef.current) {
-      setDuration(videoRef.current.duration);
-      setVideoDimensions({ width: videoRef.current.videoWidth, height: videoRef.current.videoHeight });
+    const video = videoRef.current;
+    if (video) {
+      setDuration(video.duration);
+      setVideoDimensions({ width: video.videoWidth, height: video.videoHeight });
+
+      const onInitialSeekComplete = () => {
+        renderCanvas();
+        video.removeEventListener('seeked', onInitialSeekComplete);
+      };
+
+      video.addEventListener('seeked', onInitialSeekComplete);
+
+      video.currentTime = 0;
     }
   };
+
+  const handleWebcamLoadedMetadata = useCallback(() => {
+    const mainVideo = videoRef.current;
+    const webcamVideo = webcamVideoRef.current;
+    if (mainVideo && webcamVideo) {
+      // Sync the initial state of the webcam video to the main video
+      webcamVideo.currentTime = mainVideo.currentTime;
+      if (mainVideo.paused) {
+        webcamVideo.pause();
+      } else {
+        webcamVideo.play().catch(console.error);
+      }
+    }
+  }, [videoRef]);
 
   const handleScrub = (value: number) => {
     if (videoRef.current) {
@@ -239,6 +265,7 @@ export const Preview = memo(({ videoRef }: { videoRef: React.RefObject<HTMLVideo
           src={webcamVideoUrl}
           muted
           playsInline
+          onLoadedMetadata={handleWebcamLoadedMetadata}
           style={{ display: 'none' }}
         />
       )}

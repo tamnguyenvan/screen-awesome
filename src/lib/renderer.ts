@@ -11,6 +11,7 @@ type RenderableState = Pick<
   | 'webcamPosition'
   | 'webcamStyles'
   | 'isWebcamVisible'
+  | 'zoomRegions'
 >;
 
 /**
@@ -136,7 +137,7 @@ export const drawScene = async (
   // --- 3. Main video frame transform and drawing ---
   ctx.save();
 
-  const { scale, translateX, translateY, transformOrigin } = calculateZoomTransform(currentTime);
+  const { scale, translateX, translateY, transformOrigin } = calculateZoomTransform(currentTime, state.zoomRegions);
   const [originXStr, originYStr] = transformOrigin.split(' ');
   const originXMul = parseFloat(originXStr) / 100;
   const originYMul = parseFloat(originYStr) / 100;
